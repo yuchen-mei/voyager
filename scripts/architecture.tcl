@@ -1,1 +1,1 @@
-set DIMENSION 4
+set DIMENSION 16

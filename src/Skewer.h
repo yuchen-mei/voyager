@@ -30,39 +30,40 @@ class Fifo {
 
 #define REPEAT(x) BOOST_PP_REPEAT(DIMENSION, x, 0)
 
-template <typename DTYPE, typename T>
-class Skewer {
- public:
-  Skewer() {}
+// template <typename DTYPE, typename T>
+// class Skewer {
+//  public:
+//   Skewer() {}
 
-#pragma hls_design interface ccore
-  void run(DTYPE input, DTYPE &output) {
-    // model 2 cycle latency caused by synchronization of CCORE
-    // #ifndef __SYNTHESIS__
-    //     delay[1] = delay[0];
-    //     delay[0] = input;
-    //     input = delay[1];
-    // #endif
+// #pragma hls_design interface ccore
+//   void run(DTYPE input, DTYPE &output) {
+// // model 2 cycle latency caused by synchronization of CCORE
+// #ifndef __SYNTHESIS__
+//     delay[2] = delay[1];
+//     delay[1] = delay[0];
+//     delay[0] = input;
+//     input = delay[2];
+// #endif
 
-#define INPUT_FIFO_BODY(z, i, unused)                        \
-  T BOOST_PP_CAT(fifo_output_, i);                           \
-  T BOOST_PP_CAT(fifo_input_, i);                            \
-  BOOST_PP_CAT(fifo_input_, i) = input[i];                   \
-  BOOST_PP_CAT(fifo_, i).run(BOOST_PP_CAT(fifo_input_, i),   \
-                             BOOST_PP_CAT(fifo_output_, i)); \
-  output[i] = BOOST_PP_CAT(fifo_output_, i);
+// #define INPUT_FIFO_BODY(z, i, unused)                        \
+//   T BOOST_PP_CAT(fifo_output_, i);                           \
+//   T BOOST_PP_CAT(fifo_input_, i);                            \
+//   BOOST_PP_CAT(fifo_input_, i) = input[i];                   \
+//   BOOST_PP_CAT(fifo_, i).run(BOOST_PP_CAT(fifo_input_, i),   \
+//                              BOOST_PP_CAT(fifo_output_, i)); \
+//   output[i] = BOOST_PP_CAT(fifo_output_, i);
 
-    REPEAT(INPUT_FIFO_BODY)
-  }
+//     REPEAT(INPUT_FIFO_BODY)
+//   }
 
- private:
-#define INPUT_FIFOS_INIT(z, i, unused) Fifo<T, i + 1> BOOST_PP_CAT(fifo_, i);
+//  private:
+// #define INPUT_FIFOS_INIT(z, i, unused) Fifo<T, i + 1> BOOST_PP_CAT(fifo_, i);
 
-  REPEAT(INPUT_FIFOS_INIT)
-#ifndef __SYNTHESIS__
-  DTYPE delay[2];
-#endif
-};
+//   REPEAT(INPUT_FIFOS_INIT)
+// #ifndef __SYNTHESIS__
+//   DTYPE delay[4];
+// #endif
+// };
 
 // #pragma once
 
@@ -293,6 +294,233 @@ class Skewer {
 //   }
 // };
 
+template <typename DTYPE, int SIZE>
+SC_MODULE(Skewer) {
+ public:
+  sc_in<bool> CCS_INIT_S1(clk);
+  sc_in<bool> CCS_INIT_S1(rstn);
+
+  Connections::In<Pack1D<DTYPE, SIZE> > CCS_INIT_S1(din);
+  Connections::Out<Pack1D<DTYPE, SIZE> > CCS_INIT_S1(dout);
+
+#define INIT_FIFOS(z, i, unused) Fifo<DTYPE, i + 1> BOOST_PP_CAT(fifo_, i);
+  REPEAT(INIT_FIFOS)
+#undef INIT_FIFOS
+
+  SC_CTOR(Skewer) {
+    SC_THREAD(run);
+    sensitive << clk.pos();
+    async_reset_signal_is(rstn, false);
+  }
+
+  void run() {
+    dout.Reset();
+    din.Reset();
+
+    wait();
+
+#pragma hls_pipeline_init_interval 1
+#pragma hls_pipeline_stall_mode flush
+    while (true) {
+      Pack1D<DTYPE, SIZE> input = din.Pop();
+
+      Pack1D<DTYPE, SIZE> fifoInput;
+      fifoInput = input;
+
+      Pack1D<DTYPE, SIZE> fifoOutput;
+#define INPUT_FIFO_BODY(z, i, unused)                        \
+  DTYPE BOOST_PP_CAT(fifo_output_, i);                       \
+  DTYPE BOOST_PP_CAT(fifo_input_, i);                        \
+  BOOST_PP_CAT(fifo_input_, i) = fifoInput[i];               \
+  BOOST_PP_CAT(fifo_, i).run(BOOST_PP_CAT(fifo_input_, i),   \
+                             BOOST_PP_CAT(fifo_output_, i)); \
+  fifoOutput[i] = BOOST_PP_CAT(fifo_output_, i);
+
+      REPEAT(INPUT_FIFO_BODY)
+#undef INPUT_FIFO_BODY
+
+      Pack1D<DTYPE, SIZE> output;
+      output = fifoOutput;
+
+      dout.Push(output);
+      // wait();
+    }
+  }
+};
+
+template <typename DTYPE, int SIZE, bool reverse = false>
+SC_MODULE(ToggleSkewer) {
+ public:
+  sc_in<bool> CCS_INIT_S1(clk);
+  sc_in<bool> CCS_INIT_S1(rstn);
+
+  sc_in<Pack1D<DTYPE, SIZE> > CCS_INIT_S1(din);
+  sc_in<bool> CCS_INIT_S1(din_toggle);
+
+  sc_out<Pack1D<DTYPE, SIZE> > CCS_INIT_S1(dout);
+  // sc_out<bool> CCS_INIT_S1(dout_valid);
+
+#define INIT_FIFOS(z, i, unused) Fifo<DTYPE, i + 1> BOOST_PP_CAT(fifo_, i);
+  REPEAT(INIT_FIFOS)
+#undef INIT_FIFOS
+
+  SC_CTOR(ToggleSkewer) {
+    SC_THREAD(run);
+    sensitive << clk.pos();
+    async_reset_signal_is(rstn, false);
+  }
+
+  void run() {
+    dout.write(Pack1D<DTYPE, SIZE>());
+    bool old_toggle = false;
+
+    wait();
+
+#pragma hls_pipeline_init_interval 1
+    while (true) {
+      // enable.write(din_valid);
+
+      if (din_toggle != old_toggle) {
+        Pack1D<DTYPE, SIZE> input = din.read();
+        CCS_LOG("in: " << input);
+
+        Pack1D<DTYPE, SIZE> fifoInput;
+        fifoInput = input;
+        //         if (reverse) {
+        // #pragma hls_unroll yes
+        //           for (int i = 0; i < SIZE; i++) {
+        //             fifoInput[i] = input[SIZE - 1 - i];
+        //           }
+        //         } else {
+        // #pragma hls_unroll yes
+        //           for (int i = 0; i < SIZE; i++) {
+        //             fifoInput[i] = input[i];
+        //           }
+        //         }
+
+        Pack1D<DTYPE, SIZE> fifoOutput;
+#define INPUT_FIFO_BODY(z, i, unused)                        \
+  DTYPE BOOST_PP_CAT(fifo_output_, i);                       \
+  DTYPE BOOST_PP_CAT(fifo_input_, i);                        \
+  BOOST_PP_CAT(fifo_input_, i) = fifoInput[i];               \
+  BOOST_PP_CAT(fifo_, i).run(BOOST_PP_CAT(fifo_input_, i),   \
+                             BOOST_PP_CAT(fifo_output_, i)); \
+  fifoOutput[i] = BOOST_PP_CAT(fifo_output_, i);
+
+        REPEAT(INPUT_FIFO_BODY)
+#undef INPUT_FIFO_BODY
+
+        Pack1D<DTYPE, SIZE> output;
+        output = fifoOutput;
+        //         if (reverse) {
+        // #pragma hls_unroll yes
+        //           for (int i = 0; i < SIZE; i++) {
+        //             output[i] = fifoOutput[SIZE - 1 - i];
+        //           }
+        //         } else {
+        // #pragma hls_unroll yes
+        //           for (int i = 0; i < SIZE; i++) {
+        //             output[i] = fifoOutput[i];
+        //           }
+        //         }
+
+        dout.write(output);
+        CCS_LOG("out: " << output);
+      }
+      old_toggle = din_toggle;
+
+      wait();
+    }
+  }
+};
+
+template <typename DTYPE, int SIZE, bool reverse = false>
+SC_MODULE(ToggleSkewerReversed) {
+ public:
+  sc_in<bool> CCS_INIT_S1(clk);
+  sc_in<bool> CCS_INIT_S1(rstn);
+
+  sc_in<Pack1D<DTYPE, SIZE> > CCS_INIT_S1(din);
+  sc_in<bool> CCS_INIT_S1(din_toggle);
+
+  sc_out<Pack1D<DTYPE, SIZE> > CCS_INIT_S1(dout);
+  // sc_out<bool> CCS_INIT_S1(dout_valid);
+
+#define INIT_FIFOS(z, i, unused) Fifo<DTYPE, i + 1> BOOST_PP_CAT(fifo_, i);
+  REPEAT(INIT_FIFOS)
+#undef INIT_FIFOS
+
+  SC_CTOR(ToggleSkewerReversed) {
+    SC_THREAD(run2);
+    sensitive << clk.pos();
+    async_reset_signal_is(rstn, false);
+  }
+
+  void run2() {
+    dout.write(Pack1D<DTYPE, SIZE>());
+    bool old_toggle = false;
+
+    wait();
+
+#pragma hls_pipeline_init_interval 1
+    while (true) {
+      // enable.write(din_valid);
+
+      if (din_toggle != old_toggle) {
+        Pack1D<DTYPE, SIZE> input = din.read();
+        CCS_LOG("in: " << input);
+
+        Pack1D<DTYPE, SIZE> fifoInput;
+        fifoInput = input;
+
+        //         if (reverse) {
+        // #pragma hls_unroll yes
+        //         for (int i = 0; i < SIZE; i++) {
+        //           fifoInput[i] = input[SIZE - 1 - i];
+        //         }
+        //         } else {
+        // #pragma hls_unroll yes
+        //           for (int i = 0; i < SIZE; i++) {
+        //             fifoInput[i] = input[i];
+        //           }
+        //         }
+
+        Pack1D<DTYPE, SIZE> fifoOutput;
+#define INPUT_FIFO_BODY(z, i, unused)                        \
+  DTYPE BOOST_PP_CAT(fifo_output_, i);                       \
+  DTYPE BOOST_PP_CAT(fifo_input_, i);                        \
+  BOOST_PP_CAT(fifo_input_, i) = fifoInput[SIZE - i - 1];    \
+  BOOST_PP_CAT(fifo_, i).run(BOOST_PP_CAT(fifo_input_, i),   \
+                             BOOST_PP_CAT(fifo_output_, i)); \
+  fifoOutput[SIZE - 1 - i] = BOOST_PP_CAT(fifo_output_, i);
+
+        REPEAT(INPUT_FIFO_BODY)
+#undef INPUT_FIFO_BODY
+
+        Pack1D<DTYPE, SIZE> output;
+        output = fifoOutput;
+        //         if (reverse) {
+        // #pragma hls_unroll yes
+        //         for (int i = 0; i < SIZE; i++) {
+        //           output[i] = fifoOutput[SIZE - 1 - i];
+        //         }
+        //         } else {
+        // #pragma hls_unroll yes
+        //           for (int i = 0; i < SIZE; i++) {
+        //             output[i] = fifoOutput[i];
+        //           }
+        //         }
+
+        dout.write(output);
+        CCS_LOG("out: " << output);
+      }
+      old_toggle = din_toggle;
+
+      wait();
+    }
+  }
+};
+
 // template <typename DTYPE, int SIZE, bool reverse = false>
 // SC_MODULE(ValidSkewer) {
 //  public:
@@ -303,94 +531,104 @@ class Skewer {
 //   sc_in<bool> CCS_INIT_S1(din_valid);
 
 //   sc_out<Pack1D<DTYPE, SIZE> > CCS_INIT_S1(dout);
-//   sc_out<bool> CCS_INIT_S1(dout_valid);
+//   // sc_out<bool> CCS_INIT_S1(dout_valid);
 
-//   sc_signal<DTYPE> fifoInput[SIZE];
-//   sc_signal<DTYPE> fifoOutput[SIZE];
-//   sc_signal<bool> enable;
+//   // sc_signal<DTYPE> fifoInput[SIZE];
+//   // sc_signal<DTYPE> fifoOutput[SIZE];
+//   // sc_signal<bool> enable;
 
-//   // #define INIT_FIFOS(z, i, unused) Fifo<DTYPE, i + 1>
+// #define INIT_FIFOS(z, i, unused) Fifo<DTYPE, i + 1>
 //   BOOST_PP_CAT(fifo_, i);
-//   //   REPEAT(INIT_FIFOS)
-//   // #undef INIT_FIFOS
+//   REPEAT(INIT_FIFOS)
+// #undef INIT_FIFOS
 
 //   SC_CTOR(ValidSkewer) {
-//     Fifo<DTYPE> *fifo[SIZE];
-//     for (int i = 0 + 1; i < SIZE + 1; i++) {
-//       fifo[i - 1] = new Fifo<DTYPE>(sc_gen_unique_name("fifo"), i);
-//       fifo[i - 1]->clk(clk);
-//       fifo[i - 1]->rstn(rstn);
-//       fifo[i - 1]->din(fifoInput[i - 1]);
-//       fifo[i - 1]->din_valid(enable);
-//       fifo[i - 1]->dout(fifoOutput[i - 1]);
-//     }
+//     // Fifo<DTYPE> *fifo[SIZE];
+//     // for (int i = 0 + 1; i < SIZE + 1; i++) {
+//     //   fifo[i - 1] = new Fifo<DTYPE>(sc_gen_unique_name("fifo"), i);
+//     //   fifo[i - 1]->clk(clk);
+//     //   fifo[i - 1]->rstn(rstn);
+//     //   fifo[i - 1]->din(fifoInput[i - 1]);
+//     //   fifo[i - 1]->din_valid(enable);
+//     //   fifo[i - 1]->dout(fifoOutput[i - 1]);
+//     // }
 
 //     SC_THREAD(run);
 //     sensitive << clk.pos();
 //     async_reset_signal_is(rstn, false);
 //   }
 
-//   //   void connect(Pack1D<DTYPE, SIZE> & vecIn, Pack1D<DTYPE, SIZE> &
-//   vecOut) {
-//   //     if (reverse) {
-//   // #pragma hls_unroll yes
-//   //       for (int i = 0; i < SIZE; i++) {
-//   //         vecOut[i] = vecIn[SIZE - 1 - i];
-//   //       }
-//   //     } else {
-//   // #pragma hls_unroll yes
-//   //       for (int i = 0; i < SIZE; i++) {
-//   //         vecOut[i] = vecIn[i];
-//   //       }
-//   //     }
-//   //   }
+//   // //   void connect(Pack1D<DTYPE, SIZE> & vecIn, Pack1D<DTYPE, SIZE> &
+//   // vecOut) {
+//   // //     if (reverse) {
+//   // // #pragma hls_unroll yes
+//   // //       for (int i = 0; i < SIZE; i++) {
+//   // //         vecOut[i] = vecIn[SIZE - 1 - i];
+//   // //       }
+//   // //     } else {
+//   // // #pragma hls_unroll yes
+//   // //       for (int i = 0; i < SIZE; i++) {
+//   // //         vecOut[i] = vecIn[i];
+//   // //       }
+//   // //     }
+//   // //   }
 
 //   void run() {
 //     dout.write(Pack1D<DTYPE, SIZE>());
-//     dout_valid.write(false);
-//     enable.write(false);
-//     for (int i = 0; i < SIZE; i++) {
-//       fifoInput[i].write(0);
-//     }
+//     // dout_valid.write(false);
+//     // enable.write(false);
+//     // for (int i = 0; i < SIZE; i++) {
+//     //   fifoInput[i].write(0);
+//     // }
 
 //     wait();
 
 //     // #pragma hls_pipeline_init_interval 1
 //     while (true) {
-//       enable.write(din_valid);
-
+//       // enable.write(din_valid);
+//       Pack1D<DTYPE, SIZE> output;
 //       if (din_valid) {
 //         Pack1D<DTYPE, SIZE> input = din.read();
 
-//         if (reverse) {
-// #pragma hls_unroll yes
-//           for (int i = 0; i < SIZE; i++) {
-//             fifoInput[i] = input[SIZE - 1 - i];
-//           }
-//         } else {
-// #pragma hls_unroll yes
-//           for (int i = 0; i < SIZE; i++) {
-//             fifoInput[i] = input[i];
-//           }
-//         }
+//         //         if (reverse) {
+//         // #pragma hls_unroll yes
+//         //           for (int i = 0; i < SIZE; i++) {
+//         //             fifoInput[i] = input[SIZE - 1 - i];
+//         //           }
+//         //         } else {
+//         // #pragma hls_unroll yes
+//         //           for (int i = 0; i < SIZE; i++) {
+//         //             fifoInput[i] = input[i];
+//         //           }
+//         //         }
+
+// #define INPUT_FIFO_BODY(z, i, unused)                        \
+//   T BOOST_PP_CAT(fifo_output_, i);                           \
+//   T BOOST_PP_CAT(fifo_input_, i);                            \
+//   BOOST_PP_CAT(fifo_input_, i) = input[i];                   \
+//   BOOST_PP_CAT(fifo_, i).run(BOOST_PP_CAT(fifo_input_, i),   \
+//                              BOOST_PP_CAT(fifo_output_, i)); \
+//   output[i] = BOOST_PP_CAT(fifo_output_, i);
+
+//         REPEAT(INPUT_FIFO_BODY)
 
 //         Pack1D<DTYPE, SIZE> output;
 
-//         if (reverse) {
-// #pragma hls_unroll yes
-//           for (int i = 0; i < SIZE; i++) {
-//             output[i] = fifoOutput[SIZE - 1 - i];
-//           }
-//         } else {
-// #pragma hls_unroll yes
-//           for (int i = 0; i < SIZE; i++) {
-//             output[i] = fifoOutput[i];
-//           }
-//         }
+//         //         if (reverse) {
+//         // #pragma hls_unroll yes
+//         //           for (int i = 0; i < SIZE; i++) {
+//         //             output[i] = fifoOutput[SIZE - 1 - i];
+//         //           }
+//         //         } else {
+//         // #pragma hls_unroll yes
+//         //           for (int i = 0; i < SIZE; i++) {
+//         //             output[i] = fifoOutput[i];
+//         //           }
+//         //         }
 
 //         dout.write(output);
 //       }
-//       dout_valid.write(din_valid);
+//       // dout_valid.write(din_valid);
 //       wait();
 //     }
 //   }

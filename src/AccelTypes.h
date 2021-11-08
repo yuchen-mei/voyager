@@ -48,6 +48,10 @@ class Pack1D {
   static const unsigned int width = TYPE::width * SIZE;
 
   Pack1D() {}
+  Pack1D(const int a) {}
+
+  operator int() const { return Pack1D<TYPE, SIZE>(); }
+
 
   TYPE &operator[](unsigned int i) { return this->value[i]; }
   const TYPE &operator[](unsigned int i) const { return this->value[i]; }

@@ -11,7 +11,8 @@ SC_MODULE(ProcessingElement) {
   sc_in<bool> CCS_INIT_S1(clk);
   sc_in<bool> CCS_INIT_S1(rstn);
 
-  sc_in<bool> CCS_INIT_S1(enable);
+  // sc_in<bool> CCS_INIT_S1(enable);
+  sc_in<bool> CCS_INIT_S1(toggle);
 
   sc_in<WDTYPE> CCS_INIT_S1(weight_in);
   sc_out<WDTYPE> CCS_INIT_S1(weight_out);
@@ -26,11 +27,16 @@ SC_MODULE(ProcessingElement) {
   sc_out<IDTYPE> CCS_INIT_S1(input_out);
   sc_out<ODTYPE> CCS_INIT_S1(psum_out);
 
+  sc_out<bool> CCS_INIT_S1(valid_output);
+
   WDTYPE weight_reg;
   WDTYPE weight_fifo;
 
   IDTYPE input_reg;
   ODTYPE psum_reg;
+
+  IDTYPE old_input_reg;
+  ODTYPE old_psum_reg;
 
   SC_CTOR(ProcessingElement) {
     SC_THREAD(run);
@@ -39,12 +45,15 @@ SC_MODULE(ProcessingElement) {
   }
 
   void run() {
+    bool oldToggle = false;
     bool swap_weights_reg;
+    bool old_swap_weights_reg;
 
     input_out.write(0);
     psum_out.write(0);
     weight_out.write(0);
     swap_weights_out.write(false);
+    valid_output.write(false);
 
     wait();
 
@@ -54,31 +63,43 @@ SC_MODULE(ProcessingElement) {
         weight_fifo = weight_in.read();
       }
 
-      if (enable.read()) {
+      if (toggle != oldToggle) {
         input_reg = input_in.read();
         ODTYPE psum = psum_in.read();
 
         swap_weights_reg = swap_weights_in.read();
 
         if (swap_weights_reg) {
+          CCS_LOG("swap");
           weight_reg = weight_fifo;
         }
 
         psum_reg = fma(input_reg, weight_reg, psum);
+
+        input_out.write(input_reg);
+        psum_out.write(psum_reg);
+        swap_weights_out.write(swap_weights_reg);
+        valid_output.write(true);
+      } else {
+        input_out.write(old_input_reg);
+        psum_out.write(old_psum_reg);
+        swap_weights_out.write(old_swap_weights_reg);
+        valid_output.write(false);
       }
 
-      input_out.write(input_reg);
-      psum_out.write(psum_reg);
-      weight_out.write(weight_fifo);
-      swap_weights_out.write(swap_weights_reg);
+      old_input_reg = input_reg;
+      old_psum_reg = psum_reg;
+      old_swap_weights_reg = swap_weights_reg;
 
+      weight_out.write(weight_fifo);
+      oldToggle = toggle;
       wait();
     }
   }
 
   template <typename DTYPE>
   DTYPE fma(DTYPE input, DTYPE weight, DTYPE psum) {
-    CCS_LOG(input << " * " << weight << " + " << psum);
+    // CCS_LOG(input << " * " << weight << " + " << psum);
     return input * weight + psum;
   }
 };

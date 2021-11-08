@@ -64,7 +64,10 @@ SC_MODULE(WeightController) {
                loop_counters[0][2] < params.loops[0][2];
                loop_counters[0][2]++) {
             // inner memory
-            for (int n1 = 0; n1 < params.N1; n1++) {
+            for (loop_counters[1][params.reductionLoopIndex[1]] = 0;
+                 loop_counters[1][params.reductionLoopIndex[1]] <
+                 params.loops[1][params.reductionLoopIndex[1]];
+                 loop_counters[1][params.reductionLoopIndex[1]]++) {
               for (loop_counters[1][params.weightLoopIndex[1]] = 0;
                    loop_counters[1][params.weightLoopIndex[1]] <
                    params.loops[1][params.weightLoopIndex[1]];
@@ -137,7 +140,10 @@ SC_MODULE(WeightController) {
                loop_counters[0][2] < params.loops[0][2];
                loop_counters[0][2]++) {
             // inner memory
-            for (int n1 = 0; n1 < params.N1; n1++) {
+            for (loop_counters[1][params.reductionLoopIndex[1]] = 0;
+                 loop_counters[1][params.reductionLoopIndex[1]] <
+                 params.loops[1][params.reductionLoopIndex[1]];
+                 loop_counters[1][params.reductionLoopIndex[1]]++) {
               writeControl[bankSel].Push(
                   params.loops[1][params.weightLoopIndex[1]] * NROWS);
 
@@ -186,7 +192,10 @@ SC_MODULE(WeightController) {
           for (loop_counters[0][2] = 0;
                loop_counters[0][2] < params.loops[0][2];
                loop_counters[0][2]++) {
-            for (int n1 = 0; n1 < params.N1; n1++) {
+            for (loop_counters[1][params.reductionLoopIndex[1]] = 0;
+                 loop_counters[1][params.reductionLoopIndex[1]] <
+                 params.loops[1][params.reductionLoopIndex[1]];
+                 loop_counters[1][params.reductionLoopIndex[1]]++) {
               readControl[bankSel].Push(
                   params.loops[1][params.weightLoopIndex[1]] * NROWS);
 
