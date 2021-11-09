@@ -11,7 +11,6 @@ SC_MODULE(ProcessingElement) {
   sc_in<bool> CCS_INIT_S1(clk);
   sc_in<bool> CCS_INIT_S1(rstn);
 
-  // sc_in<bool> CCS_INIT_S1(enable);
   sc_in<bool> CCS_INIT_S1(toggle);
 
   sc_in<WDTYPE> CCS_INIT_S1(weight_in);
