@@ -6,27 +6,33 @@ TEST ?= simple
 
 export TEST := $(TEST)
 
-rtl: build/Catapult/Accelerator.v1/concat_rtl.v
+synth_rtl: build/Catapult/Accelerator.v1/concat_rtl.v
 
 build/Catapult/Accelerator.v1/concat_rtl.v: src/Accelerator.cc $(wildcard src/*.h) scripts/hls.tcl
-	rm -rf build/Catapult
+	catapult -shell -file scripts/hls.tcl
+
+debug_rtl: build/Catapult_debug/Accelerator.v1/concat_rtl.v
+
+build/Catapult_debug/Accelerator.v1/concat_rtl.v: export DEBUG=1
+
+build/Catapult_debug/Accelerator.v1/concat_rtl.v: src/Accelerator.cc $(wildcard src/*.h) scripts/hls.tcl
 	catapult -shell -file scripts/hls.tcl
 
 sim: build/TestRunner
 	./build/TestRunner 
 
 rtl_sim_clean:
-	rm -rf build/Catapult/Accelerator.v1/scverify/concat_sim_rtl_v_vcs
+	rm -rf build/Catapult_debug/Accelerator.v1/scverify/concat_sim_rtl_v_vcs
 
 rtl_sim: rtl
-	cd build/Catapult/Accelerator.v1 && make -f ./scverify/Verify_concat_sim_rtl_v_vcs.mk SIMTOOL=vcs sim
+	cd build/Catapult_debug/Accelerator.v1 && make -f ./scverify/Verify_concat_sim_rtl_v_vcs.mk SIMTOOL=vcs sim
 
 rtl_sim_debug: rtl
 	rm -rf build/inter.fsdb*
-	cd build/Catapult/Accelerator.v1 && make -f ./scverify/Verify_concat_sim_rtl_v_vcs.mk SIMTOOL=vcs simgui
+	cd build/Catapult_debug/Accelerator.v1 && make -f ./scverify/Verify_concat_sim_rtl_v_vcs.mk SIMTOOL=vcs simgui
 
 gui:
-	catapult build/Catapult
+	catapult build/Catapult_debug
 
 build/TestRunner: build/Accelerator.o build/Harness.o build/TestRunner.o build/GoldModel.o build/Utils.o
 	$(CC) -o $@ $^ $(LDLIBS) $(LDFLAGS)

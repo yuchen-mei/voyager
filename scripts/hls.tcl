@@ -1,6 +1,17 @@
 source scripts/architecture.tcl
 
-project new -dir ./build/Catapult
+if { [info exists env(DEBUG)] } {
+  set project_folder ./build/Catapult_debug
+} else {
+  set project_folder ./build/Catapult
+}
+
+if { [file exists $project_folder] } {
+  file delete -force -- $project_folder
+}
+
+project new -dir $project_folder 
+
 project save
 
 options set Input/TargetPlatform x86_64
@@ -34,10 +45,16 @@ directive set -DESIGN_HIERARCHY {
 
 go compile
 
-solution options set ComponentLibs/SearchPath /home/kprabhu7/catapult3_char -append
-solution library add tcbn40lpbwptc_dc -- -rtlsyntool DesignCompiler -vendor TSMC -technology 40nm
+solution options set ComponentLibs/SearchPath {/home/shared/catapult/memories /home/shared/catapult/stdcells} -append
+solution library add tcbn40ulpbwp40_c170815tt1p1v25c_dc -- -rtlsyntool DesignCompiler -vendor TSMC -technology 40nm
 
-solution library add ccs_sample_mem
+if {[info exists env(DEBUG)]} {
+  solution library add ccs_sample_mem
+} else {
+  solution library add ts1n40lpb1024x128m4fb_tt1p1v25c
+  solution library add custom1024x128  
+}
+
 
 go libraries
 
@@ -49,7 +66,9 @@ go assembly
 directive set /Accelerator/DoubleBuffer<ac_int<8,true>,$DIMENSION,1024>/DoubleBuffer<ac_int<8,true>,$DIMENSION,1024>:mem0Run/mem0Run/mem0.value -WORD_WIDTH [expr 8*$DIMENSION]
 directive set /Accelerator/DoubleBuffer<ac_int<8,true>,$DIMENSION,1024>/DoubleBuffer<ac_int<8,true>,$DIMENSION,1024>:mem1Run/mem1Run/mem1.value -WORD_WIDTH [expr 8*$DIMENSION]
 directive set /Accelerator/MatrixProcessor<ac_int<8,true>,ac_int<8,true>,ac_int<8,true>,$DIMENSION,$DIMENSION,1024>/run/accumulation_buffer.value -WORD_WIDTH [expr 8*$DIMENSION]
-
+if {[info exists env(DEBUG)] == 0} {
+  directive set /Accelerator/MatrixProcessor<ac_int<8,true>,ac_int<8,true>,ac_int<8,true>,16,16,1024>/MatrixProcessor<ac_int<8,true>,ac_int<8,true>,ac_int<8,true>,16,16,1024>:run/run/accumulation_buffer.value:rsc -MAP_TO_MODULE custom1024x128.custom1024x128
+}
 go architect
 
 ignore_memory_precedences -from WRITE_ACC_BUFFER* -to READ_ACC_BUFFER*
