@@ -10,7 +10,6 @@ template <typename IDTYPE, typename WDTYPE, typename ODTYPE, int NROWS,
 SC_MODULE(MatrixProcessor) {
  private:
   Connections::SyncChannel CCS_INIT_S1(weightSync);
-  sc_signal<bool> CCS_INIT_S1(waitForWeight);
   sc_signal<bool> CCS_INIT_S1(weightReady);
   sc_signal<bool> CCS_INIT_S1(weightFill);
 
@@ -19,31 +18,22 @@ SC_MODULE(MatrixProcessor) {
   sc_signal<bool> CCS_INIT_S1(paramsReady);
 
   sc_signal<bool> CCS_INIT_S1(toggleOut);
-  sc_signal<bool> CCS_INIT_S1(outputsValid);
 
   Skewer<IDTYPE, NROWS> CCS_INIT_S1(inputSkewer);
   Connections::Combinational<Pack1D<IDTYPE, NROWS> > CCS_INIT_S1(
       inputSkewerDin);
-  Connections::Combinational<Pack1D<IDTYPE, NROWS> > CCS_INIT_S1(
-      inputSkewerDout);
 
   Skewer<IDTYPE, NROWS> CCS_INIT_S1(psumInSkewer);
   Connections::Combinational<Pack1D<IDTYPE, NROWS> > CCS_INIT_S1(
       psumInSkewerDin);
-  Connections::Combinational<Pack1D<IDTYPE, NROWS> > CCS_INIT_S1(
-      psumInSkewerDout);
 
   Skewer<IDTYPE, NROWS> CCS_INIT_S1(psumOutSkewer);
-  Connections::Combinational<Pack1D<IDTYPE, NROWS> > CCS_INIT_S1(
-      psumOutSkewerDin);
   Connections::Combinational<Pack1D<IDTYPE, NROWS> > CCS_INIT_S1(
       psumOutSkewerDout);
 
   Skewer<ac_int<1, false>, NROWS> CCS_INIT_S1(weightSwapSkewer);
   Connections::Combinational<Pack1D<ac_int<1, false>, NROWS> > CCS_INIT_S1(
       weightSwapSkewerDin);
-  Connections::Combinational<Pack1D<ac_int<1, false>, NROWS> > CCS_INIT_S1(
-      weightSwapSkewerDout);
 
  public:
   sc_in<bool> CCS_INIT_S1(clk);
@@ -69,8 +59,6 @@ SC_MODULE(MatrixProcessor) {
 
   sc_signal<Pack1D<WDTYPE, NCOLS> > CCS_INIT_S1(weightsToSystolicArray);
   sc_signal<bool> CCS_INIT_S1(weightsToggle);
-
-  sc_signal<bool> CCS_INIT_S1(outputsDone);
 
   SC_CTOR(MatrixProcessor) {
     systolicArray.clk(clk);
@@ -154,16 +142,14 @@ SC_MODULE(MatrixProcessor) {
     paramsIn.Reset();
 
     inputSkewerDin.ResetWrite();
-    inputSkewerDout.ResetRead();
     toggleOut.write(false);
     inputsChannel.Reset();
     weightSync.ResetWrite();
     psumInSkewerDin.ResetWrite();
-    psumInSkewerDout.ResetRead();
     outputsChannel.Reset();
     weightFill.write(false);
     weightSwapSkewerDin.ResetWrite();
-    weightSwapSkewerDout.ResetRead();
+    psumOutSkewerDout.ResetRead();
 
     bool toggle = false;
     bool weightFillToggle = false;
