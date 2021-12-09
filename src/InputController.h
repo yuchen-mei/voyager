@@ -52,18 +52,23 @@ SC_MODULE(InputController) {
     while (true) {
       Params params = fetcherParams.Pop();
 
-      int loop_counters[2][3];
-      int loop_bounds[2][3];
+      int FX = params.loops[1][params.fxIndex];
+      int FY = params.loops[1][params.fyIndex];
+
+      int loop_counters[2][6];
+      int loop_bounds[2][6];
 
 #pragma hls_unroll yes
       for (int i = 0; i < 2; i++) {
-        for (int j = 0; j < 3; j++) {
+        for (int j = 0; j < 6; j++) {
           loop_bounds[i][j] = params.loops[i][j];
         }
       }
 
       // set irrelevant loop bounds to 1
       loop_bounds[1][params.weightLoopIndex[1]] = 1;
+      loop_bounds[1][params.fxIndex] = 1;
+      loop_bounds[1][params.fyIndex] = 1;
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
@@ -73,6 +78,43 @@ SC_MODULE(InputController) {
              loop_counters[0][1]++) {
           for (loop_counters[0][2] = 0; loop_counters[0][2] < loop_bounds[0][2];
                loop_counters[0][2]++) {
+            // fetching border pixels is a little tricky
+            // for the outer tiles, we don't fetch borders (they are known to be
+            // 0)
+
+            // reset loop bounds
+            loop_bounds[1][params.inputXLoopIndex[1]] =
+                params.loops[1][params.inputXLoopIndex[1]];
+            loop_bounds[1][params.inputYLoopIndex[1]] =
+                params.loops[1][params.inputYLoopIndex[1]];
+
+            int x_min_offset = 0;
+            int x_max_offset = 0;
+            int y_min_offset = 0;
+            int y_max_offset = 0;
+
+            if (loop_counters[0][params.inputXLoopIndex[0]] != 0) {
+              x_min_offset = (FX - 1) / 2;
+              loop_bounds[1][params.inputXLoopIndex[1]] += (FX - 1) / 2;
+            }
+
+            if (loop_counters[0][params.inputXLoopIndex[0]] !=
+                loop_bounds[0][params.inputXLoopIndex[0]] - 1) {
+              x_max_offset = (FX - 1) / 2;
+              loop_bounds[1][params.inputXLoopIndex[1]] += (FX - 1) / 2;
+            }
+
+            if (loop_counters[0][params.inputYLoopIndex[0]] != 0) {
+              y_min_offset = (FY - 1) / 2;
+              loop_bounds[1][params.inputYLoopIndex[1]] += (FY - 1) / 2;
+            }
+
+            if (loop_counters[0][params.inputYLoopIndex[0]] !=
+                loop_bounds[0][params.inputYLoopIndex[0]] - 1) {
+              y_max_offset = (FY - 1) / 2;
+              loop_bounds[1][params.inputYLoopIndex[1]] += (FY - 1) / 2;
+            }
+
             // inner memory
             for (loop_counters[1][0] = 0;
                  loop_counters[1][0] < loop_bounds[1][0];
@@ -83,19 +125,65 @@ SC_MODULE(InputController) {
                 for (loop_counters[1][2] = 0;
                      loop_counters[1][2] < loop_bounds[1][2];
                      loop_counters[1][2]++) {
-                  int m0 = loop_counters[1][params.inputLoopIndex[1]];
-                  int m1 = loop_counters[0][params.inputLoopIndex[0]];
-                  int M0 = params.loops[1][params.inputLoopIndex[1]];
-                  int N1 = params.loops[1][params.reductionLoopIndex[1]];
-                  int n1 = loop_counters[1][params.reductionLoopIndex[1]];
+                  for (loop_counters[1][3] = 0;
+                       loop_counters[1][3] < loop_bounds[1][3];
+                       loop_counters[1][3]++) {
+                    for (loop_counters[1][4] = 0;
+                         loop_counters[1][4] < loop_bounds[1][4];
+                         loop_counters[1][4]++) {
+                      for (loop_counters[1][5] = 0;
+                           loop_counters[1][5] < loop_bounds[1][5];
+                           loop_counters[1][5]++) {
+                        MemoryRequest memRequest;
+                        if (params.matMul) {
+                          int m0 = loop_counters[1][params.inputXLoopIndex[1]];
+                          int m1 = loop_counters[0][params.inputXLoopIndex[0]];
+                          int M0 = params.loops[1][params.inputXLoopIndex[1]];
+                          int N1 =
+                              params.loops[1][params.reductionLoopIndex[1]];
+                          int n1 =
+                              loop_counters[1][params.reductionLoopIndex[1]];
 
-                  // change addressing
-                  int baseAddress = (m0 + m1 * M0) * (N1 * NROWS) + n1 * NROWS;
-                  int burstSize = NROWS;
-                  MemoryRequest memRequest = {params.INPUT_OFFSET + baseAddress,
-                                              burstSize};
+                          // change addressing
+                          int baseAddress =
+                              (m0 + m1 * M0) * (N1 * NROWS) + n1 * NROWS;
+                          int burstSize = NROWS;
+                          memRequest = {params.INPUT_OFFSET + baseAddress,
+                                        burstSize};
+                        } else {
+                          int x0 = loop_counters[1][params.inputXLoopIndex[1]];
+                          int x1 = loop_counters[0][params.inputXLoopIndex[0]];
+                          int X0 = params.loops[1][params.inputXLoopIndex[1]];
+                          int X1 = params.loops[0][params.inputXLoopIndex[0]];
+                          int y0 = loop_counters[1][params.inputYLoopIndex[1]];
+                          int y1 = loop_counters[0][params.inputYLoopIndex[0]];
+                          int Y0 = params.loops[1][params.inputYLoopIndex[1]];
+                          int Y1 = params.loops[0][params.inputYLoopIndex[0]];
+                          int c1 =
+                              loop_counters[1][params.reductionLoopIndex[1]];
+                          int C1 =
+                              params.loops[1][params.reductionLoopIndex[1]];
 
-                  addressRequest.Push(memRequest);
+                          int c = c1 * NROWS;
+                          int C = C1 * NROWS;
+
+                          int x = (x0 - x_min_offset) + x1 * X0;
+                          int X = X0 * X1;
+
+                          int y = (y0 - y_min_offset) + y1 * Y0;
+                          int Y = Y0 * Y1;
+
+                          int baseAddress = y * X * C + x * C + c;
+                          int burstSize = NROWS;
+                          memRequest = {params.INPUT_OFFSET + baseAddress,
+                                        burstSize};
+                        }
+
+                        // CCS_LOG("memory request: " << memRequest);
+                        addressRequest.Push(memRequest);
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -123,18 +211,25 @@ SC_MODULE(InputController) {
 
       bool bankSel = 0;
 
-      int loop_counters[2][3];
-      int loop_bounds[2][3];
+      int FX = params.loops[1][params.fxIndex];
+      int FY = params.loops[1][params.fyIndex];
+      int fx_bound = (FX - 1) / 2;
+      int fy_bound = (FY - 1) / 2;
+
+      int loop_counters[2][6];
+      int loop_bounds[2][6];
 
 #pragma hls_unroll yes
       for (int i = 0; i < 2; i++) {
-        for (int j = 0; j < 3; j++) {
+        for (int j = 0; j < 6; j++) {
           loop_bounds[i][j] = params.loops[i][j];
         }
       }
 
       // set irrelevant loop bounds to 1
       loop_bounds[1][params.weightLoopIndex[1]] = 1;
+      loop_bounds[1][params.fxIndex] = 1;
+      loop_bounds[1][params.fyIndex] = 1;
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
@@ -144,28 +239,99 @@ SC_MODULE(InputController) {
              loop_counters[0][1]++) {
           for (loop_counters[0][2] = 0; loop_counters[0][2] < loop_bounds[0][2];
                loop_counters[0][2]++) {
+            // reset loop bounds
+            loop_bounds[1][params.inputXLoopIndex[1]] =
+                params.loops[1][params.inputXLoopIndex[1]];
+            loop_bounds[1][params.inputYLoopIndex[1]] =
+                params.loops[1][params.inputYLoopIndex[1]];
+
+            int x_min_offset = fx_bound;
+            int y_min_offset = fy_bound;
+            loop_bounds[1][params.inputXLoopIndex[1]] += FX - 1;
+            loop_bounds[1][params.inputYLoopIndex[1]] += FY - 1;
+            // int x_max_offset = 0;
+            // int y_min_offset = 0;
+            // int y_max_offset = 0;
+
+            // if (loop_counters[0][params.inputXLoopIndex[0]] != 0) {
+            //   x_min_offset = fx_bound;
+            //   loop_bounds[1][params.inputXLoopIndex[1]] += fx_bound;
+            // }
+
+            // if (loop_counters[0][params.inputXLoopIndex[0]] !=
+            //     loop_bounds[0][params.inputXLoopIndex[0]] - 1) {
+            //   x_max_offset = fx_bound;
+            //   loop_bounds[1][params.inputXLoopIndex[1]] += fx_bound;
+            // }
+
+            // if (loop_counters[0][params.inputYLoopIndex[0]] != 0) {
+            //   y_min_offset = fy_bound;
+            //   loop_bounds[1][params.inputYLoopIndex[1]] += fy_bound;
+            // }
+
+            // if (loop_counters[0][params.inputYLoopIndex[0]] !=
+            //     loop_bounds[0][params.inputYLoopIndex[0]] - 1) {
+            //   y_max_offset = fy_bound;
+            //   loop_bounds[1][params.inputYLoopIndex[1]] += fy_bound;
+            // }
+
             // inner memory
             for (loop_counters[1][0] = 0;
                  loop_counters[1][0] < loop_bounds[1][0];
                  loop_counters[1][0]++) {
+              // TODO: make this dynamic
+              writeControl[bankSel].Push(loop_bounds[1][1] * loop_bounds[1][2] *
+                                         loop_bounds[1][3] * loop_bounds[1][4] *
+                                         loop_bounds[1][5]);
               for (loop_counters[1][1] = 0;
                    loop_counters[1][1] < loop_bounds[1][1];
                    loop_counters[1][1]++) {
-                writeControl[bankSel].Push(loop_bounds[1][2]);
-
                 for (loop_counters[1][2] = 0;
                      loop_counters[1][2] < loop_bounds[1][2];
                      loop_counters[1][2]++) {
-                  Pack1D<DTYPE, NROWS> data = dataResponse.Pop();
+                  for (loop_counters[1][3] = 0;
+                       loop_counters[1][3] < loop_bounds[1][3];
+                       loop_counters[1][3]++) {
+                    for (loop_counters[1][4] = 0;
+                         loop_counters[1][4] < loop_bounds[1][4];
+                         loop_counters[1][4]++) {
+                      for (loop_counters[1][5] = 0;
+                           loop_counters[1][5] < loop_bounds[1][5];
+                           loop_counters[1][5]++) {
+                        Pack1D<DTYPE, NROWS> data;
 
-                  int address = loop_counters[1][2];
+                        int x0 = loop_counters[1][params.inputXLoopIndex[1]];
+                        int x1 = loop_counters[0][params.inputXLoopIndex[0]];
+                        int X0 = params.loops[1][params.inputXLoopIndex[1]];
+                        int X1 = params.loops[0][params.inputXLoopIndex[0]];
 
-                  writeAddress[bankSel].Push(address);
-                  writeData[bankSel].Push(data);
+                        int y0 = loop_counters[1][params.inputYLoopIndex[1]];
+                        int y1 = loop_counters[0][params.inputYLoopIndex[0]];
+                        int Y0 = params.loops[1][params.inputYLoopIndex[1]];
+                        int Y1 = params.loops[0][params.inputYLoopIndex[0]];
+
+                        int full_x = (x0 - x_min_offset) + x1 * X0;
+                        int full_y = (y0 - y_min_offset) + y1 * Y0;
+
+                        if ((full_x < 0) || (full_y < 0) ||
+                            (full_x >= X0 * X1) || (full_y >= Y0 * Y1)) {
+                          data = 0;
+                        } else {
+                          data = dataResponse.Pop();
+                        }
+
+                        int address = (y0) * (X0 + FX - 1) + (x0);
+
+                        writeAddress[bankSel].Push(address);
+                        writeData[bankSel].Push(data);
+
+                        // CCS_LOG("address: " << address << " data: " << data);
+                      }
+                    }
+                  }
                 }
-
-                bankSel = !bankSel;
               }
+              bankSel = !bankSel;
             }
           }
         }
@@ -186,14 +352,19 @@ SC_MODULE(InputController) {
     while (true) {
       Params params = readerParams.Pop();
 
+      int FX = params.loops[1][params.fxIndex];
+      int FY = params.loops[1][params.fyIndex];
+
+      std::cout << "F: " << FX << " " << FY << std::endl;
+
       bool bankSel = 0;
 
-      int loop_counters[2][3];
-      int loop_bounds[2][3];
+      int loop_counters[2][6];
+      int loop_bounds[2][6];
 
 #pragma hls_unroll yes
       for (int i = 0; i < 2; i++) {
-        for (int j = 0; j < 3; j++) {
+        for (int j = 0; j < 6; j++) {
           loop_bounds[i][j] = params.loops[i][j];
         }
       }
@@ -210,7 +381,9 @@ SC_MODULE(InputController) {
             for (loop_counters[1][0] = 0;
                  loop_counters[1][0] < loop_bounds[1][0];
                  loop_counters[1][0]++) {
-              readControl[bankSel].Push(loop_bounds[1][1] * loop_bounds[1][2]);
+              readControl[bankSel].Push(loop_bounds[1][1] * loop_bounds[1][2] *
+                                        loop_bounds[1][3] * loop_bounds[1][4] *
+                                        loop_bounds[1][5]);
 
               for (loop_counters[1][1] = 0;
                    loop_counters[1][1] < loop_bounds[1][1];
@@ -218,7 +391,34 @@ SC_MODULE(InputController) {
                 for (loop_counters[1][2] = 0;
                      loop_counters[1][2] < loop_bounds[1][2];
                      loop_counters[1][2]++) {
-                  readAddress[bankSel].Push(loop_counters[1][2]);
+                  for (loop_counters[1][3] = 0;
+                       loop_counters[1][3] < loop_bounds[1][3];
+                       loop_counters[1][3]++) {
+                    for (loop_counters[1][4] = 0;
+                         loop_counters[1][4] < loop_bounds[1][4];
+                         loop_counters[1][4]++) {
+                      for (loop_counters[1][5] = 0;
+                           loop_counters[1][5] < loop_bounds[1][5];
+                           loop_counters[1][5]++) {
+                        int x0 = loop_counters[1][params.inputXLoopIndex[1]];
+                        int X0 = params.loops[1][params.inputXLoopIndex[1]];
+                        int y0 = loop_counters[1][params.inputYLoopIndex[1]];
+                        int Y0 = params.loops[1][params.inputYLoopIndex[1]];
+                        int fx = loop_counters[1][params.fxIndex];
+                        int fy = loop_counters[1][params.fyIndex];
+
+                        int x = x0 + fx;
+                        int y = y0 + fy;
+
+                        int address = y * (X0 + FX - 1) + x;
+                        readAddress[bankSel].Push(address);
+
+                        // CCS_LOG("x: " << x << ", y: " << y << ", fx: " << fx
+                        //               << ", fy: " << fy
+                        //               << ", address: " << address);
+                      }
+                    }
+                  }
                 }
               }
               bankSel = !bankSel;

@@ -43,12 +43,15 @@ SC_MODULE(ParamsDeserializer) {
       params.RELU = serialParamsIn.Pop();
 
       for (int i = 0; i < 2; i++) {
-        for (int j = 0; j < 3; j++) {
+        for (int j = 0; j < 6; j++) {
           params.loops[i][j] = serialParamsIn.Pop();
         }
       }
       for (int i = 0; i < 2; i++) {
-        params.inputLoopIndex[i] = serialParamsIn.Pop();
+        params.inputXLoopIndex[i] = serialParamsIn.Pop();
+      }
+      for (int i = 0; i < 2; i++) {
+        params.inputYLoopIndex[i] = serialParamsIn.Pop();
       }
       for (int i = 0; i < 2; i++) {
         params.reductionLoopIndex[i] = serialParamsIn.Pop();
@@ -56,6 +59,12 @@ SC_MODULE(ParamsDeserializer) {
       for (int i = 0; i < 2; i++) {
         params.weightLoopIndex[i] = serialParamsIn.Pop();
       }
+      params.fxIndex = serialParamsIn.Pop();
+      params.fyIndex = serialParamsIn.Pop();
+      for (int i = 0; i < 2; i++) {
+        params.weightReuseIndex[i] = serialParamsIn.Pop();
+      }
+      params.matMul = serialParamsIn.Pop();
 
       paramsOut.Push(params);
     }

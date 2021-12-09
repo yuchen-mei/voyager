@@ -174,12 +174,15 @@ void Harness::sendParams() {
   serialParamsIn.Push(params.RELU);
 
   for (int i = 0; i < 2; i++) {
-    for (int j = 0; j < 3; j++) {
+    for (int j = 0; j < 6; j++) {
       serialParamsIn.Push(params.loops[i][j]);
     }
   }
   for (int i = 0; i < 2; i++) {
-    serialParamsIn.Push(params.inputLoopIndex[i]);
+    serialParamsIn.Push(params.inputXLoopIndex[i]);
+  }
+  for (int i = 0; i < 2; i++) {
+    serialParamsIn.Push(params.inputYLoopIndex[i]);
   }
   for (int i = 0; i < 2; i++) {
     serialParamsIn.Push(params.reductionLoopIndex[i]);
@@ -187,6 +190,12 @@ void Harness::sendParams() {
   for (int i = 0; i < 2; i++) {
     serialParamsIn.Push(params.weightLoopIndex[i]);
   }
+  serialParamsIn.Push(params.fxIndex);
+  serialParamsIn.Push(params.fyIndex);
+  for (int i = 0; i < 2; i++) {
+    serialParamsIn.Push(params.weightReuseIndex[i]);
+  }
+  serialParamsIn.Push(params.matMul);
 
   wait();
 }

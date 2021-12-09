@@ -159,13 +159,13 @@ SC_MODULE(MatrixProcessor) {
     while (true) {
       Params params = paramsIn.Pop();
 
-      int loop_counters[2][3];
-      int loop_counters_out[2][3];
+      int loop_counters[2][6];
+      int loop_counters_out[2][6];
 
 #pragma hls_unroll yes
       for (int i = 0; i < 2; i++) {
 #pragma hls_unroll yes
-        for (int j = 0; j < 3; j++) {
+        for (int j = 0; j < 6; j++) {
           loop_counters[i][j] = 0;
           loop_counters_out[i][j] = 0;
         }
@@ -175,7 +175,7 @@ SC_MODULE(MatrixProcessor) {
 #pragma hls_unroll yes
       for (int i = 0; i < 2; i++) {
 #pragma hls_unroll yes
-        for (int j = 0; j < 3; j++) {
+        for (int j = 0; j < 6; j++) {
           totalOps *= params.loops[i][j];
         }
       }
@@ -194,10 +194,11 @@ SC_MODULE(MatrixProcessor) {
 #pragma hls_pipeline_stall_mode flush
       while (step < totalOps + (NROWS - 1) + (NCOLS - 1) + latency) {
         CCS_LOG("step " << step << " out of " << totalOps);
-        CCS_LOG("inner: " << loop_counters[1][2]);
 
         Pack1D<ac_int<1, false>, NROWS> weightSwap;
-        if (loop_counters[1][2] == 0 && step < totalOps) {
+        bool newWeights = loop_counters[1][params.weightReuseIndex[0]] == 0 &&
+                          loop_counters[1][params.weightReuseIndex[1]] == 0;
+        if (newWeights && step < totalOps) {
           CCS_LOG("*****");
           while (!weightReady) {
             wait();
@@ -211,7 +212,6 @@ SC_MODULE(MatrixProcessor) {
 
           weightFillToggle = !weightFillToggle;
         } else {
-          CCS_LOG("skip");
 #pragma hls_unroll yes
           for (int i = 0; i < NROWS; i++) {
             weightSwap.value[i] = false;
@@ -237,11 +237,16 @@ SC_MODULE(MatrixProcessor) {
           psum.value[i] = 0;
         }
 
-        if (loop_counters[1][params.reductionLoopIndex[1]] != 0 &&
+        if (!(loop_counters[1][params.reductionLoopIndex[1]] == 0 &&
+              loop_counters[1][params.fxIndex] == 0 &&
+              loop_counters[1][params.fyIndex] == 0) &&
             step < totalOps) {
           int readAddress = loop_counters[1][params.weightLoopIndex[1]] *
-                                params.loops[1][params.inputLoopIndex[1]] +
-                            loop_counters[1][params.inputLoopIndex[1]];
+                                params.loops[1][params.inputXLoopIndex[1]] *
+                                params.loops[1][params.inputYLoopIndex[1]] +
+                            loop_counters[1][params.inputYLoopIndex[1]] *
+                                params.loops[1][params.inputXLoopIndex[1]] +
+                            loop_counters[1][params.inputXLoopIndex[1]];
 #ifdef __SYNTHESIS__
         READ_ACC_BUFFER:
 #endif
@@ -263,14 +268,23 @@ SC_MODULE(MatrixProcessor) {
         }
 
         if (step >= (NCOLS - 1) + (NROWS - 1) + latency) {
-          if (loop_counters_out[1][params.reductionLoopIndex[1]] ==
-              params.loops[1][params.reductionLoopIndex[1]] - 1) {
+          bool accumulationFinished =
+              (loop_counters_out[1][params.reductionLoopIndex[1]] ==
+               params.loops[1][params.reductionLoopIndex[1]] - 1) &&
+              (loop_counters_out[1][params.fxIndex] ==
+               params.loops[1][params.fxIndex] - 1) &&
+              (loop_counters_out[1][params.fyIndex] ==
+               params.loops[1][params.fyIndex] - 1);
+          if (accumulationFinished) {
             outputsChannel.Push(flippedOutputs);
             std::cout << "Output: " << flippedOutputs << std::endl;
           } else {
             int writeAddress = loop_counters_out[1][params.weightLoopIndex[1]] *
-                                   params.loops[1][params.inputLoopIndex[1]] +
-                               loop_counters_out[1][params.inputLoopIndex[1]];
+                                   params.loops[1][params.inputXLoopIndex[1]] *
+                                   params.loops[1][params.inputYLoopIndex[1]] +
+                               loop_counters_out[1][params.inputYLoopIndex[1]] *
+                                   params.loops[1][params.inputXLoopIndex[1]] +
+                               loop_counters_out[1][params.inputXLoopIndex[1]];
 
 #ifdef __SYNTHESIS__
           WRITE_ACC_BUFFER:
@@ -282,18 +296,18 @@ SC_MODULE(MatrixProcessor) {
         }
 
         if (step >= (NCOLS - 1) + (NROWS - 1) + latency) {
-          loop_counters_out[1][2]++;
+          loop_counters_out[1][5]++;
 #pragma hls_unroll yes
           for (int i = 1; i >= 0; i--) {
 #pragma hls_unroll yes
-            for (int j = 2; j >= 0; j--) {
+            for (int j = 5; j >= 0; j--) {
               if (loop_counters_out[i][j] == params.loops[i][j]) {
                 loop_counters_out[i][j] = 0;
                 if (j > 0) {
                   loop_counters_out[i][j - 1]++;
                 } else {
                   if (i > 0) {
-                    loop_counters_out[i - 1][2]++;
+                    loop_counters_out[i - 1][5]++;
                   }
                 }
               }
@@ -302,18 +316,18 @@ SC_MODULE(MatrixProcessor) {
         }
 
         step++;
-        loop_counters[1][2]++;
+        loop_counters[1][5]++;
 #pragma hls_unroll yes
         for (int i = 1; i >= 0; i--) {
 #pragma hls_unroll yes
-          for (int j = 2; j >= 0; j--) {
+          for (int j = 5; j >= 0; j--) {
             if (loop_counters[i][j] == params.loops[i][j]) {
               loop_counters[i][j] = 0;
               if (j > 0) {
                 loop_counters[i][j - 1]++;
               } else {
                 if (i > 0) {
-                  loop_counters[i - 1][2]++;
+                  loop_counters[i - 1][5]++;
                 }
               }
             }

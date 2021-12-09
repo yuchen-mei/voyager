@@ -46,8 +46,8 @@ SC_MODULE(FetchUnit) {
     while (true) {
       Params params = vectorFetchParams.Pop();
 
-      int rows = params.loops[0][params.inputLoopIndex[0]] *
-                 params.loops[1][params.inputLoopIndex[1]];
+      int rows = params.loops[0][params.inputXLoopIndex[0]] *
+                 params.loops[1][params.inputXLoopIndex[1]];
       int cols = NROWS * params.loops[0][params.weightLoopIndex[0]] *
                  params.loops[1][params.weightLoopIndex[1]];
 
@@ -71,8 +71,8 @@ SC_MODULE(FetchUnit) {
     while (true) {
       Params params = subtractionFetchParams.Pop();
 
-      int rows = params.loops[0][params.inputLoopIndex[0]] *
-                 params.loops[1][params.inputLoopIndex[1]];
+      int rows = params.loops[0][params.inputXLoopIndex[0]] *
+                 params.loops[1][params.inputXLoopIndex[1]];
 
 #pragma hls_pipeline_init_interval 1
       for (int i = 0; i < rows; i++) {
@@ -91,8 +91,8 @@ SC_MODULE(FetchUnit) {
     while (true) {
       Params params = varianceFetchParams.Pop();
 
-      int rows = params.loops[0][params.inputLoopIndex[0]] *
-                 params.loops[1][params.inputLoopIndex[1]];
+      int rows = params.loops[0][params.inputXLoopIndex[0]] *
+                 params.loops[1][params.inputXLoopIndex[1]];
 
 #pragma hls_pipeline_init_interval 1
       for (int i = 0; i < rows; i++) {
@@ -156,8 +156,8 @@ SC_MODULE(ArithmeticUnit) {
     while (true) {
       Params params = paramsIn.Pop();
 
-      int rows = params.loops[0][params.inputLoopIndex[0]] *
-                 params.loops[1][params.inputLoopIndex[1]];
+      int rows = params.loops[0][params.inputXLoopIndex[0]] *
+                 params.loops[1][params.inputXLoopIndex[1]];
       int cols = NROWS * params.loops[0][params.weightLoopIndex[0]] *
                  params.loops[1][params.weightLoopIndex[1]];
 
@@ -218,8 +218,8 @@ SC_MODULE(ReduceUnit) {
     while (true) {
       Params params = paramsIn.Pop();
 
-      int rows = params.loops[0][params.inputLoopIndex[0]] *
-                 params.loops[1][params.inputLoopIndex[1]];
+      int rows = params.loops[0][params.inputXLoopIndex[0]] *
+                 params.loops[1][params.inputXLoopIndex[1]];
       int cols = NROWS * params.loops[0][params.weightLoopIndex[0]] *
                  params.loops[1][params.weightLoopIndex[1]];
 
@@ -271,8 +271,10 @@ SC_MODULE(ScaleUnit) {
     while (true) {
       Params params = paramsIn.Pop();
 
-      int rows = params.loops[0][params.inputLoopIndex[0]] *
-                 params.loops[1][params.inputLoopIndex[1]];
+      int rows = params.loops[0][params.inputXLoopIndex[0]] *
+                 params.loops[1][params.inputXLoopIndex[1]] *
+                 params.loops[0][params.inputYLoopIndex[0]] *
+                 params.loops[1][params.inputYLoopIndex[1]];
       int cols = params.loops[0][params.weightLoopIndex[0]] *
                  params.loops[1][params.weightLoopIndex[1]];
 
@@ -325,8 +327,8 @@ SC_MODULE(OutputAddressGenerator) {
     while (true) {
       Params params = paramsIn.Pop();
 
-      int rows = params.loops[0][params.inputLoopIndex[0]] *
-                 params.loops[1][params.inputLoopIndex[1]];
+      int rows = params.loops[0][params.inputXLoopIndex[0]] *
+                 params.loops[1][params.inputXLoopIndex[1]];
       int cols = params.loops[0][params.weightLoopIndex[0]] *
                  params.loops[1][params.weightLoopIndex[1]];
 
@@ -348,40 +350,75 @@ SC_MODULE(OutputAddressGenerator) {
           }
         }
       } else {
-        int loop_counters[2][3];
+        int loop_counters[2][6];
+        int loop_bounds[2][6];
+
+#pragma hls_unroll yes
+        for (int i = 0; i < 2; i++) {
+          for (int j = 0; j < 6; j++) {
+            loop_bounds[i][j] = params.loops[i][j];
+          }
+        }
+
+        // set irrelevant loop bounds to 1
+        loop_bounds[1][params.reductionLoopIndex[1]] = 1;
+        loop_bounds[1][params.fxIndex] = 1;
+        loop_bounds[1][params.fyIndex] = 1;
 
 #pragma hls_pipeline_init_interval 1
-        for (loop_counters[0][0] = 0; loop_counters[0][0] < params.loops[0][0];
+        for (loop_counters[0][0] = 0; loop_counters[0][0] < loop_bounds[0][0];
              loop_counters[0][0]++) {
-          for (loop_counters[0][1] = 0;
-               loop_counters[0][1] < params.loops[0][1];
+          for (loop_counters[0][1] = 0; loop_counters[0][1] < loop_bounds[0][1];
                loop_counters[0][1]++) {
             for (loop_counters[0][2] = 0;
-                 loop_counters[0][2] < params.loops[0][2];
+                 loop_counters[0][2] < loop_bounds[0][2];
                  loop_counters[0][2]++) {
-              // inner memory
-              for (loop_counters[1][params.weightLoopIndex[1]] = 0;
-                   loop_counters[1][params.weightLoopIndex[1]] <
-                   params.loops[1][params.weightLoopIndex[1]];
-                   loop_counters[1][params.weightLoopIndex[1]]++) {
-                for (loop_counters[1][params.inputLoopIndex[1]] = 0;
-                     loop_counters[1][params.inputLoopIndex[1]] <
-                     params.loops[1][params.inputLoopIndex[1]];
-                     loop_counters[1][params.inputLoopIndex[1]]++) {
-                  int m0 = loop_counters[1][params.inputLoopIndex[1]];
-                  int m1 = loop_counters[0][params.inputLoopIndex[0]];
-                  int M0 = params.loops[1][params.inputLoopIndex[1]];
-                  int P1 = params.loops[1][params.weightLoopIndex[1]];
-                  int p1 = loop_counters[1][params.weightLoopIndex[1]];
-                  int p2 = loop_counters[0][params.weightLoopIndex[0]];
-                  int P2 = params.loops[0][params.weightLoopIndex[0]];
+              for (loop_counters[1][0] = 0;
+                   loop_counters[1][0] < loop_bounds[1][0];
+                   loop_counters[1][0]++) {
+                for (loop_counters[1][1] = 0;
+                     loop_counters[1][1] < loop_bounds[1][1];
+                     loop_counters[1][1]++) {
+                  for (loop_counters[1][2] = 0;
+                       loop_counters[1][2] < loop_bounds[1][2];
+                       loop_counters[1][2]++) {
+                    for (loop_counters[1][3] = 0;
+                         loop_counters[1][3] < loop_bounds[1][3];
+                         loop_counters[1][3]++) {
+                      for (loop_counters[1][4] = 0;
+                           loop_counters[1][4] < loop_bounds[1][4];
+                           loop_counters[1][4]++) {
+                        for (loop_counters[1][5] = 0;
+                             loop_counters[1][5] < loop_bounds[1][5];
+                             loop_counters[1][5]++) {
+                          int x0 = loop_counters[1][params.inputXLoopIndex[1]];
+                          int x1 = loop_counters[0][params.inputXLoopIndex[0]];
+                          int X0 = params.loops[1][params.inputXLoopIndex[1]];
+                          int X1 = params.loops[0][params.inputXLoopIndex[0]];
+                          int y0 = loop_counters[1][params.inputYLoopIndex[1]];
+                          int y1 = loop_counters[0][params.inputYLoopIndex[0]];
+                          int Y0 = params.loops[1][params.inputYLoopIndex[1]];
+                          int Y1 = params.loops[0][params.inputYLoopIndex[0]];
+                          int k2 = loop_counters[0][params.weightLoopIndex[0]];
+                          int K2 = params.loops[0][params.weightLoopIndex[0]];
+                          int k1 = loop_counters[1][params.weightLoopIndex[1]];
+                          int K1 = params.loops[1][params.weightLoopIndex[1]];
+                          int k = k2 * K1 * NROWS + k1 * NROWS;
+                          int K = K2 * K1 * NROWS;
 
-                  int m = m1 * M0 + m0;
-                  int p = p2 * P1 * NROWS + p1 * NROWS;
+                          int x = x0 + x1 * X0;
+                          int X = X0 * X1;
 
-                  int address =
-                      params.OUTPUT_OFFSET + (m * (P1 * P2 * NROWS) + p);
-                  outputAddress.Push(address);
+                          int y = y0 + y1 * Y0;
+                          int Y = Y0 * Y1;
+
+                          int baseAddress = y * X * K + x * K + k;
+                          int address = params.OUTPUT_OFFSET + baseAddress;
+                          outputAddress.Push(address);
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -528,8 +565,10 @@ SC_MODULE(VectorUnit) {
     while (true) {
       Params params = inputConnectionParams.Pop();
 
-      int total_outputs = params.loops[0][params.inputLoopIndex[0]] *
-                          params.loops[1][params.inputLoopIndex[1]] *
+      int total_outputs = params.loops[0][params.inputXLoopIndex[0]] *
+                          params.loops[1][params.inputXLoopIndex[1]] *
+                          params.loops[0][params.inputYLoopIndex[0]] *
+                          params.loops[1][params.inputYLoopIndex[1]] *
                           params.loops[0][params.weightLoopIndex[0]] *
                           params.loops[1][params.weightLoopIndex[1]];
 
@@ -568,8 +607,8 @@ SC_MODULE(VectorUnit) {
       Params params = outputConnectionParams.Pop();
 
       if (params.VEC_REDUCE) {
-        int inputSize = params.loops[0][params.inputLoopIndex[0]] *
-                        params.loops[1][params.inputLoopIndex[1]];
+        int inputSize = params.loops[0][params.inputXLoopIndex[0]] *
+                        params.loops[1][params.inputXLoopIndex[1]];
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
@@ -581,8 +620,10 @@ SC_MODULE(VectorUnit) {
           vectorUnitOutput.Push(reduceUnitOutputVector);
         }
       } else {
-        int total_outputs = params.loops[0][params.inputLoopIndex[0]] *
-                            params.loops[1][params.inputLoopIndex[1]] *
+        int total_outputs = params.loops[0][params.inputXLoopIndex[0]] *
+                            params.loops[1][params.inputXLoopIndex[1]] *
+                            params.loops[0][params.inputYLoopIndex[0]] *
+                            params.loops[1][params.inputYLoopIndex[1]] *
                             params.loops[0][params.weightLoopIndex[0]] *
                             params.loops[1][params.weightLoopIndex[1]];
 

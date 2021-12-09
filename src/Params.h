@@ -21,10 +21,16 @@ struct Params {
   int VEC_SUB_OFFSET;
   bool RELU;
 
-  int loops[2][3];
-  int inputLoopIndex[2];
+  int loops[2][6];
+  // int inputLoopIndex[2];
+  int inputXLoopIndex[2];
+  int inputYLoopIndex[2];
   int reductionLoopIndex[2];
   int weightLoopIndex[2];
+  int fxIndex;
+  int fyIndex;
+  int weightReuseIndex[2];
+  bool matMul;
 
   static const unsigned int width = 7 * 32 + 12 * 32 + 8 * 1;
 
@@ -50,15 +56,23 @@ struct Params {
         m& loops[i][j];
       }
     }
-    for (int i = 0; i < 2; i++) {
-      m& inputLoopIndex[i];
-    }
+    // for (int i = 0; i < 2; i++) {
+    //   m& inputLoopIndex[i];
+    // }
+    // for (int i = 0; i < 2; i++) {
+    //   m& inputXLoopIndex[i];
+    // }
+    // for (int i = 0; i < 2; i++) {
+    //   m& inputYLoopIndex[i];
+    // }
     for (int i = 0; i < 2; i++) {
       m& reductionLoopIndex[i];
     }
     for (int i = 0; i < 2; i++) {
       m& weightLoopIndex[i];
     }
+    // m& fxIndex;
+    // m& fyIndex;
   }
 
   inline friend void sc_trace(sc_trace_file* tf, const Params& params,

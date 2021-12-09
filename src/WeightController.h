@@ -52,20 +52,19 @@ SC_MODULE(WeightController) {
     while (true) {
       Params params = fetcherParams.Pop();
 
-      int loop_counters[2][3];
-      int loop_bounds[2][3];
+      int loop_counters[2][6];
+      int loop_bounds[2][6];
 
 #pragma hls_unroll yes
       for (int i = 0; i < 2; i++) {
-        for (int j = 0; j < 3; j++) {
+        for (int j = 0; j < 6; j++) {
           loop_bounds[i][j] = params.loops[i][j];
         }
       }
 
       // set irrelevant loop bounds to 1
-      loop_bounds[1][params.inputLoopIndex[1]] = 1;
-      CCS_LOG("bounds " << loop_bounds[1][0] << " " << loop_bounds[1][1] << " "
-                        << loop_bounds[1][2]);
+      loop_bounds[1][params.inputXLoopIndex[1]] = 1;
+      loop_bounds[1][params.inputYLoopIndex[1]] = 1;
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
@@ -85,36 +84,43 @@ SC_MODULE(WeightController) {
                 for (loop_counters[1][2] = 0;
                      loop_counters[1][2] < loop_bounds[1][2];
                      loop_counters[1][2]++) {
-                  for (int n0 = 0; n0 < NROWS; n0++) {
-                    int p2 = loop_counters[0][params.weightLoopIndex[0]];
-                    int P2 = params.loops[0][params.weightLoopIndex[0]];
-                    int p1 = loop_counters[1][params.weightLoopIndex[1]];
-                    int P1 = params.loops[1][params.weightLoopIndex[1]];
-                    int m0 = loop_counters[1][params.inputLoopIndex[1]];
-                    int m1 = loop_counters[0][params.inputLoopIndex[0]];
-                    int M0 = params.loops[1][params.inputLoopIndex[1]];
-                    int N1 = params.loops[1][params.reductionLoopIndex[1]];
-                    int n1 = loop_counters[1][params.reductionLoopIndex[1]];
+                  for (loop_counters[1][3] = 0;
+                       loop_counters[1][3] < loop_bounds[1][3];
+                       loop_counters[1][3]++) {
+                    for (loop_counters[1][4] = 0;
+                         loop_counters[1][4] < loop_bounds[1][4];
+                         loop_counters[1][4]++) {
+                      for (loop_counters[1][5] = 0;
+                           loop_counters[1][5] < loop_bounds[1][5];
+                           loop_counters[1][5]++) {
+                        for (int n0 = 0; n0 < NROWS; n0++) {
+                          int k2 = loop_counters[0][params.weightLoopIndex[0]];
+                          int K2 = params.loops[0][params.weightLoopIndex[0]];
+                          int k1 = loop_counters[1][params.weightLoopIndex[1]];
+                          int K1 = params.loops[1][params.weightLoopIndex[1]];
+                          int C1 =
+                              params.loops[1][params.reductionLoopIndex[1]];
+                          int c1 =
+                              loop_counters[1][params.reductionLoopIndex[1]];
+                          int fx = loop_counters[0][params.fxIndex];
+                          int FX = params.loops[1][params.fxIndex];
+                          int fy = loop_counters[0][params.fyIndex];
+                          int FY = params.loops[1][params.fyIndex];
 
-                    if (params.TRANSPOSE) {
-                      for (int p0 = 0; p0 < NCOLS; p0++) {
-                        int baseAddress =
-                            (p2 * P1 * NCOLS + p1 * NCOLS + p0) * (NROWS * N1) +
-                            (n0 + n1 * NROWS);
-                        int burstSize = 1;
-                        MemoryRequest memRequest = {
-                            params.WEIGHT_OFFSET + baseAddress, burstSize};
-                        addressRequest.Push(memRequest);
+                          int c = c1 * DIMENSION + n0;
+                          int C = C1 * DIMENSION;
+                          int k = k2 * K1 * DIMENSION + k1 * DIMENSION;
+                          int K = K2 * K1 * DIMENSION;
+
+                          int baseAddress =
+                              (fy * FX * C * K) + (fx * C * K) + (c * K) + k;
+                          int burstSize = NCOLS;
+
+                          MemoryRequest memRequest = {
+                              params.WEIGHT_OFFSET + baseAddress, burstSize};
+                          addressRequest.Push(memRequest);
+                        }
                       }
-                    } else {
-                      // change addressing
-                      int baseAddress = (n0 + n1 * NROWS) * (P1 * P2 * NCOLS) +
-                                        (p2 * P1 * NCOLS + p1 * NCOLS);
-                      int burstSize = NCOLS;
-
-                      MemoryRequest memRequest = {
-                          params.WEIGHT_OFFSET + baseAddress, burstSize};
-                      addressRequest.Push(memRequest);
                     }
                   }
                 }
@@ -144,18 +150,19 @@ SC_MODULE(WeightController) {
 
       bool bankSel = 0;
 
-      int loop_counters[2][3];
-      int loop_bounds[2][3];
+      int loop_counters[2][6];
+      int loop_bounds[2][6];
 
 #pragma hls_unroll yes
       for (int i = 0; i < 2; i++) {
-        for (int j = 0; j < 3; j++) {
+        for (int j = 0; j < 6; j++) {
           loop_bounds[i][j] = params.loops[i][j];
         }
       }
 
       // set irrelevant loop bounds to 1
-      loop_bounds[1][params.inputLoopIndex[1]] = 1;
+      loop_bounds[1][params.inputXLoopIndex[1]] = 1;
+      loop_bounds[1][params.inputYLoopIndex[1]] = 1;
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
@@ -170,7 +177,8 @@ SC_MODULE(WeightController) {
                  loop_counters[1][0] < loop_bounds[1][0];
                  loop_counters[1][0]++) {
               writeControl[bankSel].Push(loop_bounds[1][1] * loop_bounds[1][2] *
-                                         NROWS);
+                                         loop_bounds[1][3] * loop_bounds[1][4] *
+                                         loop_bounds[1][5] * NROWS);
 
               for (loop_counters[1][1] = 0;
                    loop_counters[1][1] < loop_bounds[1][1];
@@ -178,13 +186,44 @@ SC_MODULE(WeightController) {
                 for (loop_counters[1][2] = 0;
                      loop_counters[1][2] < loop_bounds[1][2];
                      loop_counters[1][2]++) {
-                  for (int n0 = 0; n0 < NROWS; n0++) {
-                    Pack1D<DTYPE, NROWS> data = dataResponse.Pop();
-                    writeAddress[bankSel].Push(
-                        n0 * loop_bounds[1][params.weightLoopIndex[1]] +
-                        loop_counters[1][params.weightLoopIndex[1]]);
-                    writeData[bankSel].Push(data);
-                    CCS_LOG(loop_counters[1][1]);
+                  for (loop_counters[1][3] = 0;
+                       loop_counters[1][3] < loop_bounds[1][3];
+                       loop_counters[1][3]++) {
+                    for (loop_counters[1][4] = 0;
+                         loop_counters[1][4] < loop_bounds[1][4];
+                         loop_counters[1][4]++) {
+                      for (loop_counters[1][5] = 0;
+                           loop_counters[1][5] < loop_bounds[1][5];
+                           loop_counters[1][5]++) {
+                        for (int n0 = 0; n0 < NROWS; n0++) {
+                          int k2 = loop_counters[0][params.weightLoopIndex[0]];
+                          int K2 = params.loops[0][params.weightLoopIndex[0]];
+                          int k1 = loop_counters[1][params.weightLoopIndex[1]];
+                          int K1 = params.loops[1][params.weightLoopIndex[1]];
+                          int C1 =
+                              params.loops[1][params.reductionLoopIndex[1]];
+                          int c1 =
+                              loop_counters[1][params.reductionLoopIndex[1]];
+                          int fx = loop_counters[0][params.fxIndex];
+                          int FX = params.loops[1][params.fxIndex];
+                          int fy = loop_counters[0][params.fyIndex];
+                          int FY = params.loops[1][params.fyIndex];
+
+                          int c = n0;
+                          int C = DIMENSION;
+                          int k = k2 * K1 * DIMENSION + k1 * DIMENSION;
+                          int K = K2 * K1 * DIMENSION;
+
+                          Pack1D<DTYPE, NROWS> data = dataResponse.Pop();
+
+                          int address = (fy * FX * C * K1) + (fx * C * K1) +
+                                        (c * K1) + k1;
+
+                          writeAddress[bankSel].Push(address);
+                          writeData[bankSel].Push(data);
+                        }
+                      }
+                    }
                   }
                 }
               }
@@ -211,18 +250,19 @@ SC_MODULE(WeightController) {
 
       bool bankSel = 0;
 
-      int loop_counters[2][3];
-      int loop_bounds[2][3];
+      int loop_counters[2][6];
+      int loop_bounds[2][6];
 
 #pragma hls_unroll yes
       for (int i = 0; i < 2; i++) {
-        for (int j = 0; j < 3; j++) {
+        for (int j = 0; j < 6; j++) {
           loop_bounds[i][j] = params.loops[i][j];
         }
       }
 
       // set irrelevant loop bounds to 1
-      loop_bounds[1][params.inputLoopIndex[1]] = 1;
+      loop_bounds[1][params.weightReuseIndex[0]] = 1;
+      loop_bounds[1][params.weightReuseIndex[1]] = 1;
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
@@ -236,7 +276,8 @@ SC_MODULE(WeightController) {
                  loop_counters[1][0] < loop_bounds[1][0];
                  loop_counters[1][0]++) {
               readControl[bankSel].Push(loop_bounds[1][1] * loop_bounds[1][2] *
-                                        NROWS);
+                                        loop_bounds[1][3] * loop_bounds[1][4] *
+                                        loop_bounds[1][5] * NROWS);
 
               for (loop_counters[1][1] = 0;
                    loop_counters[1][1] < loop_bounds[1][1];
@@ -244,10 +285,41 @@ SC_MODULE(WeightController) {
                 for (loop_counters[1][2] = 0;
                      loop_counters[1][2] < loop_bounds[1][2];
                      loop_counters[1][2]++) {
-                  for (int n0 = NROWS - 1; n0 >= 0; n0--) {  // reverse order
-                    readAddress[bankSel].Push(
-                        n0 * loop_bounds[1][params.weightLoopIndex[1]] +
-                        loop_counters[1][params.weightLoopIndex[1]]);
+                  for (loop_counters[1][3] = 0;
+                       loop_counters[1][3] < loop_bounds[1][3];
+                       loop_counters[1][3]++) {
+                    for (loop_counters[1][4] = 0;
+                         loop_counters[1][4] < loop_bounds[1][4];
+                         loop_counters[1][4]++) {
+                      for (loop_counters[1][5] = 0;
+                           loop_counters[1][5] < loop_bounds[1][5];
+                           loop_counters[1][5]++) {
+                        for (int n0 = NROWS - 1; n0 >= 0;
+                             n0--) {  // reverse order
+                          int k2 = loop_counters[0][params.weightLoopIndex[0]];
+                          int K2 = params.loops[0][params.weightLoopIndex[0]];
+                          int k1 = loop_counters[1][params.weightLoopIndex[1]];
+                          int K1 = params.loops[1][params.weightLoopIndex[1]];
+                          int C1 =
+                              params.loops[1][params.reductionLoopIndex[1]];
+                          int c1 =
+                              loop_counters[1][params.reductionLoopIndex[1]];
+                          int fx = loop_counters[0][params.fxIndex];
+                          int FX = params.loops[1][params.fxIndex];
+                          int fy = loop_counters[0][params.fyIndex];
+                          int FY = params.loops[1][params.fyIndex];
+
+                          int c = n0;
+                          int C = DIMENSION;
+                          int k = k2 * K1 * DIMENSION + k1 * DIMENSION;
+                          int K = K2 * K1 * DIMENSION;
+                          int address = (fy * FX * C * K1) + (fx * C * K1) +
+                                        (c * K1) + k1;
+
+                          readAddress[bankSel].Push(address);
+                        }
+                      }
+                    }
                   }
                 }
               }

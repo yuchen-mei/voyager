@@ -55,7 +55,6 @@ SC_MODULE(DoubleBuffer) {
 #pragma hls_pipeline_stall_mode flush
     while (true) {
       int writeSize = writeControl[0].Pop();
-      CCS_LOG(writeSize);
       for (int i = 0; i < writeSize; i++) {
         int address = writeAddress[0].Pop();
         Pack1D<DTYPE, WIDTH> data = writeData[0].Pop();

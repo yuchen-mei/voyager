@@ -10,44 +10,55 @@
 void run_test(Params params) {
   INPUT_DATATYPE *mainMemory = new INPUT_DATATYPE[4 * 1024 * 1024];
 
-  int inputRows = params.loops[0][params.inputLoopIndex[0]] *
-                  params.loops[1][params.inputLoopIndex[1]];
-  int inputCols = params.loops[1][params.reductionLoopIndex[1]];
-  int weightCols = params.loops[0][params.weightLoopIndex[0]] *
-                   params.loops[1][params.weightLoopIndex[1]];
+  int X = params.loops[0][params.inputXLoopIndex[0]] *
+          params.loops[1][params.inputXLoopIndex[1]];
+  int Y = params.loops[0][params.inputYLoopIndex[0]] *
+          params.loops[1][params.inputYLoopIndex[1]];
+  int C = params.loops[1][params.reductionLoopIndex[1]] * DIMENSION;
+  int K = params.loops[0][params.weightLoopIndex[0]] *
+          params.loops[1][params.weightLoopIndex[1]] * DIMENSION;
+  int FX = params.loops[1][params.fxIndex];
+  int FY = params.loops[1][params.fyIndex];
 
   // Create matrix A
-  INPUT_DATATYPE *matrixA =
-      new INPUT_DATATYPE[inputRows * inputCols * DIMENSION];
-  for (int i = 0; i < inputRows; i++) {
-    for (int j = 0; j < inputCols * DIMENSION; j++) {
-      // int val = i * 10 + j;
-      int val = rand() % 128;
+  INPUT_DATATYPE *matrixA = new INPUT_DATATYPE[X * Y * C];
+  for (int y = 0; y < Y; y++) {
+    for (int x = 0; x < X; x++) {
+      for (int c = 0; c < C; c++) {
+        // int val = i * 10 + j;
+        // int val = rand() % 128;
+        int val = x;
 
-      mainMemory[params.INPUT_OFFSET + i * (inputCols * DIMENSION) + j] = val;
-      matrixA[i * (inputCols * DIMENSION) + j] = val;
+        int address = y * X * C + x * C + c;
+
+        mainMemory[params.INPUT_OFFSET + address] = val;
+        matrixA[address] = val;
+      }
     }
   }
 
-  INPUT_DATATYPE *matrixB =
-      new INPUT_DATATYPE[inputCols * DIMENSION * weightCols * DIMENSION];
-  for (int i = 0; i < inputCols * DIMENSION; i++) {
-    for (int j = 0; j < weightCols * DIMENSION; j++) {
-      // int val = i;
-      int val = rand() % 128;
+  INPUT_DATATYPE *matrixB = new INPUT_DATATYPE[FX * FY * C * K];
+  for (int fy = 0; fy < FY; fy++) {
+    for (int fx = 0; fx < FX; fx++) {
+      for (int c = 0; c < C; c++) {
+        for (int k = 0; k < K; k++) {
+          // int val = i;
+          // int val = rand() % 128;
+          int val = k;
 
-      mainMemory[params.WEIGHT_OFFSET + i * (weightCols * DIMENSION) + j] = val;
-      matrixB[i * (weightCols * DIMENSION) + j] = val;
+          int address = fy * FX * C * K + fx * C * K + c * K + k;
+          mainMemory[params.WEIGHT_OFFSET + address] = val;
+          matrixB[address] = val;
+        }
+      }
     }
   }
 
-  OUTPUT_DATATYPE *matrixC =
-      new OUTPUT_DATATYPE[inputRows * weightCols * DIMENSION];
+  OUTPUT_DATATYPE *matrixC = new OUTPUT_DATATYPE[X * Y * K];
 
   run_op(params, mainMemory);
   run_gold_op(params, matrixA, matrixB, matrixC);
-  compare_arrays(&mainMemory[params.OUTPUT_OFFSET], matrixC,
-                 inputRows * weightCols * DIMENSION);
+  compare_arrays(&mainMemory[params.OUTPUT_OFFSET], matrixC, X * Y * K);
 
   delete[] matrixA;
   delete[] matrixB;
@@ -65,6 +76,8 @@ int sc_main(int argc, char *argv[]) {
 
     if (test == "simple") {
       params = simple;
+    } else if (test == "conv") {
+      params = conv;
     } else if (test == "inputBottleneck") {
       params = inputBottleneck;
     } else if (test == "qkvProjection") {
