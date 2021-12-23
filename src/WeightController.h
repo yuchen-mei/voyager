@@ -176,10 +176,6 @@ SC_MODULE(WeightController) {
             for (loop_counters[1][0] = 0;
                  loop_counters[1][0] < loop_bounds[1][0];
                  loop_counters[1][0]++) {
-              writeControl[bankSel].Push(loop_bounds[1][1] * loop_bounds[1][2] *
-                                         loop_bounds[1][3] * loop_bounds[1][4] *
-                                         loop_bounds[1][5] * NROWS);
-
               for (loop_counters[1][1] = 0;
                    loop_counters[1][1] < loop_bounds[1][1];
                    loop_counters[1][1]++) {
@@ -219,6 +215,7 @@ SC_MODULE(WeightController) {
                           int address = (fy * FX * C * K1) + (fx * C * K1) +
                                         (c * K1) + k1;
 
+                          writeControl[bankSel].Push(1);
                           writeAddress[bankSel].Push(address);
                           writeData[bankSel].Push(data);
                         }
@@ -227,6 +224,7 @@ SC_MODULE(WeightController) {
                   }
                 }
               }
+              writeControl[bankSel].Push(0);
               bankSel = !bankSel;
             }
           }
@@ -275,10 +273,6 @@ SC_MODULE(WeightController) {
             for (loop_counters[1][0] = 0;
                  loop_counters[1][0] < loop_bounds[1][0];
                  loop_counters[1][0]++) {
-              readControl[bankSel].Push(loop_bounds[1][1] * loop_bounds[1][2] *
-                                        loop_bounds[1][3] * loop_bounds[1][4] *
-                                        loop_bounds[1][5] * NROWS);
-
               for (loop_counters[1][1] = 0;
                    loop_counters[1][1] < loop_bounds[1][1];
                    loop_counters[1][1]++) {
@@ -315,7 +309,7 @@ SC_MODULE(WeightController) {
                           int K = K2 * K1 * DIMENSION;
                           int address = (fy * FX * C * K1) + (fx * C * K1) +
                                         (c * K1) + k1;
-
+                          readControl[bankSel].Push(1);
                           readAddress[bankSel].Push(address);
                         }
                       }
@@ -323,6 +317,7 @@ SC_MODULE(WeightController) {
                   }
                 }
               }
+              readControl[bankSel].Push(0);
               bankSel = !bankSel;
             }
           }

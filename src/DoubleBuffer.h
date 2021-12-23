@@ -38,6 +38,38 @@ SC_MODULE(DoubleBuffer) {
     async_reset_signal_is(rstn, false);
   }
 
+  void run(Connections::In<int> * wAddress,
+           Connections::In<Pack1D<DTYPE, WIDTH> > * wData,
+           Connections::In<int> * wControl,
+           Connections::Combinational<Pack1D<DTYPE, WIDTH> > * rData,
+           Connections::In<int> * rAddress, Connections::In<int> * rControl,
+           Connections::Combinational<int> * oControl,
+           Pack1D<DTYPE, WIDTH> mem[BUFFER_SIZE]) {
+    bool swap = false;
+    while (!swap) {
+      if (wControl->Pop() == 1) {
+        int address = wAddress->Pop();
+        Pack1D<DTYPE, WIDTH> data = wData->Pop();
+        mem[address] = data;
+      } else {
+        swap = true;
+      }
+    }
+
+    swap = false;
+    while (!swap) {
+      if (rControl->Pop() == 1) {
+        int address = rAddress->Pop();
+        Pack1D<DTYPE, WIDTH> data = mem[address];
+        oControl->Push(1);
+        rData->Push(data);
+      } else {
+        swap = true;
+      }
+    }
+    oControl->Push(0);
+  }
+
   void mem0Run() {
     writeAddress[0].Reset();
     writeData[0].Reset();
@@ -54,20 +86,9 @@ SC_MODULE(DoubleBuffer) {
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
     while (true) {
-      int writeSize = writeControl[0].Pop();
-      for (int i = 0; i < writeSize; i++) {
-        int address = writeAddress[0].Pop();
-        Pack1D<DTYPE, WIDTH> data = writeData[0].Pop();
-        mem0[address] = data;
-      }
-
-      int readSize = readControl[0].Pop();
-      outputControl[0].Push(readSize);
-      for (int i = 0; i < readSize; i++) {
-        int address = readAddress[0].Pop();
-        Pack1D<DTYPE, WIDTH> data = mem0[address];
-        readData[0].Push(data);
-      }
+      CCS_LOG("0");
+      run(&writeAddress[0], &writeData[0], &writeControl[0], &readData[0],
+          &readAddress[0], &readControl[0], &outputControl[0], mem0);
     }
   }
 
@@ -87,20 +108,9 @@ SC_MODULE(DoubleBuffer) {
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
     while (true) {
-      int writeSize = writeControl[1].Pop();
-      for (int i = 0; i < writeSize; i++) {
-        int address = writeAddress[1].Pop();
-        Pack1D<DTYPE, WIDTH> data = writeData[1].Pop();
-        mem1[address] = data;
-      }
-
-      int readSize = readControl[1].Pop();
-      outputControl[1].Push(readSize);
-      for (int i = 0; i < readSize; i++) {
-        int address = readAddress[1].Pop();
-        Pack1D<DTYPE, WIDTH> data = mem1[address];
-        readData[1].Push(data);
-      }
+      CCS_LOG("1");
+      run(&writeAddress[1], &writeData[1], &writeControl[1], &readData[1],
+          &readAddress[1], &readControl[1], &outputControl[1], mem1);
     }
   }
 
@@ -118,10 +128,15 @@ SC_MODULE(DoubleBuffer) {
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
     while (true) {
-      int count = outputControl[bankSel].Pop();
-      for (int i = 0; i < count; i++) {
-        output.Push(readData[bankSel].Pop());
+      bool swap = false;
+      while (!swap) {
+        if (outputControl[bankSel].Pop() == 1) {
+          output.Push(readData[bankSel].Pop());
+        } else {
+          swap = true;
+        }
       }
+      swap = false;
       bankSel = !bankSel;
     }
   }

@@ -256,11 +256,6 @@ SC_MODULE(InputController) {
             for (loop_counters[1][0] = 0;
                  loop_counters[1][0] < loop_bounds[1][0];
                  loop_counters[1][0]++) {
-              // TODO: make this dynamic
-              writeControl[bankSel].Push(loop_bounds[1][1] * loop_bounds[1][2] *
-                                         loop_bounds[1][3] * loop_bounds[1][4] *
-                                         loop_bounds[1][5]);
-
               for (loop_counters[1][1] = 0;
                    loop_counters[1][1] < loop_bounds[1][1];
                    loop_counters[1][1]++) {
@@ -305,7 +300,7 @@ SC_MODULE(InputController) {
 
                         int address =
                             (y0) * (params.STRIDE * X0 + FX - 1) + (x0);
-
+                        writeControl[bankSel].Push(1);
                         writeAddress[bankSel].Push(address);
                         writeData[bankSel].Push(data);
 
@@ -315,6 +310,7 @@ SC_MODULE(InputController) {
                   }
                 }
               }
+              writeControl[bankSel].Push(0);
               bankSel = !bankSel;
             }
           }
@@ -363,10 +359,6 @@ SC_MODULE(InputController) {
             for (loop_counters[1][0] = 0;
                  loop_counters[1][0] < loop_bounds[1][0];
                  loop_counters[1][0]++) {
-              readControl[bankSel].Push(loop_bounds[1][1] * loop_bounds[1][2] *
-                                        loop_bounds[1][3] * loop_bounds[1][4] *
-                                        loop_bounds[1][5]);
-
               for (loop_counters[1][1] = 0;
                    loop_counters[1][1] < loop_bounds[1][1];
                    loop_counters[1][1]++) {
@@ -393,6 +385,7 @@ SC_MODULE(InputController) {
                         int y = params.STRIDE * y0 + fy;
 
                         int address = y * (params.STRIDE * X0 + FX - 1) + x;
+                        readControl[bankSel].Push(1);
                         readAddress[bankSel].Push(address);
 
                         // CCS_LOG("x: " << x << ", y: " << y << ", fx: " << fx
@@ -403,6 +396,7 @@ SC_MODULE(InputController) {
                   }
                 }
               }
+              readControl[bankSel].Push(0);
               bankSel = !bankSel;
             }
           }
