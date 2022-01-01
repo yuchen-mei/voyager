@@ -60,8 +60,6 @@ SC_MODULE(InputController) {
     while (true) {
       Params params = fetcherParams.Pop();
 
-      int req_count = 0;
-
       int FX = params.loops[1][params.fxIndex];
       if (params.REPLICATION) {
         FX = 7;
@@ -194,19 +192,13 @@ SC_MODULE(InputController) {
 
                           if (params.REPLICATION) {
                             baseAddress = y * (X / 4) * 16 + (x / 4) * 16 + c;
-                            // baseAddress = baseAddress >> 2;
-
-                            CCS_LOG("y: " << y << " x: " << x << " c: " << c
-                                          << " addr: " << baseAddress);
                           }
 
                           memRequest = {params.INPUT_OFFSET + baseAddress,
                                         burstSize};
                         }
 
-                        // CCS_LOG("memory request: " << memRequest);
                         addressRequest.Push(memRequest);
-                        req_count++;
                       }
                     }
                   }
@@ -335,7 +327,6 @@ SC_MODULE(InputController) {
                         // offsets
                         else {
                           temp = dataResponse.Pop();
-                          // CCS_LOG("left boundary read");
 
 #pragma hls_unroll yes
                           for (int word = 0; word < 3; word++) {
@@ -355,11 +346,9 @@ SC_MODULE(InputController) {
                          */
                         for (int x = 0; x < params.STRIDE * X0; x += 4) {
                           int full_x = x + x1 * params.STRIDE * X0;
-                          // CCS_LOG("x: " << x << " full_x: " << full_x);
                           // padding
                           if ((full_y < 0) ||
                               (full_y >= params.STRIDE * Y0 * Y1)) {
-                            // CCS_LOG(x << " : zero pad");
 #pragma hls_unroll yes
                             for (int dims = 0; dims < 3; dims++) {
                               int index = 3 * ((x + fx_bound) % 4) + dims;
@@ -367,7 +356,6 @@ SC_MODULE(InputController) {
                             }
                           } else {
                             temp = dataResponse.Pop();
-                            // CCS_LOG("tile read");
 
 #pragma hls_unroll yes
                             for (int i = 0; i < 3; i++) {
@@ -384,8 +372,6 @@ SC_MODULE(InputController) {
                           writeControl[bankSel].Push(1);
                           writeAddress[bankSel].Push(address);
                           writeData[bankSel].Push(data);
-                          CCS_LOG(y0 << " " << x << "addr: " << address
-                                     << " data: " << data);
 
                           if ((full_y < 0) ||
                               (full_y >= (params.STRIDE * Y0 * Y1))) {
@@ -428,7 +414,6 @@ SC_MODULE(InputController) {
                           }
                         } else {
                           temp = dataResponse.Pop();
-                          // CCS_LOG("right boundary read");
 
 #pragma hls_unroll yes
                           for (int i = 0; i < 3; i++) {
@@ -444,7 +429,6 @@ SC_MODULE(InputController) {
                         writeControl[bankSel].Push(1);
                         writeAddress[bankSel].Push(address);
                         writeData[bankSel].Push(data);
-                        CCS_LOG("(1) addr: " << address << " data: " << data);
 
                         if ((full_x < 0) || (full_y < 0) ||
                             (full_x >= (X1 * params.STRIDE * X0)) ||
@@ -476,11 +460,6 @@ SC_MODULE(InputController) {
                         writeControl[bankSel].Push(1);
                         writeAddress[bankSel].Push(next_address);
                         writeData[bankSel].Push(data);
-                        CCS_LOG("(2)addr: " << next_address
-                                            << " data: " << data);
-
-                        // CCS_LOG("done " << loop_counters[1][4] << " out of "
-                        //                 << loop_bounds[1][4]);
                       }
 
                       else {
@@ -502,10 +481,8 @@ SC_MODULE(InputController) {
                               (full_x >= params.STRIDE * X0 * X1) ||
                               (full_y >= params.STRIDE * Y0 * Y1)) {
                             data = 0;
-                            CCS_LOG(full_x << ", " << full_y);
                           } else {
                             data = dataResponse.Pop();
-                            CCS_LOG(data);
                           }
 
                           int address =
@@ -514,11 +491,8 @@ SC_MODULE(InputController) {
                           writeControl[bankSel].Push(1);
                           writeAddress[bankSel].Push(address);
                           writeData[bankSel].Push(data);
-                          CCS_LOG("addr: " << address << " data: " << data);
                         }
                       }
-
-                      // CCS_LOG("address: " << address << " data: " << data);
                     }
                   }
                 }
@@ -612,11 +586,6 @@ SC_MODULE(InputController) {
 
                         readControl[bankSel].Push(1);
                         readAddress[bankSel].Push(address);
-
-                        // CCS_LOG("x0: " << x0 << ", y0: " << y0 << ", fx: " <<
-                        // fx
-                        //                << ", fy: " << fy
-                        //                << ", address: " << address);
                       }
                     }
                   }

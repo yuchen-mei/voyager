@@ -56,10 +56,10 @@ SC_MODULE(DoubleBuffer) {
       }
     }
 
-    CCS_LOG("contents:");
-    for (int i = 0; i < 1024; i++) {
-      std::cout << mem[i] << std::endl;
-    }
+    // CCS_LOG("contents:");
+    // for (int i = 0; i < 1024; i++) {
+    //   std::cout << mem[i] << std::endl;
+    // }
 
     swap = false;
     while (!swap) {
@@ -100,7 +100,6 @@ SC_MODULE(DoubleBuffer) {
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
     while (true) {
-      CCS_LOG("0");
       run(&writeAddress[0], &writeData[0], &writeControl[0], &readData[0],
           &readAddress[0], &readControl[0], &outputControl[0], mem0);
     }
@@ -122,7 +121,6 @@ SC_MODULE(DoubleBuffer) {
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
     while (true) {
-      CCS_LOG("1");
       run(&writeAddress[1], &writeData[1], &writeControl[1], &readData[1],
           &readAddress[1], &readControl[1], &outputControl[1], mem1);
     }
