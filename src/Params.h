@@ -33,6 +33,7 @@ struct Params {
   bool matMul;
   int STRIDE;
   bool REPLICATION;
+  bool MAXPOOL;
 
   static const unsigned int width = 7 * 32 + 12 * 32 + 8 * 1;
 

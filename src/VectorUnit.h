@@ -130,7 +130,7 @@ SC_MODULE(FetchUnit) {
 };
 
 template <typename DTYPE, int WIDTH, int NROWS>
-SC_MODULE(ArithmeticUnit) {
+SC_MODULE(VectorOpUnit) {
   sc_in<bool> CCS_INIT_S1(clk);
   sc_in<bool> CCS_INIT_S1(rstn);
 
@@ -139,7 +139,7 @@ SC_MODULE(ArithmeticUnit) {
   Connections::Out<Pack1D<DTYPE, WIDTH> > CCS_INIT_S1(vectorOut);
   Connections::In<DTYPE> CCS_INIT_S1(scalarSubtraction);
 
-  SC_CTOR(ArithmeticUnit) {
+  SC_CTOR(VectorOpUnit) {
     SC_THREAD(run);
     sensitive << clk.pos();
     async_reset_signal_is(rstn, false);
@@ -304,6 +304,153 @@ SC_MODULE(ScaleUnit) {
   }
 };
 
+/*
+ * Performs bias, residual, maxpool and avgpool operations
+ */
+template <typename DTYPE, int WIDTH, int NROWS>
+SC_MODULE(ArithmeticUnit) {
+  sc_in<bool> CCS_INIT_S1(clk);
+  sc_in<bool> CCS_INIT_S1(rstn);
+
+  Connections::In<Params> CCS_INIT_S1(paramsIn);
+  Connections::In<Pack1D<DTYPE, WIDTH> > CCS_INIT_S1(tensorIn);
+  Connections::Out<Pack1D<DTYPE, WIDTH> > CCS_INIT_S1(tensorOut);
+
+  SC_CTOR(ArithmeticUnit) {
+    SC_THREAD(run);
+    sensitive << clk.pos();
+    async_reset_signal_is(rstn, false);
+  }
+
+  void run() {
+    paramsIn.Reset();
+    tensorIn.Reset();
+    tensorOut.Reset();
+
+    wait();
+
+    while (true) {
+      Params params = paramsIn.Pop();
+
+      int loop_counters[2][6];
+      int loop_bounds[2][6];
+
+#pragma hls_unroll yes
+      for (int i = 0; i < 2; i++) {
+        for (int j = 0; j < 6; j++) {
+          loop_bounds[i][j] = params.loops[i][j];
+        }
+      }
+
+      // set irrelevant loop bounds to 1
+      loop_bounds[1][params.reductionLoopIndex[1]] = 1;
+      loop_bounds[1][params.fxIndex] = 1;
+      loop_bounds[1][params.fyIndex] = 1;
+
+#pragma hls_pipeline_init_interval 1
+      for (loop_counters[0][0] = 0; loop_counters[0][0] < loop_bounds[0][0];
+           loop_counters[0][0]++) {
+        for (loop_counters[0][1] = 0; loop_counters[0][1] < loop_bounds[0][1];
+             loop_counters[0][1]++) {
+          for (loop_counters[0][2] = 0; loop_counters[0][2] < loop_bounds[0][2];
+               loop_counters[0][2]++) {
+            for (loop_counters[1][0] = 0;
+                 loop_counters[1][0] < loop_bounds[1][0];
+                 loop_counters[1][0]++) {
+              for (loop_counters[1][1] = 0;
+                   loop_counters[1][1] < loop_bounds[1][1];
+                   loop_counters[1][1]++) {
+                for (loop_counters[1][2] = 0;
+                     loop_counters[1][2] < loop_bounds[1][2];
+                     loop_counters[1][2]++) {
+                  for (loop_counters[1][3] = 0;
+                       loop_counters[1][3] < loop_bounds[1][3];
+                       loop_counters[1][3]++) {
+                    for (loop_counters[1][4] = 0;
+                         loop_counters[1][4] < loop_bounds[1][4];
+                         loop_counters[1][4]++) {
+                      for (loop_counters[1][5] = 0;
+                           loop_counters[1][5] < loop_bounds[1][5];
+                           loop_counters[1][5]++) {
+                        int x0 = loop_counters[1][params.inputXLoopIndex[1]];
+                        int x1 = loop_counters[0][params.inputXLoopIndex[0]];
+                        int X0 = params.loops[1][params.inputXLoopIndex[1]];
+                        int X1 = params.loops[0][params.inputXLoopIndex[0]];
+                        int y0 = loop_counters[1][params.inputYLoopIndex[1]];
+                        int y1 = loop_counters[0][params.inputYLoopIndex[0]];
+                        int Y0 = params.loops[1][params.inputYLoopIndex[1]];
+                        int Y1 = params.loops[0][params.inputYLoopIndex[0]];
+                        int k2 = loop_counters[0][params.weightLoopIndex[0]];
+                        int K2 = params.loops[0][params.weightLoopIndex[0]];
+                        int k1 = loop_counters[1][params.weightLoopIndex[1]];
+                        int K1 = params.loops[1][params.weightLoopIndex[1]];
+                        int k = k2 * K1 * NROWS + k1 * NROWS;
+                        int K = K2 * K1 * NROWS;
+
+                        int x = x0 + x1 * X0;
+                        int X = X0 * X1;
+
+                        int y = y0 + y1 * Y0;
+                        int Y = Y0 * Y1;
+
+                        Pack1D<DTYPE, NROWS> outputPixel = tensorIn.Pop();
+
+                        if (params.MAXPOOL) {
+                          if (x0 % 2 == 0 && y0 % 2 == 0) {
+#pragma hls_unroll yes
+                            for (int i = 0; i < NROWS; i++) {
+                              // update maxpool comparator
+                              maxpool_comparator[(x0 / 2)].value[i] =
+                                  outputPixel.value[i];
+                            }
+                          } else if (x0 % 2 == 1 && y0 % 2 == 0) {
+#pragma hls_unroll yes
+                            for (int i = 0; i < NROWS; i++) {
+                              // update maxpool comparator
+                              if (maxpool_comparator[(x0 - 1) / 2].value[i] <
+                                  outputPixel.value[i]) {
+                                maxpool_comparator[(x0 - 1) / 2].value[i] =
+                                    outputPixel.value[i];
+                              }
+                            }
+                          } else if (x0 % 2 == 0 && y0 % 2 == 1) {
+#pragma hls_unroll yes
+                            for (int i = 0; i < NROWS; i++) {
+                              // update maxpool comparator
+                              if (maxpool_comparator[(x0) / 2].value[i] <
+                                  outputPixel.value[i]) {
+                                maxpool_comparator[(x0) / 2].value[i] =
+                                    outputPixel.value[i];
+                              }
+                            }
+                          } else {
+#pragma hls_unroll yes
+                            for (int i = 0; i < NROWS; i++) {
+                              if (maxpool_comparator[(x0 - 1) / 2].value[i] <
+                                  outputPixel.value[i]) {
+                                maxpool_comparator[(x0 - 1) / 2].value[i] =
+                                    outputPixel.value[i];
+                              }
+                            }
+                            tensorOut.Push(maxpool_comparator[(x0 - 1) / 2]);
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+ private:
+  Pack1D<DTYPE, WIDTH> maxpool_comparator[16];  // row buffer for maxpool
+};
+
 template <int NROWS, int WIDTH>
 SC_MODULE(OutputAddressGenerator) {
   sc_in<bool> CCS_INIT_S1(clk);
@@ -365,6 +512,13 @@ SC_MODULE(OutputAddressGenerator) {
         loop_bounds[1][params.fxIndex] = 1;
         loop_bounds[1][params.fyIndex] = 1;
 
+        if (params.MAXPOOL) {
+          loop_bounds[1][params.inputXLoopIndex[1]] =
+              loop_bounds[1][params.inputXLoopIndex[1]] / 2;
+          loop_bounds[1][params.inputYLoopIndex[1]] =
+              loop_bounds[1][params.inputYLoopIndex[1]] / 2;
+        }
+
 #pragma hls_pipeline_init_interval 1
         for (loop_counters[0][0] = 0; loop_counters[0][0] < loop_bounds[0][0];
              loop_counters[0][0]++) {
@@ -393,11 +547,11 @@ SC_MODULE(OutputAddressGenerator) {
                              loop_counters[1][5]++) {
                           int x0 = loop_counters[1][params.inputXLoopIndex[1]];
                           int x1 = loop_counters[0][params.inputXLoopIndex[0]];
-                          int X0 = params.loops[1][params.inputXLoopIndex[1]];
+                          int X0 = loop_bounds[1][params.inputXLoopIndex[1]];
                           int X1 = params.loops[0][params.inputXLoopIndex[0]];
                           int y0 = loop_counters[1][params.inputYLoopIndex[1]];
                           int y1 = loop_counters[0][params.inputYLoopIndex[0]];
-                          int Y0 = params.loops[1][params.inputYLoopIndex[1]];
+                          int Y0 = loop_bounds[1][params.inputYLoopIndex[1]];
                           int Y1 = params.loops[0][params.inputYLoopIndex[0]];
                           int k2 = loop_counters[0][params.weightLoopIndex[0]];
                           int K2 = params.loops[0][params.weightLoopIndex[0]];
@@ -450,10 +604,10 @@ SC_MODULE(VectorUnit) {
   FetchUnit<NROWS> CCS_INIT_S1(fetchUnit);
   Connections::Combinational<Params> CCS_INIT_S1(fetchUnitParams);
 
-  ArithmeticUnit<DTYPE, NROWS, NROWS> CCS_INIT_S1(arithmeticUnit);
+  VectorOpUnit<DTYPE, NROWS, NROWS> CCS_INIT_S1(vectorOpUnit);
   Connections::Combinational<Pack1D<DTYPE, NROWS> > CCS_INIT_S1(
-      arithmeticUnitOutput);
-  Connections::Combinational<Params> CCS_INIT_S1(arithmeticUnitParams);
+      vectorOpUnitOutput);
+  Connections::Combinational<Params> CCS_INIT_S1(vectorOpUnitParams);
 
   ReduceUnit<DTYPE, NROWS, NROWS> CCS_INIT_S1(reduceUnit);
   Connections::Combinational<Pack1D<DTYPE, NROWS> > CCS_INIT_S1(
@@ -466,6 +620,13 @@ SC_MODULE(VectorUnit) {
   Connections::Combinational<Pack1D<DTYPE, NROWS> > CCS_INIT_S1(
       scaleUnitOutput);
   Connections::Combinational<Params> CCS_INIT_S1(scaleUnitParams);
+
+  ArithmeticUnit<DTYPE, WIDTH, NROWS> CCS_INIT_S1(arithmeticUnit);
+  Connections::Combinational<Pack1D<DTYPE, NROWS> > CCS_INIT_S1(
+      arithmeticUnitInput);
+  Connections::Combinational<Pack1D<DTYPE, NROWS> > CCS_INIT_S1(
+      arithmeticUnitOutput);
+  Connections::Combinational<Params> CCS_INIT_S1(arithmeticUnitParams);
 
   OutputAddressGenerator<NROWS, NROWS> CCS_INIT_S1(outputAddressGenerator);
   Connections::Combinational<Params> CCS_INIT_S1(outputAddressGenParams);
@@ -481,12 +642,12 @@ SC_MODULE(VectorUnit) {
     fetchUnit.varianceAddressRequest(varianceAddressRequest);
     fetchUnit.paramsIn(fetchUnitParams);
 
-    arithmeticUnit.clk(clk);
-    arithmeticUnit.rstn(rstn);
-    arithmeticUnit.vectorIn(vectorFetchDataResponse);
-    arithmeticUnit.vectorOut(arithmeticUnitOutput);
-    arithmeticUnit.scalarSubtraction(scalarDataResponse);
-    arithmeticUnit.paramsIn(arithmeticUnitParams);
+    vectorOpUnit.clk(clk);
+    vectorOpUnit.rstn(rstn);
+    vectorOpUnit.vectorIn(vectorFetchDataResponse);
+    vectorOpUnit.vectorOut(vectorOpUnitOutput);
+    vectorOpUnit.scalarSubtraction(scalarDataResponse);
+    vectorOpUnit.paramsIn(vectorOpUnitParams);
 
     reduceUnit.clk(clk);
     reduceUnit.rstn(rstn);
@@ -500,6 +661,12 @@ SC_MODULE(VectorUnit) {
     scaleUnit.vectorIn(scaleUnitInput);
     scaleUnit.vectorOut(scaleUnitOutput);
     scaleUnit.scaleChannel(varianceDataResponse);
+
+    arithmeticUnit.clk(clk);
+    arithmeticUnit.rstn(rstn);
+    arithmeticUnit.paramsIn(arithmeticUnitParams);
+    arithmeticUnit.tensorIn(arithmeticUnitInput);
+    arithmeticUnit.tensorOut(arithmeticUnitOutput);
 
     outputAddressGenerator.clk(clk);
     outputAddressGenerator.rstn(rstn);
@@ -522,9 +689,9 @@ SC_MODULE(VectorUnit) {
   void read_params() {
     paramsIn.Reset();
     fetchUnitParams.ResetWrite();
-    arithmeticUnitParams.ResetWrite();
+    vectorOpUnitParams.ResetWrite();
     reduceUnitParams.ResetWrite();
-    scaleUnitParams.ResetWrite();
+    arithmeticUnitParams.ResetWrite();
     outputAddressGenParams.ResetWrite();
     inputConnectionParams.ResetWrite();
     outputConnectionParams.ResetWrite();
@@ -536,14 +703,15 @@ SC_MODULE(VectorUnit) {
 
       if (params.VEC_OP) {
         fetchUnitParams.Push(params);
-        arithmeticUnitParams.Push(params);
+        vectorOpUnitParams.Push(params);
         if (params.VEC_REDUCE) {
           reduceUnitParams.Push(params);
         }
       }
 
       if (!params.VEC_REDUCE) {
-        scaleUnitParams.Push(params);
+        // scaleUnitParams.Push(params);
+        arithmeticUnitParams.Push(params);
       }
 
       inputConnectionParams.Push(params);
@@ -554,11 +722,11 @@ SC_MODULE(VectorUnit) {
 
   void connect_inputs() {
     inputConnectionParams.ResetRead();
-    arithmeticUnitOutput.ResetRead();
+    vectorOpUnitOutput.ResetRead();
     systolicArrayOutput.Reset();
 
     reduceUnitInput.ResetWrite();
-    scaleUnitInput.ResetWrite();
+    arithmeticUnitInput.ResetWrite();
 
     wait();
 
@@ -578,7 +746,7 @@ SC_MODULE(VectorUnit) {
         Pack1D<DTYPE, NROWS> data;
 
         if (params.VEC_OP) {
-          data = arithmeticUnitOutput.Pop();
+          data = vectorOpUnitOutput.Pop();
 
         } else {
           data = systolicArrayOutput.Pop();
@@ -587,7 +755,7 @@ SC_MODULE(VectorUnit) {
         if (params.VEC_REDUCE) {
           reduceUnitInput.Push(data);
         } else {
-          scaleUnitInput.Push(data);
+          arithmeticUnitInput.Push(data);
         }
       }
     }
@@ -595,7 +763,7 @@ SC_MODULE(VectorUnit) {
 
   void connect_outputs() {
     outputConnectionParams.ResetRead();
-    scaleUnitOutput.ResetRead();
+    arithmeticUnitOutput.ResetRead();
     reduceUnitOutput.ResetRead();
     vectorUnitOutput.Reset();
 
@@ -626,11 +794,13 @@ SC_MODULE(VectorUnit) {
                             params.loops[1][params.inputYLoopIndex[1]] *
                             params.loops[0][params.weightLoopIndex[0]] *
                             params.loops[1][params.weightLoopIndex[1]];
-
+        if (params.MAXPOOL) {
+          total_outputs = total_outputs / 4;
+        }
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
         for (int i = 0; i < total_outputs; i++) {
-          vectorUnitOutput.Push(scaleUnitOutput.Pop());
+          vectorUnitOutput.Push(arithmeticUnitOutput.Pop());
         }
       }
 

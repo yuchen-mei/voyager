@@ -82,5 +82,46 @@ void run_gold_op(const Params params, INPUT_DATATYPE *matrixA,
         }
       }
     }
+
+    if (params.MAXPOOL) {
+      std::cout << "Before MP" << std::endl;
+      for (int y = 0; y < Y; y++) {
+        for (int x = 0; x < X; x++) {
+          std::cout << matrixC[y * X * K + x * K] << " ";
+        }
+        std::cout << std::endl;
+      }
+
+      // create copy
+      OUTPUT_DATATYPE *tmpMatrixC = new OUTPUT_DATATYPE[X * Y * K];
+      memcpy(tmpMatrixC, matrixC, sizeof(OUTPUT_DATATYPE) * X * Y * K);
+
+      for (int y = 0; y < Y / 2; y++) {
+        for (int x = 0; x < X / 2; x++) {
+          for (int k = 0; k < K; k++) {
+            std::vector<OUTPUT_DATATYPE> v;
+
+            for (int x_window = 0; x_window < 2; x_window++) {
+              for (int y_window = 0; y_window < 2; y_window++) {
+                int x_maxpool = x * 2 + x_window;
+                int y_maxpool = y * 2 + y_window;
+                v.push_back(tmpMatrixC[y_maxpool * X * K + x_maxpool * K + k]);
+              }
+            }
+
+            matrixC[y * (X / 2) * K + x * K + k] =
+                *std::max_element(v.begin(), v.end());
+          }
+        }
+      }
+
+      std::cout << "after MP" << std::endl;
+      for (int y = 0; y < Y / 2; y++) {
+        for (int x = 0; x < X / 2; x++) {
+          std::cout << matrixC[y * (X / 2) * K + x * K] << " ";
+        }
+        std::cout << std::endl;
+      }
+    }
   }
 }

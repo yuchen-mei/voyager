@@ -96,6 +96,11 @@ void run_test(Params params) {
 
   OUTPUT_DATATYPE *matrixC = new OUTPUT_DATATYPE[X * Y * K];
 
+  if (params.MAXPOOL) {
+    X = X / 2;
+    Y = Y / 2;
+  }
+
   run_op(params, mainMemory);
   run_gold_op(params, matrixA, matrixB, matrixC);
   compare_arrays(&mainMemory[params.OUTPUT_OFFSET], matrixC, X * Y * K);
