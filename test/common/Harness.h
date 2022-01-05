@@ -32,6 +32,14 @@ SC_MODULE(Harness) {
   Connections::Combinational<int> CCS_INIT_S1(varianceAddressRequest);
   Connections::Combinational<OUTPUT_DATATYPE> CCS_INIT_S1(varianceDataResponse);
 
+  Connections::Combinational<MemoryRequest> CCS_INIT_S1(biasAddressRequest);
+  Connections::Combinational<Pack1D<INPUT_DATATYPE, DIMENSION> > CCS_INIT_S1(
+      biasDataResponse);
+
+  Connections::Combinational<MemoryRequest> CCS_INIT_S1(residualAddressRequest);
+  Connections::Combinational<Pack1D<INPUT_DATATYPE, DIMENSION> > CCS_INIT_S1(
+      residualDataResponse);
+
   Connections::Combinational<Pack1D<INPUT_DATATYPE, DIMENSION> > CCS_INIT_S1(
       vectorOutput);
   Connections::Combinational<int> CCS_INIT_S1(vectorOutputAddress);
@@ -63,6 +71,8 @@ SC_MODULE(Harness) {
   void memAccessVector();
   void memAccessScalar();
   void memAccessVariance();
+  void memAccessBias();
+  void memAccessResidual();
 
   void reset();
   void storeOutputs();

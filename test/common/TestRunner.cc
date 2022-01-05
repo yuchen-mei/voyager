@@ -94,6 +94,31 @@ void run_test(Params params) {
     }
   }
 
+  INPUT_DATATYPE *biasMatrix = new INPUT_DATATYPE[K];
+
+  if (params.BIAS) {
+    for (int k = 0; k < K; k++) {
+      int val = rand() % 128;
+      mainMemory[params.BIAS_OFFSET + k] = val;
+      biasMatrix[k] = val;
+    }
+  }
+
+  INPUT_DATATYPE *residualMatrix = new INPUT_DATATYPE[X * Y * K];
+  if (params.RESIDUAL) {
+    for (int y = 0; y < Y; y++) {
+      for (int x = 0; x < X; x++) {
+        for (int k = 0; k < K; k++) {
+          int val = rand() % 128;
+
+          int address = y * X * K + x * K + k;
+          mainMemory[params.RESIDUAL_OFFSET + address] = val;
+          residualMatrix[address] = val;
+        }
+      }
+    }
+  }
+
   OUTPUT_DATATYPE *matrixC = new OUTPUT_DATATYPE[X * Y * K];
 
   if (params.MAXPOOL) {
@@ -102,7 +127,7 @@ void run_test(Params params) {
   }
 
   run_op(params, mainMemory);
-  run_gold_op(params, matrixA, matrixB, matrixC);
+  run_gold_op(params, matrixA, matrixB, matrixC, biasMatrix, residualMatrix);
   compare_arrays(&mainMemory[params.OUTPUT_OFFSET], matrixC, X * Y * K);
 
   delete[] matrixA;

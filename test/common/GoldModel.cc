@@ -1,7 +1,8 @@
 #include "test/common/GoldModel.h"
 
 void run_gold_op(const Params params, INPUT_DATATYPE *matrixA,
-                 INPUT_DATATYPE *matrixB, OUTPUT_DATATYPE *matrixC) {
+                 INPUT_DATATYPE *matrixB, OUTPUT_DATATYPE *matrixC,
+                 INPUT_DATATYPE *biasMatrix, OUTPUT_DATATYPE *residualMatrix) {
   std::cout << "Running gold model " << std::endl;
 
   if (params.VEC_OP) {
@@ -77,6 +78,13 @@ void run_gold_op(const Params params, INPUT_DATATYPE *matrixA,
                 }
               }
             }
+          }
+          if (params.BIAS) {
+            acc += biasMatrix[k];
+          }
+
+          if (params.RESIDUAL) {
+            acc += residualMatrix[y * X * K + x * K + k];
           }
           matrixC[y * X * K + x * K + k] = acc;
         }

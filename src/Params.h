@@ -34,6 +34,10 @@ struct Params {
   int STRIDE;
   bool REPLICATION;
   bool MAXPOOL;
+  bool BIAS;
+  int BIAS_OFFSET;
+  bool RESIDUAL;
+  int RESIDUAL_OFFSET;
 
   static const unsigned int width = 7 * 32 + 12 * 32 + 8 * 1;
 

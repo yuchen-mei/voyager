@@ -69,6 +69,12 @@ SC_MODULE(ParamsDeserializer) {
       params.REPLICATION = serialParamsIn.Pop();
       params.MAXPOOL = serialParamsIn.Pop();
 
+      params.BIAS = serialParamsIn.Pop();
+      params.BIAS_OFFSET = serialParamsIn.Pop();
+
+      params.RESIDUAL = serialParamsIn.Pop();
+      params.RESIDUAL_OFFSET = serialParamsIn.Pop();
+
       paramsOut.Push(params);
     }
   }

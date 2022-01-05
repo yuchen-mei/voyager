@@ -14,10 +14,14 @@ SC_MODULE(FetchUnit) {
   Connections::Out<int> CCS_INIT_S1(vectorFetchAddressRequest);
   Connections::Out<int> CCS_INIT_S1(scalarAddressRequest);
   Connections::Out<int> CCS_INIT_S1(varianceAddressRequest);
+  Connections::Out<MemoryRequest> CCS_INIT_S1(biasAddressRequest);
+  Connections::Out<MemoryRequest> CCS_INIT_S1(residualAddressRequest);
 
   Connections::Combinational<Params> CCS_INIT_S1(vectorFetchParams);
   Connections::Combinational<Params> CCS_INIT_S1(subtractionFetchParams);
   Connections::Combinational<Params> CCS_INIT_S1(varianceFetchParams);
+  Connections::Combinational<Params> CCS_INIT_S1(biasFetchParams);
+  Connections::Combinational<Params> CCS_INIT_S1(residualFetchParams);
 
   SC_CTOR(FetchUnit) {
     SC_THREAD(read_params);
@@ -33,6 +37,14 @@ SC_MODULE(FetchUnit) {
     async_reset_signal_is(rstn, false);
 
     SC_THREAD(fetch_variance);
+    sensitive << clk.pos();
+    async_reset_signal_is(rstn, false);
+
+    SC_THREAD(fetch_bias);
+    sensitive << clk.pos();
+    async_reset_signal_is(rstn, false);
+
+    SC_THREAD(fetch_residual);
     sensitive << clk.pos();
     async_reset_signal_is(rstn, false);
   }
@@ -102,13 +114,149 @@ SC_MODULE(FetchUnit) {
     }
   }
 
+  void fetch_bias() {
+    biasFetchParams.ResetRead();
+    biasAddressRequest.Reset();
+
+    wait();
+
+    while (true) {
+      Params params = biasFetchParams.Pop();
+      int loop_counters[2][6];
+      int loop_bounds[2][6];
+
+#pragma hls_unroll yes
+      for (int i = 0; i < 2; i++) {
+        for (int j = 0; j < 6; j++) {
+          loop_bounds[i][j] = params.loops[i][j];
+        }
+      }
+
+      // set irrelevant loop bounds to 1
+      loop_bounds[1][params.reductionLoopIndex[1]] = 1;
+      loop_bounds[1][params.fxIndex] = 1;
+      loop_bounds[1][params.fyIndex] = 1;
+      loop_bounds[1][params.inputXLoopIndex[1]] = 1;
+      loop_bounds[1][params.inputYLoopIndex[1]] = 1;
+#pragma hls_pipeline_init_interval 1
+      for (loop_counters[0][0] = 0; loop_counters[0][0] < loop_bounds[0][0];
+           loop_counters[0][0]++) {
+        for (loop_counters[0][1] = 0; loop_counters[0][1] < loop_bounds[0][1];
+             loop_counters[0][1]++) {
+          for (loop_counters[0][2] = 0; loop_counters[0][2] < loop_bounds[0][2];
+               loop_counters[0][2]++) {
+            for (int k1 = 0; k1 < params.loops[1][params.weightLoopIndex[1]];
+                 k1++) {
+              int k2 = loop_counters[0][params.weightLoopIndex[0]];
+              int K2 = params.loops[0][params.weightLoopIndex[0]];
+
+              int K1 = params.loops[1][params.weightLoopIndex[1]];
+              int k = k2 * K1 * NROWS + k1 * NROWS;
+              int K = K2 * K1 * NROWS;
+              int address = params.BIAS_OFFSET + k;
+              MemoryRequest memRequest = {address, NROWS};
+              biasAddressRequest.Push(memRequest);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  void fetch_residual() {
+    residualFetchParams.ResetRead();
+    residualAddressRequest.Reset();
+
+    wait();
+
+    while (true) {
+      Params params = residualFetchParams.Pop();
+
+      int loop_counters[2][6];
+      int loop_bounds[2][6];
+
+#pragma hls_unroll yes
+      for (int i = 0; i < 2; i++) {
+        for (int j = 0; j < 6; j++) {
+          loop_bounds[i][j] = params.loops[i][j];
+        }
+      }
+
+      // set irrelevant loop bounds to 1
+      loop_bounds[1][params.reductionLoopIndex[1]] = 1;
+      loop_bounds[1][params.fxIndex] = 1;
+      loop_bounds[1][params.fyIndex] = 1;
+
+#pragma hls_pipeline_init_interval 1
+      for (loop_counters[0][0] = 0; loop_counters[0][0] < loop_bounds[0][0];
+           loop_counters[0][0]++) {
+        for (loop_counters[0][1] = 0; loop_counters[0][1] < loop_bounds[0][1];
+             loop_counters[0][1]++) {
+          for (loop_counters[0][2] = 0; loop_counters[0][2] < loop_bounds[0][2];
+               loop_counters[0][2]++) {
+            for (loop_counters[1][0] = 0;
+                 loop_counters[1][0] < loop_bounds[1][0];
+                 loop_counters[1][0]++) {
+              for (loop_counters[1][1] = 0;
+                   loop_counters[1][1] < loop_bounds[1][1];
+                   loop_counters[1][1]++) {
+                for (loop_counters[1][2] = 0;
+                     loop_counters[1][2] < loop_bounds[1][2];
+                     loop_counters[1][2]++) {
+                  for (loop_counters[1][3] = 0;
+                       loop_counters[1][3] < loop_bounds[1][3];
+                       loop_counters[1][3]++) {
+                    for (loop_counters[1][4] = 0;
+                         loop_counters[1][4] < loop_bounds[1][4];
+                         loop_counters[1][4]++) {
+                      for (loop_counters[1][5] = 0;
+                           loop_counters[1][5] < loop_bounds[1][5];
+                           loop_counters[1][5]++) {
+                        int x0 = loop_counters[1][params.inputXLoopIndex[1]];
+                        int x1 = loop_counters[0][params.inputXLoopIndex[0]];
+                        int X0 = params.loops[1][params.inputXLoopIndex[1]];
+                        int X1 = params.loops[0][params.inputXLoopIndex[0]];
+                        int y0 = loop_counters[1][params.inputYLoopIndex[1]];
+                        int y1 = loop_counters[0][params.inputYLoopIndex[0]];
+                        int Y0 = params.loops[1][params.inputYLoopIndex[1]];
+                        int Y1 = params.loops[0][params.inputYLoopIndex[0]];
+                        int k2 = loop_counters[0][params.weightLoopIndex[0]];
+                        int K2 = params.loops[0][params.weightLoopIndex[0]];
+                        int k1 = loop_counters[1][params.weightLoopIndex[1]];
+                        int K1 = params.loops[1][params.weightLoopIndex[1]];
+                        int k = k2 * K1 * NROWS + k1 * NROWS;
+                        int K = K2 * K1 * NROWS;
+
+                        int x = x0 + x1 * X0;
+                        int X = X0 * X1;
+
+                        int y = y0 + y1 * Y0;
+                        int Y = Y0 * Y1;
+
+                        int address = y * X * K + x * K + k;
+                        MemoryRequest memRequest = {
+                            params.RESIDUAL_OFFSET + address, NROWS};
+                        residualAddressRequest.Push(memRequest);
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
   void read_params() {
     paramsIn.Reset();
 
     vectorFetchParams.ResetWrite();
     subtractionFetchParams.ResetWrite();
     varianceFetchParams.ResetWrite();
-
+    biasFetchParams.ResetWrite();
+    residualFetchParams.ResetWrite();
     wait();
 
     while (true) {
@@ -124,6 +272,14 @@ SC_MODULE(FetchUnit) {
         if (!params.CONST_SCALE) {
           varianceFetchParams.Push(params);
         }
+      }
+
+      if (params.BIAS) {
+        biasFetchParams.Push(params);
+      }
+
+      if (params.RESIDUAL) {
+        residualFetchParams.Push(params);
       }
     }
   }
@@ -316,6 +472,9 @@ SC_MODULE(ArithmeticUnit) {
   Connections::In<Pack1D<DTYPE, WIDTH> > CCS_INIT_S1(tensorIn);
   Connections::Out<Pack1D<DTYPE, WIDTH> > CCS_INIT_S1(tensorOut);
 
+  Connections::In<Pack1D<DTYPE, WIDTH> > CCS_INIT_S1(biasIn);
+  Connections::In<Pack1D<DTYPE, WIDTH> > CCS_INIT_S1(residualIn);
+
   SC_CTOR(ArithmeticUnit) {
     SC_THREAD(run);
     sensitive << clk.pos();
@@ -346,6 +505,8 @@ SC_MODULE(ArithmeticUnit) {
       loop_bounds[1][params.reductionLoopIndex[1]] = 1;
       loop_bounds[1][params.fxIndex] = 1;
       loop_bounds[1][params.fyIndex] = 1;
+
+      Pack1D<DTYPE, NROWS> bias;
 
 #pragma hls_pipeline_init_interval 1
       for (loop_counters[0][0] = 0; loop_counters[0][0] < loop_bounds[0][0];
@@ -393,7 +554,28 @@ SC_MODULE(ArithmeticUnit) {
                         int y = y0 + y1 * Y0;
                         int Y = Y0 * Y1;
 
+                        if (x0 == 0 && y0 == 0) {
+                          if (params.BIAS) {
+                            bias = biasIn.Pop();
+                          }
+                        }
+
                         Pack1D<DTYPE, NROWS> outputPixel = tensorIn.Pop();
+
+                        if (params.BIAS) {
+#pragma hls_unroll yes
+                          for (int i = 0; i < NROWS; i++) {
+                            outputPixel.value[i] += bias.value[i];
+                          }
+                        }
+
+                        if (params.RESIDUAL) {
+                          Pack1D<DTYPE, NROWS> residualPixel = residualIn.Pop();
+#pragma hls_unroll yes
+                          for (int i = 0; i < NROWS; i++) {
+                            outputPixel.value[i] += residualPixel.value[i];
+                          }
+                        }
 
                         if (params.MAXPOOL) {
                           if (x0 % 2 == 0 && y0 % 2 == 0) {
@@ -434,6 +616,11 @@ SC_MODULE(ArithmeticUnit) {
                             }
                             tensorOut.Push(maxpool_comparator[(x0 - 1) / 2]);
                           }
+                        }
+                        // TODO:
+                        // else if(params.AVGPOOL){}
+                        else {
+                          tensorOut.Push(outputPixel);
                         }
                       }
                     }
@@ -597,6 +784,10 @@ SC_MODULE(VectorUnit) {
   Connections::In<DTYPE> CCS_INIT_S1(scalarDataResponse);
   Connections::Out<int> CCS_INIT_S1(varianceAddressRequest);
   Connections::In<DTYPE> CCS_INIT_S1(varianceDataResponse);
+  Connections::Out<MemoryRequest> CCS_INIT_S1(biasAddressRequest);
+  Connections::In<Pack1D<DTYPE, NROWS> > CCS_INIT_S1(biasDataResponse);
+  Connections::Out<MemoryRequest> CCS_INIT_S1(residualAddressRequest);
+  Connections::In<Pack1D<DTYPE, NROWS> > CCS_INIT_S1(residualDataResponse);
   Connections::Out<Pack1D<DTYPE, NROWS> > CCS_INIT_S1(vectorUnitOutput);
   Connections::Out<int> CCS_INIT_S1(outputAddress);
   Connections::SyncOut CCS_INIT_S1(done);
@@ -640,6 +831,8 @@ SC_MODULE(VectorUnit) {
     fetchUnit.vectorFetchAddressRequest(vectorFetchAddressRequest);
     fetchUnit.scalarAddressRequest(scalarAddressRequest);
     fetchUnit.varianceAddressRequest(varianceAddressRequest);
+    fetchUnit.biasAddressRequest(biasAddressRequest);
+    fetchUnit.residualAddressRequest(residualAddressRequest);
     fetchUnit.paramsIn(fetchUnitParams);
 
     vectorOpUnit.clk(clk);
@@ -667,6 +860,8 @@ SC_MODULE(VectorUnit) {
     arithmeticUnit.paramsIn(arithmeticUnitParams);
     arithmeticUnit.tensorIn(arithmeticUnitInput);
     arithmeticUnit.tensorOut(arithmeticUnitOutput);
+    arithmeticUnit.biasIn(biasDataResponse);
+    arithmeticUnit.residualIn(residualDataResponse);
 
     outputAddressGenerator.clk(clk);
     outputAddressGenerator.rstn(rstn);
@@ -701,8 +896,8 @@ SC_MODULE(VectorUnit) {
     while (true) {
       Params params = paramsIn.Pop();
 
+      fetchUnitParams.Push(params);
       if (params.VEC_OP) {
-        fetchUnitParams.Push(params);
         vectorOpUnitParams.Push(params);
         if (params.VEC_REDUCE) {
           reduceUnitParams.Push(params);

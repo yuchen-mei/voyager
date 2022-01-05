@@ -21,43 +21,63 @@ SC_MODULE(Accelerator) {
   Connections::Combinational<Params> CCS_INIT_S1(paramsIn);
 
   InputController<INPUT_DATATYPE, DIMENSION> CCS_INIT_S1(inputController);
-  DoubleBuffer<INPUT_DATATYPE, DIMENSION, INPUT_BUFFER_SIZE> CCS_INIT_S1(inputBuffer);
+  DoubleBuffer<INPUT_DATATYPE, DIMENSION, INPUT_BUFFER_SIZE> CCS_INIT_S1(
+      inputBuffer);
   Connections::Out<MemoryRequest> CCS_INIT_S1(inputAddressRequest);
-  Connections::In<Pack1D<INPUT_DATATYPE, DIMENSION> > CCS_INIT_S1(inputDataResponse);
+  Connections::In<Pack1D<INPUT_DATATYPE, DIMENSION> > CCS_INIT_S1(
+      inputDataResponse);
   Connections::Combinational<int> inputBufferWriteAddress[2];
-  Connections::Combinational<Pack1D<INPUT_DATATYPE, DIMENSION> > inputBufferWriteData[2];
+  Connections::Combinational<Pack1D<INPUT_DATATYPE, DIMENSION> >
+      inputBufferWriteData[2];
   Connections::Combinational<int> inputBufferWriteControl[2];
   Connections::Combinational<int> inputBufferReadAddress[2];
   Connections::Combinational<int> inputBufferReadControl[2];
-  Connections::Combinational<Pack1D<INPUT_DATATYPE, DIMENSION> > CCS_INIT_S1(inputsToWindowBuffer);
+  Connections::Combinational<Pack1D<INPUT_DATATYPE, DIMENSION> > CCS_INIT_S1(
+      inputsToWindowBuffer);
   Connections::Combinational<Params> inputControllerParams;
 
-  WeightController<INPUT_DATATYPE, DIMENSION, DIMENSION> CCS_INIT_S1(weightController);
-  DoubleBuffer<INPUT_DATATYPE, DIMENSION, WEIGHT_BUFFER_SIZE> CCS_INIT_S1(weightBuffer);
+  WeightController<INPUT_DATATYPE, DIMENSION, DIMENSION> CCS_INIT_S1(
+      weightController);
+  DoubleBuffer<INPUT_DATATYPE, DIMENSION, WEIGHT_BUFFER_SIZE> CCS_INIT_S1(
+      weightBuffer);
   Connections::Out<MemoryRequest> CCS_INIT_S1(weightAddressRequest);
-  Connections::In<Pack1D<INPUT_DATATYPE, DIMENSION> > CCS_INIT_S1(weightDataResponse);
+  Connections::In<Pack1D<INPUT_DATATYPE, DIMENSION> > CCS_INIT_S1(
+      weightDataResponse);
   Connections::Combinational<int> weightBufferWriteAddress[2];
-  Connections::Combinational<Pack1D<INPUT_DATATYPE, DIMENSION> > weightBufferWriteData[2];
+  Connections::Combinational<Pack1D<INPUT_DATATYPE, DIMENSION> >
+      weightBufferWriteData[2];
   Connections::Combinational<int> weightBufferWriteControl[2];
   Connections::Combinational<int> weightBufferReadAddress[2];
   Connections::Combinational<int> weightBufferReadControl[2];
   Connections::Combinational<Params> weightControllerParams;
 
-  MatrixProcessor<INPUT_DATATYPE, WEIGHT_DATATYPE, OUTPUT_DATATYPE, DIMENSION, DIMENSION, ACCUMULATION_BUFFER_SIZE>
+  MatrixProcessor<INPUT_DATATYPE, WEIGHT_DATATYPE, OUTPUT_DATATYPE, DIMENSION,
+                  DIMENSION, ACCUMULATION_BUFFER_SIZE>
       CCS_INIT_S1(matrixProcessor);
-  Connections::Combinational<Pack1D<INPUT_DATATYPE, DIMENSION> > CCS_INIT_S1(inputsToSystolicArray);
-  Connections::Combinational<Pack1D<WEIGHT_DATATYPE, DIMENSION> > CCS_INIT_S1(weightsToSystolicArray);
-  Connections::Combinational<Pack1D<OUTPUT_DATATYPE, DIMENSION> > CCS_INIT_S1(outputsFromSystolicArray);
+  Connections::Combinational<Pack1D<INPUT_DATATYPE, DIMENSION> > CCS_INIT_S1(
+      inputsToSystolicArray);
+  Connections::Combinational<Pack1D<WEIGHT_DATATYPE, DIMENSION> > CCS_INIT_S1(
+      weightsToSystolicArray);
+  Connections::Combinational<Pack1D<OUTPUT_DATATYPE, DIMENSION> > CCS_INIT_S1(
+      outputsFromSystolicArray);
   Connections::Combinational<Params> CCS_INIT_S1(matrixProcessorParams);
 
   VectorUnit<INPUT_DATATYPE, DIMENSION, DIMENSION> CCS_INIT_S1(vectorUnit);
   Connections::Out<int> CCS_INIT_S1(vectorFetchAddressRequest);
-  Connections::In<Pack1D<OUTPUT_DATATYPE, DIMENSION> > CCS_INIT_S1(vectorFetchDataResponse);
+  Connections::In<Pack1D<OUTPUT_DATATYPE, DIMENSION> > CCS_INIT_S1(
+      vectorFetchDataResponse);
   Connections::Out<int> CCS_INIT_S1(scalarAddressRequest);
   Connections::In<OUTPUT_DATATYPE> CCS_INIT_S1(scalarDataResponse);
   Connections::Out<int> CCS_INIT_S1(varianceAddressRequest);
   Connections::In<OUTPUT_DATATYPE> CCS_INIT_S1(varianceDataResponse);
-  Connections::Out<Pack1D<OUTPUT_DATATYPE, DIMENSION> > CCS_INIT_S1(vectorUnitOutput);
+  Connections::Out<MemoryRequest> CCS_INIT_S1(biasAddressRequest);
+  Connections::In<Pack1D<OUTPUT_DATATYPE, DIMENSION> > CCS_INIT_S1(
+      biasDataResponse);
+  Connections::Out<MemoryRequest> CCS_INIT_S1(residualAddressRequest);
+  Connections::In<Pack1D<OUTPUT_DATATYPE, DIMENSION> > CCS_INIT_S1(
+      residualDataResponse);
+  Connections::Out<Pack1D<OUTPUT_DATATYPE, DIMENSION> > CCS_INIT_S1(
+      vectorUnitOutput);
   Connections::Out<int> CCS_INIT_S1(outputAddress);
   Connections::Combinational<Params> CCS_INIT_S1(vectorUnitParams);
 
@@ -136,6 +156,10 @@ SC_MODULE(Accelerator) {
     vectorUnit.scalarDataResponse(scalarDataResponse);
     vectorUnit.varianceAddressRequest(varianceAddressRequest);
     vectorUnit.varianceDataResponse(varianceDataResponse);
+    vectorUnit.biasAddressRequest(biasAddressRequest);
+    vectorUnit.biasDataResponse(biasDataResponse);
+    vectorUnit.residualAddressRequest(residualAddressRequest);
+    vectorUnit.residualDataResponse(residualDataResponse);
     vectorUnit.vectorUnitOutput(vectorUnitOutput);
     vectorUnit.outputAddress(outputAddress);
     vectorUnit.done(doneSignal);
