@@ -188,6 +188,9 @@ SC_MODULE(WeightController) {
             for (loop_counters[1][0] = 0;
                  loop_counters[1][0] < loop_bounds[1][0];
                  loop_counters[1][0]++) {
+              writeControl[bankSel].Push(loop_bounds[1][1] * loop_bounds[1][2] *
+                                         loop_bounds[1][3] * loop_bounds[1][4] *
+                                         loop_bounds[1][5] * c0_bound);
               for (loop_counters[1][1] = 0;
                    loop_counters[1][1] < loop_bounds[1][1];
                    loop_counters[1][1]++) {
@@ -226,7 +229,15 @@ SC_MODULE(WeightController) {
                           int address = (fy * FX * C * K1) + (fx * C * K1) +
                                         (c * K1) + k1;
 
-                          writeControl[bankSel].Push(1);
+                          // int swapBank =
+                          //     (loop_counters[1][1] == loop_bounds[1][1] - 1)
+                          //     && (loop_counters[1][2] == loop_bounds[1][2] -
+                          //     1) && (loop_counters[1][3] == loop_bounds[1][3]
+                          //     - 1) && (loop_counters[1][4] ==
+                          //     loop_bounds[1][4] - 1) && (loop_counters[1][5]
+                          //     == loop_bounds[1][5] - 1);
+
+                          // writeControl[bankSel].Push(!swapBank);
                           writeAddress[bankSel].Push(address);
                           writeData[bankSel].Push(data);
 
@@ -237,7 +248,7 @@ SC_MODULE(WeightController) {
                   }
                 }
               }
-              writeControl[bankSel].Push(0);
+              // writeControl[bankSel].Push(0);
               bankSel = !bankSel;
             }
           }
@@ -286,6 +297,9 @@ SC_MODULE(WeightController) {
             for (loop_counters[1][0] = 0;
                  loop_counters[1][0] < loop_bounds[1][0];
                  loop_counters[1][0]++) {
+              readControl[bankSel].Push(loop_bounds[1][1] * loop_bounds[1][2] *
+                                        loop_bounds[1][3] * loop_bounds[1][4] *
+                                        loop_bounds[1][5] * NROWS);
               for (loop_counters[1][1] = 0;
                    loop_counters[1][1] < loop_bounds[1][1];
                    loop_counters[1][1]++) {
@@ -320,7 +334,7 @@ SC_MODULE(WeightController) {
                           }
                           // zero_padding
                           for (int i = 0; i < numPadding; i++) {
-                            readControl[bankSel].Push(1);
+                            // readControl[bankSel].Push(1);
                             readAddress[bankSel].Push(-1);
                           }
                         }
@@ -359,7 +373,19 @@ SC_MODULE(WeightController) {
                             int address = (fy * FX * C * K1) + (fx * C * K1) +
                                           (c * K1) + k1;
 
-                            readControl[bankSel].Push(1);
+                            int swapBank = (loop_counters[1][1] ==
+                                            loop_bounds[1][1] - 1) &&
+                                           (loop_counters[1][2] ==
+                                            loop_bounds[1][2] - 1) &&
+                                           (loop_counters[1][3] ==
+                                            loop_bounds[1][3] - 1) &&
+                                           (loop_counters[1][4] ==
+                                            loop_bounds[1][4] - 1) &&
+                                           (loop_counters[1][5] ==
+                                            loop_bounds[1][5] - 1) &&
+                                           (c == 0) && (fx_repl == 0);
+
+                            // readControl[bankSel].Push(!swapBank);
                             readAddress[bankSel].Push(address);
                           }
                         }
@@ -369,7 +395,7 @@ SC_MODULE(WeightController) {
                 }
               }
               CCS_LOG("read all");
-              readControl[bankSel].Push(0);
+              // readControl[bankSel].Push(0);
               bankSel = !bankSel;
             }
           }

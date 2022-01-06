@@ -45,43 +45,78 @@ SC_MODULE(DoubleBuffer) {
            Connections::In<int> * rAddress, Connections::In<int> * rControl,
            Connections::Combinational<int> * oControl,
            Pack1D<DTYPE, WIDTH> mem[BUFFER_SIZE]) {
-    bool swap = false;
-    while (!swap) {
-      if (wControl->Pop() == 1) {
-        int address = wAddress->Pop();
-        Pack1D<DTYPE, WIDTH> data = wData->Pop();
-        mem[address] = data;
-      } else {
-        swap = true;
-      }
+    int wsize = wControl->Pop();
+
+#pragma hls_pipeline_init_interval 1
+#pragma hls_pipeline_stall_mode flush
+    for (int i = 0; i < wsize; i++) {
+      int address = wAddress->Pop();
+      Pack1D<DTYPE, WIDTH> data = wData->Pop();
+      mem[address] = data;
     }
 
-    // CCS_LOG("contents:");
-    // for (int i = 0; i < 1024; i++) {
-    //   std::cout << mem[i] << std::endl;
-    // }
+    int rsize = rControl->Pop();
+    oControl->Push(rsize);
+#pragma hls_pipeline_init_interval 1
+#pragma hls_pipeline_stall_mode flush
+    for (int i = 0; i < rsize; i++) {
+      int address = rAddress->Pop();
+      Pack1D<DTYPE, WIDTH> data;
 
-    swap = false;
-    while (!swap) {
-      if (rControl->Pop() == 1) {
-        int address = rAddress->Pop();
-        Pack1D<DTYPE, WIDTH> data;
-
-        if (address != -1) {
-          data = mem[address];
-        } else {
+      if (address != -1) {
+        data = mem[address];
+      } else {
 #pragma hls_unroll yes
-          for (int j = 0; j < WIDTH; j++) {
-            data[j] = 0;
-          }
+        for (int j = 0; j < WIDTH; j++) {
+          data[j] = 0;
         }
-        oControl->Push(1);
-        rData->Push(data);
-      } else {
-        swap = true;
       }
+
+      rData->Push(data);
     }
-    oControl->Push(0);
+
+    //     bool swap = false;
+    // #pragma hls_pipeline_init_interval 1
+    // #pragma hls_pipeline_stall_mode flush
+    //     while (true) {
+    //       swap = wControl->Pop() == 0;
+    //       int address = wAddress->Pop();
+    //       Pack1D<DTYPE, WIDTH> data = wData->Pop();
+    //       mem[address] = data;
+    //       if (swap) {
+    //         break;
+    //       }
+    //     }
+
+    //     // CCS_LOG("contents:");
+    //     // for (int i = 0; i < 1024; i++) {
+    //     //   std::cout << mem[i] << std::endl;
+    //     // }
+
+    //     bool swap2 = false;
+    // #pragma hls_pipeline_init_interval 1
+    // #pragma hls_pipeline_stall_mode flush
+    //     while (true) {
+    //       swap2 = rControl->Pop() == 0;
+
+    //       int address = rAddress->Pop();
+    //       Pack1D<DTYPE, WIDTH> data;
+
+    //       if (address != -1) {
+    //         data = mem[address];
+    //       } else {
+    // #pragma hls_unroll yes
+    //         for (int j = 0; j < WIDTH; j++) {
+    //           data[j] = 0;
+    //         }
+    //       }
+    //       oControl->Push(!swap2);
+    //       rData->Push(data);
+
+    //       if (swap2) {
+    //         break;
+    //       }
+    //     }
   }
 
   void mem0Run() {
@@ -97,8 +132,8 @@ SC_MODULE(DoubleBuffer) {
 
     wait();
 
-#pragma hls_pipeline_init_interval 1
-#pragma hls_pipeline_stall_mode flush
+    // #pragma hls_pipeline_init_interval 1
+    // #pragma hls_pipeline_stall_mode flush
     while (true) {
       run(&writeAddress[0], &writeData[0], &writeControl[0], &readData[0],
           &readAddress[0], &readControl[0], &outputControl[0], mem0);
@@ -118,8 +153,8 @@ SC_MODULE(DoubleBuffer) {
 
     wait();
 
-#pragma hls_pipeline_init_interval 1
-#pragma hls_pipeline_stall_mode flush
+    // #pragma hls_pipeline_init_interval 1
+    // #pragma hls_pipeline_stall_mode flush
     while (true) {
       run(&writeAddress[1], &writeData[1], &writeControl[1], &readData[1],
           &readAddress[1], &readControl[1], &outputControl[1], mem1);
@@ -140,15 +175,12 @@ SC_MODULE(DoubleBuffer) {
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
     while (true) {
-      bool swap = false;
-      while (!swap) {
-        if (outputControl[bankSel].Pop() == 1) {
-          output.Push(readData[bankSel].Pop());
-        } else {
-          swap = true;
-        }
+      int size = outputControl[bankSel].Pop();
+
+      for (int i = 0; i < size; i++) {
+        output.Push(readData[bankSel].Pop());
       }
-      swap = false;
+
       bankSel = !bankSel;
     }
   }

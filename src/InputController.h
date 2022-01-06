@@ -258,8 +258,8 @@ SC_MODULE(InputController) {
       int Y0 = params.loops[1][params.inputYLoopIndex[1]];
       int Y1 = params.loops[0][params.inputYLoopIndex[0]];
 
-#pragma hls_pipeline_init_interval 1
-#pragma hls_pipeline_stall_mode flush
+      // #pragma hls_pipeline_init_interval 1
+      // #pragma hls_pipeline_stall_mode flush
       for (loop_counters[0][0] = 0; loop_counters[0][0] < loop_bounds[0][0];
            loop_counters[0][0]++) {
         for (loop_counters[0][1] = 0; loop_counters[0][1] < loop_bounds[0][1];
@@ -282,7 +282,17 @@ SC_MODULE(InputController) {
                  loop_counters[1][0] < loop_bounds[1][0];
                  loop_counters[1][0]++) {
               // TODO: make this dynamic
-
+              int total_writes;
+              if (params.REPLICATION) {
+                total_writes = (loop_bounds[1][1] * loop_bounds[1][2] *
+                                loop_bounds[1][3] * loop_bounds[1][4]) *
+                               ((params.STRIDE * X0) / 4 + 2);
+              } else {
+                total_writes = (loop_bounds[1][1] * loop_bounds[1][2] *
+                                loop_bounds[1][3] * loop_bounds[1][4]) *
+                               loop_bounds[1][5];
+              }
+              writeControl[bankSel].Push(total_writes);
               for (loop_counters[1][1] = 0;
                    loop_counters[1][1] < loop_bounds[1][1];
                    loop_counters[1][1]++) {
@@ -369,7 +379,7 @@ SC_MODULE(InputController) {
                               (y0) * (((params.STRIDE * X0) >> 2) + 2) +
                               (x >> 2);
 
-                          writeControl[bankSel].Push(1);
+                          // writeControl[bankSel].Push(1);
                           writeAddress[bankSel].Push(address);
                           writeData[bankSel].Push(data);
 
@@ -426,7 +436,7 @@ SC_MODULE(InputController) {
                         int address =
                             (y0) * (((params.STRIDE * X0) >> 2) + 2) + (x >> 2);
 
-                        writeControl[bankSel].Push(1);
+                        // writeControl[bankSel].Push(1);
                         writeAddress[bankSel].Push(address);
                         writeData[bankSel].Push(data);
 
@@ -457,7 +467,12 @@ SC_MODULE(InputController) {
                         int next_address =
                             (y0) * (((params.STRIDE * X0) >> 2) + 2) +
                             (x >> 2) + 1;
-                        writeControl[bankSel].Push(1);
+                        int swapBank =
+                            (loop_counters[1][1] == loop_bounds[1][1] - 1) &&
+                            (loop_counters[1][2] == loop_bounds[1][2] - 1) &&
+                            (loop_counters[1][3] == loop_bounds[1][3] - 1) &&
+                            (loop_counters[1][4] == loop_bounds[1][4] - 1);
+                        // writeControl[bankSel].Push(!swapBank);
                         writeAddress[bankSel].Push(next_address);
                         writeData[bankSel].Push(data);
                       }
@@ -487,8 +502,13 @@ SC_MODULE(InputController) {
 
                           int address =
                               (y0) * (params.STRIDE * X0 + FX - 1) + (x0);
-
-                          writeControl[bankSel].Push(1);
+                          int swapBank =
+                              (loop_counters[1][1] == loop_bounds[1][1] - 1) &&
+                              (loop_counters[1][2] == loop_bounds[1][2] - 1) &&
+                              (loop_counters[1][3] == loop_bounds[1][3] - 1) &&
+                              (loop_counters[1][4] == loop_bounds[1][4] - 1) &&
+                              (loop_counters[1][5] == loop_bounds[1][5] - 1);
+                          // writeControl[bankSel].Push(!swapBank);
                           writeAddress[bankSel].Push(address);
                           writeData[bankSel].Push(data);
                         }
@@ -498,7 +518,7 @@ SC_MODULE(InputController) {
                 }
               }
 
-              writeControl[bankSel].Push(0);
+              // writeControl[bankSel].Push(0);
               bankSel = !bankSel;
             }
           }
@@ -552,6 +572,9 @@ SC_MODULE(InputController) {
             for (loop_counters[1][0] = 0;
                  loop_counters[1][0] < loop_bounds[1][0];
                  loop_counters[1][0]++) {
+              readControl[bankSel].Push(loop_bounds[1][1] * loop_bounds[1][2] *
+                                        loop_bounds[1][3] * loop_bounds[1][4] *
+                                        loop_bounds[1][5]);
               for (loop_counters[1][1] = 0;
                    loop_counters[1][1] < loop_bounds[1][1];
                    loop_counters[1][1]++) {
@@ -583,15 +606,20 @@ SC_MODULE(InputController) {
                         } else {
                           address = y * (params.STRIDE * X0 + FX - 1) + x;
                         }
-
-                        readControl[bankSel].Push(1);
+                        // int swapBank =
+                        //     (loop_counters[1][1] == loop_bounds[1][1] - 1) &&
+                        //     (loop_counters[1][2] == loop_bounds[1][2] - 1) &&
+                        //     (loop_counters[1][3] == loop_bounds[1][3] - 1) &&
+                        //     (loop_counters[1][4] == loop_bounds[1][4] - 1) &&
+                        //     (loop_counters[1][5] == loop_bounds[1][5] - 1);
+                        // readControl[bankSel].Push(!swapBank);
                         readAddress[bankSel].Push(address);
                       }
                     }
                   }
                 }
               }
-              readControl[bankSel].Push(0);
+              // readControl[bankSel].Push(0);
               bankSel = !bankSel;
             }
           }
@@ -624,8 +652,8 @@ SC_MODULE(InputController) {
       }
 
       if (params.REPLICATION) {
-#pragma hls_pipeline_init_interval 1
-#pragma hls_pipeline_stall_mode flush
+        // #pragma hls_pipeline_init_interval 1
+        // #pragma hls_pipeline_stall_mode flush
         for (loop_counters[0][0] = 0; loop_counters[0][0] < loop_bounds[0][0];
              loop_counters[0][0]++) {
           for (loop_counters[0][1] = 0; loop_counters[0][1] < loop_bounds[0][1];
@@ -633,10 +661,6 @@ SC_MODULE(InputController) {
             for (loop_counters[0][2] = 0;
                  loop_counters[0][2] < loop_bounds[0][2];
                  loop_counters[0][2]++) {
-              // pixels are packed together
-              // loop_bounds[1][params.inputXLoopIndex[1]] =
-              // (loop_bounds[1][params.inputXLoopIndex[1]] / 2) + 1;
-
               // inner memory
               for (loop_counters[1][0] = 0;
                    loop_counters[1][0] < loop_bounds[1][0];
