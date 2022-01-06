@@ -6,7 +6,7 @@ TEST ?= simple
 
 export TEST := $(TEST)
 
-synth_rtl: build/Catapult/Accelerator.v1/concat_rtl.v
+rtl: build/Catapult/Accelerator.v1/concat_rtl.v
 
 build/Catapult/Accelerator.v1/concat_rtl.v: src/Accelerator.cc $(wildcard src/*.h) scripts/hls.tcl
 	catapult -shell -file scripts/hls.tcl
