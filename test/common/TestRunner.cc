@@ -30,7 +30,7 @@ void validateMapping(Params params) {
     std::terminate();
   }
 
-  if (x0 * y0 * c0 * k0 > ACCUMULATION_BUFFER_SIZE) {
+  if (x0 * y0 * k0 > ACCUMULATION_BUFFER_SIZE) {
     std::cout << "[ERROR] Accumulation buffer tile size violation."
               << std::endl;
     std::terminate();
