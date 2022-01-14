@@ -5,200 +5,306 @@
 
 std::map<std::string, Params> mobilebert{
     // (128 x 512) * (512 x 128)
+    // (1x128x512) * (1x1x512x128)
     {"inputBottleneck",
      {
-         0,                         // INPUT_OFFSET
-         1024 * 1024,               // WEIGHT_OFFSET
-         2 * 1024 * 1024,           // OUTPUT_OFFSET
-         false,                     // SOFTMAX
-         1,                         // SCALE
-         false,                     // TRANSPOSE
-         0,                         // VECTOR_OFFSET
-         false,                     // VEC_OP
-         false,                     // VEC_SUB
-         false,                     // VEC_SQUARE
-         false,                     // VEC_REDUCE
-         true,                      // CONST_SCALE
-         0,                         // VEC_SCALE_OFFSET
-         0,                         // VEC_SUB_OFFSET
-         false,                     // RELU
-         {{4, 4, 1}, {32, 2, 32}},  // LOOPS
-         {1, 2},                    // INPUT
-         {2, 0},                    // REDUCTION
-         {0, 1}                     // WEIGHT
+         0,                                           // INPUT_OFFSET
+         1024 * 1024,                                 // WEIGHT_OFFSET
+         2 * 1024 * 1024,                             // OUTPUT_OFFSET
+         false,                                       // SOFTMAX
+         1,                                           // SCALE
+         false,                                       // TRANSPOSE
+         0,                                           // VECTOR_OFFSET
+         false,                                       // VEC_OP
+         false,                                       // VEC_SUB
+         false,                                       // VEC_SQUARE
+         false,                                       // VEC_REDUCE
+         true,                                        // CONST_SCALE
+         0,                                           // VEC_SCALE_OFFSET
+         0,                                           // VEC_SUB_OFFSET
+         false,                                       // RELU
+         {{4, 1, 2, 1, 1, 1}, {32, 4, 1, 1, 1, 32}},  // LOOPS
+         {0, 5},                                      // INPUTX
+         {1, 4},                                      // INPUTY
+         {3, 0},                                      // REDUCTION
+         {2, 1},                                      // WEIGHT
+         3,                                           // fxIndex
+         2,                                           // fyIndex
+         {5, 5},                                      // weightReuseIndex
+         false,                                       // matmul
+         1,                                           // stride
+         false,                                       // replication
+         false,                                       // maxpool
+         false,                                       // bias
+         30 * 1024,                                   // BIAS_OFFSET
+         false,                                       // residual
+         40 * 1024,                                   // RESIDUAL_OFFSET
+         false                                        // avgpool
      }},
 
     // (128 x 128) x (128 x 32)
     {"qkvProjection",
      {
-         0,                        // INPUT_OFFSET
-         1024 * 1024,              // WEIGHT_OFFSET
-         2 * 1024 * 1024,          // OUTPUT_OFFSET
-         false,                    // SOFTMAX
-         1,                        // SCALE
-         false,                    // TRANSPOSE
-         0,                        // VECTOR_OFFSET
-         false,                    // VEC_OP
-         false,                    // VEC_SUB
-         false,                    // VEC_SQUARE
-         false,                    // VEC_REDUCE
-         true,                     // CONST_SCALE
-         0,                        // VEC_SCALE_OFFSET
-         0,                        // VEC_SUB_OFFSET
-         false,                    // RELU
-         {{1, 4, 1}, {8, 2, 32}},  // LOOPS
-         {1, 2},                   // INPUT
-         {2, 0},                   // REDUCTION
-         {0, 1}                    // WEIGHT
+         0,                                          // INPUT_OFFSET
+         1024 * 1024,                                // WEIGHT_OFFSET
+         2 * 1024 * 1024,                            // OUTPUT_OFFSET
+         false,                                      // SOFTMAX
+         1,                                          // SCALE
+         false,                                      // TRANSPOSE
+         0,                                          // VECTOR_OFFSET
+         false,                                      // VEC_OP
+         false,                                      // VEC_SUB
+         false,                                      // VEC_SQUARE
+         false,                                      // VEC_REDUCE
+         true,                                       // CONST_SCALE
+         0,                                          // VEC_SCALE_OFFSET
+         0,                                          // VEC_SUB_OFFSET
+         false,                                      // RELU
+         {{4, 1, 1, 1, 1, 1}, {8, 2, 1, 1, 1, 32}},  // LOOPS
+         {0, 5},                                     // INPUTX
+         {1, 4},                                     // INPUTY
+         {3, 0},                                     // REDUCTION
+         {2, 1},                                     // WEIGHT
+         3,                                          // fxIndex
+         2,                                          // fyIndex
+         {5, 5},                                     // weightReuseIndex
+         false,                                      // matmul
+         1,                                          // stride
+         false,                                      // replication
+         false,                                      // maxpool
+         false,                                      // bias
+         30 * 1024,                                  // BIAS_OFFSET
+         false,                                      // residual
+         40 * 1024,                                  // RESIDUAL_OFFSET
+         false                                       // avgpool
      }},
 
     // attention- Q*KT
     // (128 x 32) * (32 x 128)
     {"qkAttention",
      {
-         0,                        // INPUT_OFFSET
-         1024 * 1024,              // WEIGHT_OFFSET
-         2 * 1024 * 1024,          // OUTPUT_OFFSET
-         false,                    // SOFTMAX
-         1,                        // SCALE
-         false,                    // TRANSPOSE
-         0,                        // VECTOR_OFFSET
-         false,                    // VEC_OP
-         false,                    // VEC_SUB
-         false,                    // VEC_SQUARE
-         false,                    // VEC_REDUCE
-         true,                     // CONST_SCALE
-         0,                        // VEC_SCALE_OFFSET
-         0,                        // VEC_SUB_OFFSET
-         false,                    // RELU
-         {{4, 4, 1}, {2, 2, 32}},  // LOOPS
-         {1, 2},                   // INPUT
-         {2, 0},                   // REDUCTION
-         {0, 1}                    // WEIGHT
+         0,                                          // INPUT_OFFSET
+         1024 * 1024,                                // WEIGHT_OFFSET
+         2 * 1024 * 1024,                            // OUTPUT_OFFSET
+         false,                                      // SOFTMAX
+         1,                                          // SCALE
+         false,                                      // TRANSPOSE
+         0,                                          // VECTOR_OFFSET
+         false,                                      // VEC_OP
+         false,                                      // VEC_SUB
+         false,                                      // VEC_SQUARE
+         false,                                      // VEC_REDUCE
+         true,                                       // CONST_SCALE
+         0,                                          // VEC_SCALE_OFFSET
+         0,                                          // VEC_SUB_OFFSET
+         false,                                      // RELU
+         {{4, 1, 2, 1, 1, 1}, {2, 4, 1, 1, 1, 32}},  // LOOPS
+         {0, 5},                                     // INPUTX
+         {1, 4},                                     // INPUTY
+         {3, 0},                                     // REDUCTION
+         {2, 1},                                     // WEIGHT
+         3,                                          // fxIndex
+         2,                                          // fyIndex
+         {5, 5},                                     // weightReuseIndex
+         false,                                      // matmul
+         1,                                          // stride
+         false,                                      // replication
+         false,                                      // maxpool
+         false,                                      // bias
+         30 * 1024,                                  // BIAS_OFFSET
+         false,                                      // residual
+         40 * 1024,                                  // RESIDUAL_OFFSET
+         false                                       // avgpool
+
      }},
 
     // attention- *v
     // (128 x 128) * (128 x 32)
     {"vAttention",
      {
-         0,                        // INPUT_OFFSET
-         1024 * 1024,              // WEIGHT_OFFSET
-         2 * 1024 * 1024,          // OUTPUT_OFFSET
-         false,                    // SOFTMAX
-         1,                        // SCALE
-         false,                    // TRANSPOSE
-         0,                        // VECTOR_OFFSET
-         false,                    // VEC_OP
-         false,                    // VEC_SUB
-         false,                    // VEC_SQUARE
-         false,                    // VEC_REDUCE
-         true,                     // CONST_SCALE
-         0,                        // VEC_SCALE_OFFSET
-         0,                        // VEC_SUB_OFFSET
-         false,                    // RELU
-         {{1, 4, 1}, {8, 2, 32}},  // LOOPS
-         {1, 2},                   // INPUT
-         {2, 0},                   // REDUCTION
-         {0, 1}                    // WEIGHT
+         0,                                          // INPUT_OFFSET
+         1024 * 1024,                                // WEIGHT_OFFSET
+         2 * 1024 * 1024,                            // OUTPUT_OFFSET
+         false,                                      // SOFTMAX
+         1,                                          // SCALE
+         false,                                      // TRANSPOSE
+         0,                                          // VECTOR_OFFSET
+         false,                                      // VEC_OP
+         false,                                      // VEC_SUB
+         false,                                      // VEC_SQUARE
+         false,                                      // VEC_REDUCE
+         true,                                       // CONST_SCALE
+         0,                                          // VEC_SCALE_OFFSET
+         0,                                          // VEC_SUB_OFFSET
+         false,                                      // RELU
+         {{4, 1, 1, 1, 1, 1}, {8, 2, 1, 1, 1, 32}},  // LOOPS
+         {0, 5},                                     // INPUTX
+         {1, 4},                                     // INPUTY
+         {3, 0},                                     // REDUCTION
+         {2, 1},                                     // WEIGHT
+         3,                                          // fxIndex
+         2,                                          // fyIndex
+         {5, 5},                                     // weightReuseIndex
+         false,                                      // matmul
+         1,                                          // stride
+         false,                                      // replication
+         false,                                      // maxpool
+         false,                                      // bias
+         30 * 1024,                                  // BIAS_OFFSET
+         false,                                      // residual
+         40 * 1024,                                  // RESIDUAL_OFFSET
+         false                                       // avgpool
      }},
 
     // wo projection
     // (128 x 128) x (128 x 128)
     {"wProjection",
      {
-         0,                        // INPUT_OFFSET
-         1024 * 1024,              // WEIGHT_OFFSET
-         2 * 1024 * 1024,          // OUTPUT_OFFSET
-         false,                    // SOFTMAX
-         1,                        // SCALE
-         false,                    // TRANSPOSE
-         0,                        // VECTOR_OFFSET
-         false,                    // VEC_OP
-         false,                    // VEC_SUB
-         false,                    // VEC_SQUARE
-         false,                    // VEC_REDUCE
-         true,                     // CONST_SCALE
-         0,                        // VEC_SCALE_OFFSET
-         0,                        // VEC_SUB_OFFSET
-         false,                    // RELU
-         {{4, 4, 1}, {8, 2, 32}},  // LOOPS
-         {1, 2},                   // INPUT
-         {2, 0},                   // REDUCTION
-         {0, 1}                    // WEIGHT
+         0,                                          // INPUT_OFFSET
+         1024 * 1024,                                // WEIGHT_OFFSET
+         2 * 1024 * 1024,                            // OUTPUT_OFFSET
+         false,                                      // SOFTMAX
+         1,                                          // SCALE
+         false,                                      // TRANSPOSE
+         0,                                          // VECTOR_OFFSET
+         false,                                      // VEC_OP
+         false,                                      // VEC_SUB
+         false,                                      // VEC_SQUARE
+         false,                                      // VEC_REDUCE
+         true,                                       // CONST_SCALE
+         0,                                          // VEC_SCALE_OFFSET
+         0,                                          // VEC_SUB_OFFSET
+         false,                                      // RELU
+         {{4, 1, 4, 1, 1, 1}, {8, 2, 1, 1, 1, 32}},  // LOOPS
+         {0, 5},                                     // INPUTX
+         {1, 4},                                     // INPUTY
+         {3, 0},                                     // REDUCTION
+         {2, 1},                                     // WEIGHT
+         3,                                          // fxIndex
+         2,                                          // fyIndex
+         {5, 5},                                     // weightReuseIndex
+         false,                                      // matmul
+         1,                                          // stride
+         false,                                      // replication
+         false,                                      // maxpool
+         false,                                      // bias
+         30 * 1024,                                  // BIAS_OFFSET
+         false,                                      // residual
+         40 * 1024,                                  // RESIDUAL_OFFSET
+         false                                       // avgpool
      }},
 
     // FFN 1
     // (128 x 128) * (128 x 512)
     {"ffn1",
      {
-         0,                        // INPUT_OFFSET
-         1024 * 1024,              // WEIGHT_OFFSET
-         2 * 1024 * 1024,          // OUTPUT_OFFSET
-         false,                    // SOFTMAX
-         1,                        // SCALE
-         false,                    // TRANSPOSE
-         0,                        // VECTOR_OFFSET
-         false,                    // VEC_OP
-         false,                    // VEC_SUB
-         false,                    // VEC_SQUARE
-         false,                    // VEC_REDUCE
-         true,                     // CONST_SCALE
-         0,                        // VEC_SCALE_OFFSET
-         0,                        // VEC_SUB_OFFSET
-         false,                    // RELU
-         {{8, 4, 1}, {8, 4, 32}},  // LOOPS
-         {1, 2},                   // INPUT
-         {2, 0},                   // REDUCTION
-         {0, 1}                    // WEIGHT
+         0,                                          // INPUT_OFFSET
+         1024 * 1024,                                // WEIGHT_OFFSET
+         2 * 1024 * 1024,                            // OUTPUT_OFFSET
+         false,                                      // SOFTMAX
+         1,                                          // SCALE
+         false,                                      // TRANSPOSE
+         0,                                          // VECTOR_OFFSET
+         false,                                      // VEC_OP
+         false,                                      // VEC_SUB
+         false,                                      // VEC_SQUARE
+         false,                                      // VEC_REDUCE
+         true,                                       // CONST_SCALE
+         0,                                          // VEC_SCALE_OFFSET
+         0,                                          // VEC_SUB_OFFSET
+         false,                                      // RELU
+         {{4, 1, 8, 1, 1, 1}, {8, 4, 1, 1, 1, 32}},  // LOOPS
+         {0, 5},                                     // INPUTX
+         {1, 4},                                     // INPUTY
+         {3, 0},                                     // REDUCTION
+         {2, 1},                                     // WEIGHT
+         3,                                          // fxIndex
+         2,                                          // fyIndex
+         {5, 5},                                     // weightReuseIndex
+         false,                                      // matmul
+         1,                                          // stride
+         false,                                      // replication
+         false,                                      // maxpool
+         false,                                      // bias
+         30 * 1024,                                  // BIAS_OFFSET
+         false,                                      // residual
+         40 * 1024,                                  // RESIDUAL_OFFSET
+         false                                       // avgpool
      }},
 
     // FFN 2
     // (128 x 512) x (512 x 128)
     {"ffn2",
      {
-         0,                         // INPUT_OFFSET
-         1024 * 1024,               // WEIGHT_OFFSET
-         2 * 1024 * 1024,           // OUTPUT_OFFSET
-         false,                     // SOFTMAX
-         1,                         // SCALE
-         false,                     // TRANSPOSE
-         0,                         // VECTOR_OFFSET
-         false,                     // VEC_OP
-         false,                     // VEC_SUB
-         false,                     // VEC_SQUARE
-         false,                     // VEC_REDUCE
-         true,                      // CONST_SCALE
-         0,                         // VEC_SCALE_OFFSET
-         0,                         // VEC_SUB_OFFSET
-         false,                     // RELU
-         {{4, 4, 1}, {32, 2, 32}},  // LOOPS
-         {1, 2},                    // INPUT
-         {2, 0},                    // REDUCTION
-         {0, 1}                     // WEIGHT
+         0,                                           // INPUT_OFFSET
+         1024 * 1024,                                 // WEIGHT_OFFSET
+         2 * 1024 * 1024,                             // OUTPUT_OFFSET
+         false,                                       // SOFTMAX
+         1,                                           // SCALE
+         false,                                       // TRANSPOSE
+         0,                                           // VECTOR_OFFSET
+         false,                                       // VEC_OP
+         false,                                       // VEC_SUB
+         false,                                       // VEC_SQUARE
+         false,                                       // VEC_REDUCE
+         true,                                        // CONST_SCALE
+         0,                                           // VEC_SCALE_OFFSET
+         0,                                           // VEC_SUB_OFFSET
+         false,                                       // RELU
+         {{4, 1, 4, 1, 1, 1}, {32, 2, 1, 1, 1, 32}},  // LOOPS
+         {0, 5},                                      // INPUTX
+         {1, 4},                                      // INPUTY
+         {3, 0},                                      // REDUCTION
+         {2, 1},                                      // WEIGHT
+         3,                                           // fxIndex
+         2,                                           // fyIndex
+         {5, 5},                                      // weightReuseIndex
+         false,                                       // matmul
+         1,                                           // stride
+         false,                                       // replication
+         false,                                       // maxpool
+         false,                                       // bias
+         30 * 1024,                                   // BIAS_OFFSET
+         false,                                       // residual
+         40 * 1024,                                   // RESIDUAL_OFFSET
+         false                                        // avgpool
      }},
 
     // output bottleneck
     // (128 x 128) x (128 x 512)
     {"outputBottleneck",
      {
-         0,                        // INPUT_OFFSET
-         1024 * 1024,              // WEIGHT_OFFSET
-         2 * 1024 * 1024,          // OUTPUT_OFFSET
-         false,                    // SOFTMAX
-         1,                        // SCALE
-         false,                    // TRANSPOSE
-         0,                        // VECTOR_OFFSET
-         false,                    // VEC_OP
-         false,                    // VEC_SUB
-         false,                    // VEC_SQUARE
-         false,                    // VEC_REDUCE
-         true,                     // CONST_SCALE
-         0,                        // VEC_SCALE_OFFSET
-         0,                        // VEC_SUB_OFFSET
-         false,                    // RELU
-         {{8, 4, 1}, {8, 4, 32}},  // LOOPS
-         {1, 2},                   // INPUT
-         {2, 0},                   // REDUCTION
-         {0, 1}                    // WEIGHT
+         0,                                          // INPUT_OFFSET
+         1024 * 1024,                                // WEIGHT_OFFSET
+         2 * 1024 * 1024,                            // OUTPUT_OFFSET
+         false,                                      // SOFTMAX
+         1,                                          // SCALE
+         false,                                      // TRANSPOSE
+         0,                                          // VECTOR_OFFSET
+         false,                                      // VEC_OP
+         false,                                      // VEC_SUB
+         false,                                      // VEC_SQUARE
+         false,                                      // VEC_REDUCE
+         true,                                       // CONST_SCALE
+         0,                                          // VEC_SCALE_OFFSET
+         0,                                          // VEC_SUB_OFFSET
+         false,                                      // RELU
+         {{4, 1, 8, 1, 1, 1}, {8, 4, 1, 1, 1, 32}},  // LOOPS
+         {0, 5},                                     // INPUTX
+         {1, 4},                                     // INPUTY
+         {3, 0},                                     // REDUCTION
+         {2, 1},                                     // WEIGHT
+         3,                                          // fxIndex
+         2,                                          // fyIndex
+         {5, 5},                                     // weightReuseIndex
+         false,                                      // matmul
+         1,                                          // stride
+         false,                                      // replication
+         false,                                      // maxpool
+         false,                                      // bias
+         30 * 1024,                                  // BIAS_OFFSET
+         false,                                      // residual
+         40 * 1024,                                  // RESIDUAL_OFFSET
+         false                                       // avgpool
      }},
 };
