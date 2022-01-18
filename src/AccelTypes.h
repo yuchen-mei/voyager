@@ -11,6 +11,7 @@
 #include <mc_connections.h>
 
 #include "Params.h"
+#include "PositTypes.h"
 
 struct MemoryRequest {
   int address;
@@ -51,7 +52,6 @@ class Pack1D {
   Pack1D(const int a) {}
 
   operator int() const { return Pack1D<TYPE, SIZE>(); }
-
 
   TYPE &operator[](unsigned int i) { return this->value[i]; }
   const TYPE &operator[](unsigned int i) const { return this->value[i]; }
