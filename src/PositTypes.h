@@ -10,6 +10,7 @@ class Posit {
  public:
   Posit() {}
   Posit(const PositFP &input);
+  Posit(const float &f);
   Posit(int i) { bits = i; }
 
   // overridden operators
@@ -49,10 +50,10 @@ class PositFP {
   PositFP(const Posit &input);
   PositFP(int i) { setZero(); }
 
-  bool isZero() const { return scale == -127; }
+  bool isZero() const { return get_scale() == -127; }
   void setZero() {
-    fraction = 0;
-    scale = -127;
+    set_fraction(0);
+    set_scale(-127);
   }
 
   PositFP &operator+=(const PositFP &rhs);
@@ -60,15 +61,15 @@ class PositFP {
 
   PositFP operator*(const PositFP &op) {
     PositFP result;
-    result.sign = sign ^ op.sign;
-    result.scale = scale + op.scale;
+    result.set_sign(get_sign() ^ op.get_sign());
+    result.set_scale(get_scale() + op.get_scale());
 
-    result.fraction = (fraction >> 8) * (op.fraction >> 8);
+    result.set_fraction((get_fraction() >> 8) * (op.get_fraction() >> 8));
 
-    if (result.fraction[15]) {
-      result.scale++;
+    if (result.get_fraction()[15]) {
+      result.set_scale(result.get_scale() + 1);
     } else {
-      result.fraction <<= 1;
+      result.set_fraction(result.get_fraction() << 1);
     }
 
     return result;
@@ -77,45 +78,45 @@ class PositFP {
   PositFP operator+(const PositFP &op) {
     PositFP result;
     // align the fraction
-    int result_scale = max(scale, op.scale);
-    ac_int<16, false> r1 = fraction >> (result_scale - scale + 1);
-    ac_int<16, false> r2 = op.fraction >> (result_scale - op.scale + 1);
+    int result_scale = max(get_scale(), op.get_scale());
+    ac_int<16, false> r1 = get_fraction() >> (result_scale - get_scale() + 1);
+    ac_int<16, false> r2 =
+        op.get_fraction() >> (result_scale - op.get_scale() + 1);
     ac_int<16, false> sum;
 
     int shift = 0;
-    if (sign == op.sign) {
-      result.sign = sign;
+    if (get_sign() == op.get_sign()) {
+      result.set_sign(get_sign());
       sum = r1 + r2;
       if (sum[15]) shift = -1;
     } else {
       if (r1 > r2) {
         sum = r1 - r2;
-        result.sign = sign;
+        result.set_sign(get_sign());
       } else if (r1 < r2) {
         sum = r2 - r1;
-        result.sign = op.sign;
+        result.set_sign(op.get_sign());
       } else {
         result.setZero();
         return result;
       }
-      shift = 14 - fsb(sum);
+      shift = 14 - fsb16(sum);
     }
-    // printf("fraction: %s\n", sum.to_string(AC_BIN).c_str());
 
     if (shift > 16) {
       result.setZero();
       return result;
     }
 
-    result.scale = result_scale - shift;
-    result.fraction = sum << (shift + 1);
+    result.set_scale(result_scale - shift);
+    result.set_fraction(sum << (shift + 1));
 
     return result;
   }
 
   PositFP operator-(const PositFP &op) {
     PositFP negOp = op;
-    negOp.sign = !negOp.sign;
+    negOp.set_sign(!negOp.get_sign());
 
     return *this + negOp;
   }
@@ -136,23 +137,22 @@ class PositFP {
   }
 
   bool operator<(const PositFP &rhs) const {
-    if (sign ^ rhs.sign) return sign;
-    if (scale != rhs.scale) return scale < rhs.scale;
-    return fraction < rhs.fraction;
+    if (get_sign() ^ rhs.get_sign()) return get_sign();
+    if (get_scale() != rhs.get_scale()) return get_scale() < rhs.get_scale();
+    return get_fraction() < rhs.get_fraction();
   }
 
-  ac_int<1, false> sign;
-  ac_int<8, true> scale;       // regime + exponent
-  ac_int<16, false> fraction;  // 1 hidden bit + max 5 bit
+  ac_int<1, false> get_sign() const { return bits.slc<1>(0); }
+  ac_int<8, true> get_scale() const { return bits.slc<8>(1); }
+  ac_int<16, false> get_fraction() const { return bits.slc<16>(9); }
+
+  void set_sign(ac_int<1, false> sign) { bits.set_slc(0, sign); }
+  void set_scale(ac_int<8, true> scale) { bits.set_slc(1, scale); }
+  void set_fraction(ac_int<16, false> fraction) { bits.set_slc(9, fraction); }
+
+  ac_int<1 + 8 + 16, false> bits;
 
   static const unsigned int width = 1 + 8 + 16;
-
-  template <unsigned int Size>
-  void Marshall(Marshaller<Size> &m) {
-    m &sign;
-    m &scale;
-    m &fraction;
-  }
 
   inline friend void sc_trace(sc_trace_file *tf, const PositFP &positFP,
                               const std::string &name) {
@@ -169,21 +169,38 @@ class PositFP {
   static const int nbits = 8;
   static const int es = 1;
 
-  int trailingZeros(unsigned int v) {
-    static const int
-        Mod37BitPosition[] =  // map a bit value mod 37 to its position
-        {32, 0, 1,  26, 2,  23, 27, 0,  3,  16, 24, 30, 28,
-         11, 0, 13, 4,  7,  17, 0,  25, 22, 31, 15, 29, 10,
-         12, 6, 0,  21, 14, 9,  5,  20, 8,  19, 18};
-    return Mod37BitPosition[(-v & v) % 37];
+  inline int fsb(ac_int<8, false> v) {
+    int c;
+    c = 1;
+    if (!(v & 0xf0)) {
+      v <<= 4;
+      c += 4;
+    }
+    if (!(v & 0xc0)) {
+      v <<= 2;
+      c += 2;
+    }
+    c -= v & 0x80 ? 1 : 0;
+    return 7 - c;
   }
 
-  int fsb(ac_int<8, false> x) {
-    x |= x >> 4;
-    x |= x >> 2;
-    x |= x >> 1;
-    x ^= x >> 1;
-    return trailingZeros(x);
+  inline int fsb16(ac_int<16, false> v) {
+    int c;
+    c = 1;
+    if (!(v & 0xff00)) {
+      v <<= 8;
+      c += 8;
+    }
+    if (!(v & 0xf000)) {
+      v <<= 4;
+      c += 4;
+    }
+    if (!(v & 0xc000)) {
+      v <<= 2;
+      c += 2;
+    }
+    c -= v & 0x8000 ? 1 : 0;
+    return 15 - c;
   }
 };
 
@@ -193,14 +210,14 @@ inline Posit::Posit(const PositFP &input) {
     bits = 0;
   } else {
     // TODO: handle infinity
-    if ((input.scale >> es) > 6 or (input.scale >> es) < -6) {
-      bits = input.scale > 0 ? 0xEF : 0x1;
+    if ((input.get_scale() >> es) > 6 or (input.get_scale() >> es) < -6) {
+      bits = input.get_scale() > 0 ? 0xEF : 0x1;
     } else {
       int pt_len = nbits + 3 + es;
       ac_int<12, false> pt_bits, regime, exponent, fraction, sticky_bit;
 
-      bool s = input.sign;
-      int e = input.scale;
+      bool s = input.get_sign();
+      int e = input.get_scale();
       bool r = (e >= 0);
 
       int run = r ? (1 + (e >> es)) : -(e >> es);
@@ -209,13 +226,13 @@ inline Posit::Posit(const PositFP &input) {
 
       exponent = (e % 2 + 2) % 2;
       int nf = max(0, nbits + 1 - (2 + run + es));
-      fraction = (input.fraction << 1) >> (16 - nf);
+      fraction = (input.get_fraction() << 1) >> (16 - nf);
 
       pt_bits = regime << es + nf + 1;
       pt_bits |= exponent << nf + 1;
       pt_bits |= fraction << 1;
-      pt_bits |= input.fraction << nf ? 0x1 : 0x0;  // any after fbits - 1 - nf
-      // std::cerr << pt_bits.to_string(AC_BIN) << std::endl;
+      pt_bits |=
+          input.get_fraction() << nf ? 0x1 : 0x0;  // any after fbits - 1 - nf
 
       int len = 1 + max(nbits + 1, 2 + run + es);
       bool blast = pt_bits[len - nbits];
@@ -226,38 +243,36 @@ inline Posit::Posit(const PositFP &input) {
       bits = pt_bits >> (len - nbits);
       if (rb) bits++;
     }
-    if (input.sign) bits = bits.bit_complement() + 1;
+    if (input.get_sign()) bits = bits.bit_complement() + 1;
   }
 }
 
 // decoder
 inline PositFP::PositFP(const Posit &input) {
-  ac_int<8, false> bits = input.bits;
-  if (bits == 0) {
-    fraction = 0;
-    scale = -127;
+  ac_int<8, false> posit_bits = input.bits;
+  if (posit_bits == 0) {
+    set_fraction(0);
+    set_scale(-127);
   } else {
-    sign = bits[nbits - 1];
-    if (sign) bits = (bits - 1).bit_complement();  // convert to positive posit
+    set_sign(posit_bits.slc<1>(nbits - 1));
+    if (get_sign())
+      posit_bits =
+          (posit_bits - 1).bit_complement();  // convert to positive posit
 
-    bits <<= 1;  // remove sign bit
-    int leadingBit = bits[nbits - 1];
-    // std::cerr << "leading bit: " << leadingBit << std::endl;
-    int index = leadingBit ? fsb(bits.bit_complement()) : fsb(bits);
+    posit_bits <<= 1;  // remove sign bit
 
-    // std::cerr << "bit pattern: " << bits.to_string(AC_BIN) << std::endl;
-    // std::cerr << "index: " << index << std::endl;
-    scale = leadingBit ? 6 - index : index - 7;
-    scale *= 2;
-    // std::cerr << "scale: " << scale << std::endl;
-    if (index > 0) scale += bits[index - 1];  // exponent bit
-    // std::cerr << "scale: " << scale << std::endl;
+    ac_int<1, false> leadingBit = posit_bits.slc<1>(nbits - 1);
 
-    // std::cerr << "bit pattern: " << bits.to_string(AC_BIN) << std::endl;
-    fraction = bits << (nbits - index + es);
-    // printf("fraction: %s\n", fraction.to_string(AC_BIN).c_str());
-    fraction = (fraction << 7) | 0x8000;
-    // printf("fraction: %s\n", fraction.to_string(AC_BIN).c_str());
+    int index = leadingBit ? fsb(posit_bits.bit_complement()) : fsb(posit_bits);
+
+    set_scale((leadingBit == 1) ? 6 - index : index - 7);
+    set_scale(get_scale() * 2);
+
+    if (index > 0)
+      set_scale(get_scale() + posit_bits.slc<1>(index - 1));  // exponent bit
+
+    set_fraction(posit_bits << (nbits - index + es));
+    set_fraction((get_fraction() << 7) | 0x8000);
   }
 }
 
@@ -310,6 +325,7 @@ inline PositFP &PositFP::operator+=(const Posit &rhs) {
 }
 
 inline Posit::operator float() const {
+#ifndef __SYNTHESIS__
   union ufloat {
     float f;
     uint32_t u;
@@ -317,13 +333,41 @@ inline Posit::operator float() const {
   union ufloat uf;
 
   PositFP p = *this;
-  uf.u = p.sign ? 1 << 31 : 0;
-  uf.u += (p.scale + 127) << 23;
-  uf.u += (p.fraction & ((1 << 15) - 1)) << 8;
+  uf.u = p.get_sign() ? 1 << 31 : 0;
+  uf.u += (p.get_scale() + 127) << 23;
+  uf.u += (p.get_fraction() & ((1 << 15) - 1)) << 8;
   return uf.f;
+#else
+  return 0.0;
+#endif
+}
+
+inline Posit::Posit(const float &f) {
+#ifndef __SYNTHESIS__
+  union ufloat {
+    float f;
+    uint32_t u;
+  };
+  union ufloat uf;
+
+  uf.f = f;
+  PositFP p;
+  p.set_sign(uf.f < 0);
+  p.set_scale(((uf.u >> 23) & 0xFF) - 127);
+  p.set_fraction(((uf.u & ((1 << 23) - 1)) >> 8) | (1 << 15));
+
+  *this = p;
+#else
+  set_zero();
+#endif
 }
 
 inline bool operator==(const PositFP &lhs, const PositFP &rhs) {
-  return (lhs.sign == rhs.sign) && (lhs.scale == rhs.scale) &&
-         (lhs.fraction == rhs.fraction);
+  return (lhs.get_sign() == rhs.get_sign()) &&
+         (lhs.get_scale() == rhs.get_scale()) &&
+         (lhs.get_fraction() == rhs.get_fraction());
+}
+
+inline bool operator==(const Posit &lhs, const Posit &rhs) {
+  return lhs.bits == rhs.bits;
 }

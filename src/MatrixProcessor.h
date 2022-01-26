@@ -13,8 +13,6 @@ SC_MODULE(MatrixProcessor) {
   sc_signal<bool> CCS_INIT_S1(weightReady);
   sc_signal<bool> CCS_INIT_S1(weightFill);
 
-  Pack1D<ADTYPE, NCOLS> accumulation_buffer[BUFFER_SIZE];
-
   sc_signal<bool> CCS_INIT_S1(paramsReady);
 
   sc_signal<bool> CCS_INIT_S1(toggleOut);
@@ -34,6 +32,14 @@ SC_MODULE(MatrixProcessor) {
   Skewer<ac_int<1, false>, NROWS> CCS_INIT_S1(weightSwapSkewer);
   Connections::Combinational<Pack1D<ac_int<1, false>, NROWS> > CCS_INIT_S1(
       weightSwapSkewerDin);
+  SystolicArray<ADTYPE, ADTYPE, ADTYPE, NROWS, NCOLS> CCS_INIT_S1(
+      systolicArray);
+  Connections::Combinational<Pack1D<ADTYPE, NROWS> > CCS_INIT_S1(
+      convertedInputsChannel);
+  Connections::Combinational<Pack1D<ADTYPE, NROWS> > CCS_INIT_S1(
+      convertedWeightsChannel);
+  Connections::Combinational<Pack1D<ADTYPE, NROWS> > CCS_INIT_S1(
+      convertedOutputsChannel);
 
  public:
   sc_in<bool> CCS_INIT_S1(clk);
@@ -44,9 +50,6 @@ SC_MODULE(MatrixProcessor) {
   Connections::Out<Pack1D<ODTYPE, NROWS> > CCS_INIT_S1(outputsChannel);
 
   Connections::In<Params> CCS_INIT_S1(paramsIn);
-
-  SystolicArray<ADTYPE, ADTYPE, ADTYPE, NROWS, NCOLS> CCS_INIT_S1(
-      systolicArray);
 
   Connections::Combinational<Pack1D<ADTYPE, NROWS> > CCS_INIT_S1(
       inputsToSystolicArray);
@@ -99,6 +102,52 @@ SC_MODULE(MatrixProcessor) {
     sensitive << clk.pos();
     async_reset_signal_is(rstn, false);
   }
+
+  //   void convert_inputs() {
+  //     inputsChannel.Reset()
+  //     convertedInputsChannel.ResetWrite();
+  //     wait();
+
+  // #pragma hls_pipeline_init_interval 1
+  //     while (true) {
+  //       Pack1D<IDTYPE, NROWS> val = inputsChannel.Pop();
+  //       Pack1D<ADTYPE, NROWS> convertedVal;
+  // #pragma hls_unroll yes
+  //       for (int i = 0; i < NROWS; i++) {
+  //         convertedVal[i] = val[i];
+  //       }
+  //     }
+  //   }
+  //   void convert_weights() {
+  //     weightsChannel.Reset();
+  //     convertedWeightsChannel.ResetWrite();
+  //     wait();
+
+  // #pragma hls_pipeline_init_interval 1
+  //     while (true) {
+  //       Pack1D<IDTYPE, NROWS> val = weightsChannel.Pop();
+  //       Pack1D<ADTYPE, NROWS> convertedVal;
+  // #pragma hls_unroll yes
+  //       for (int i = 0; i < NROWS; i++) {
+  //         convertedVal[i] = val[i];
+  //       }
+  //     }
+  //   }
+  //   void convert_inputs() {
+  //     outputsChannel.Reset();
+  //     unconvertedOutputsChannel.ResetRead();
+  //     wait();
+
+  // #pragma hls_pipeline_init_interval 1
+  //     while (true) {
+  //       Pack1D<ADTYPE, NROWS> val = unconvertedOutputsChannel.Pop();
+  //       Pack1D<IDTYPE, NROWS> convertedVal;
+  // #pragma hls_unroll yes
+  //       for (int i = 0; i < NROWS; i++) {
+  //         convertedVal[i] = val[i];
+  //       }
+  //     }
+  //   }
 
   void process_weights() {
     weightsChannel.Reset();
@@ -186,6 +235,8 @@ SC_MODULE(MatrixProcessor) {
           totalOps *= params.loops[i][j];
         }
       }
+
+      Pack1D<ADTYPE, NCOLS> accumulation_buffer[BUFFER_SIZE];
 
       int step = 0;
       int outputCounter = 0;

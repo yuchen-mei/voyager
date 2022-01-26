@@ -52,7 +52,7 @@ if {[info exists env(DEBUG)]} {
   solution library add ccs_sample_mem
 } else {
   solution library add ts1n40lpb1024x128m4fb_tt1p1v25c
-  solution library add custom1024x128
+  solution library add mem_1024x402
 }
 
 
@@ -63,14 +63,29 @@ directive set -CLOCKS $clocks
 
 go assembly
 
-directive set /Accelerator/DoubleBuffer<ac_int<8,true>,$DIMENSION,1024>/DoubleBuffer<ac_int<8,true>,$DIMENSION,1024>:mem0Run/mem0Run/mem0.value -WORD_WIDTH [expr 8*$DIMENSION]
-directive set /Accelerator/DoubleBuffer<ac_int<8,true>,$DIMENSION,1024>/DoubleBuffer<ac_int<8,true>,$DIMENSION,1024>:mem1Run/mem1Run/mem1.value -WORD_WIDTH [expr 8*$DIMENSION]
-directive set /Accelerator/MatrixProcessor<ac_int<8,true>,ac_int<8,true>,ac_int<8,true>,$DIMENSION,$DIMENSION,1024>/run/accumulation_buffer.value -WORD_WIDTH [expr 8*$DIMENSION]
+directive set /Accelerator/DoubleBuffer<$IO_DATATYPE,$DIMENSION,1024>/DoubleBuffer<$IO_DATATYPE,$DIMENSION,1024>:mem0Run/mem0Run/mem0.value.bits -WORD_WIDTH [expr $IO_DATATYPE_WIDTH*$DIMENSION]
+directive set /Accelerator/DoubleBuffer<$IO_DATATYPE,$DIMENSION,1024>/DoubleBuffer<$IO_DATATYPE,$DIMENSION,1024>:mem1Run/mem1Run/mem1.value.bits -WORD_WIDTH [expr $IO_DATATYPE_WIDTH*$DIMENSION]
+
+# Map onto same resource
+directive set /Accelerator/MatrixProcessor<Posit,Posit,PositFP,Posit,$DIMENSION,$DIMENSION,1024>/MatrixProcessor<Posit,Posit,PositFP,Posit,$DIMENSION,$DIMENSION,1024>:run/run/while:accumulation_buffer.value.bits -WORD_WIDTH [expr $ACCUM_DATATYPE_WIDTH * $DIMENSION]
+directive set /Accelerator/MatrixProcessor<$IO_DATATYPE,$IO_DATATYPE,$ACCUM_DATATYPE,$IO_DATATYPE,$DIMENSION,$DIMENSION,1024>/MatrixProcessor<$IO_DATATYPE,$IO_DATATYPE,$ACCUM_DATATYPE,$IO_DATATYPE,$DIMENSION,$DIMENSION,1024>:run/run/while:accumulation_buffer.value.bits:rsc -MAP_TO_MODULE mem_1024x402.custom1024x402
+# directive set /Accelerator/MatrixProcessor<Posit,Posit,PositFP,Posit,16,16,1024>/MatrixProcessor<Posit,Posit,PositFP,Posit,16,16,1024>:run/run/accumulation_buffer.value.scale -WORD_WIDTH 128
+# directive set /Accelerator/MatrixProcessor<Posit,Posit,PositFP,Posit,16,16,1024>/MatrixProcessor<Posit,Posit,PositFP,Posit,16,16,1024>:run/run/accumulation_buffer.value.fraction -WORD_WIDTH 256
+# directive set /Accelerator/MatrixProcessor<Posit,Posit,PositFP,Posit,16,16,1024>/MatrixProcessor<Posit,Posit,PositFP,Posit,16,16,1024>:run/run/accumulation_buffer.value.sign -WORD_WIDTH 16
+
+# directive set /Accelerator/MatrixProcessor<Posit,Posit,PositFP,Posit,16,16,1024>/MatrixProcessor<Posit,Posit,PositFP,Posit,16,16,1024>:run/run/accumulation_buffer.value.fraction:rsc -PACKING_MODE sidebyside
+# directive set /Accelerator/MatrixProcessor<Posit,Posit,PositFP,Posit,16,16,1024>/MatrixProcessor<Posit,Posit,PositFP,Posit,16,16,1024>:run/run/accumulation_buffer.value.sign -RESOURCE accumulation_buffer.value.fraction:rsc
+# directive set /Accelerator/MatrixProcessor<Posit,Posit,PositFP,Posit,16,16,1024>/MatrixProcessor<Posit,Posit,PositFP,Posit,16,16,1024>:run/run/accumulation_buffer.value.scale -RESOURCE accumulation_buffer.value.fraction:rsc
+# directive set /Accelerator/MatrixProcessor<Posit,Posit,PositFP,Posit,16,16,1024>/MatrixProcessor<Posit,Posit,PositFP,Posit,16,16,1024>:run/run/accumulation_buffer.value.fraction:rsc -MAP_TO_MODULE mem_1024x402.custom1024x402
+
+# directive set /Accelerator/MatrixProcessor<$IO_DATATYPE,$IO_DATATYPE,$ACCUM_DATATYPE,$IO_DATATYPE,$DIMENSION,$DIMENSION,1024>/run/accumulation_buffer.value.bits -WORD_WIDTH [expr $ACCUM_DATATYPE_WIDTH*$DIMENSION]
+
 if {[info exists env(DEBUG)] == 0} {
-  directive set /Accelerator/MatrixProcessor<ac_int<8,true>,ac_int<8,true>,ac_int<8,true>,16,16,1024>/MatrixProcessor<ac_int<8,true>,ac_int<8,true>,ac_int<8,true>,16,16,1024>:run/run/accumulation_buffer.value:rsc -MAP_TO_MODULE custom1024x128.custom1024x128
+  # directive set /Accelerator/MatrixProcessor<$IO_DATATYPE,$IO_DATATYPE,$ACCUM_DATATYPE,$IO_DATATYPE,16,16,1024>/MatrixProcessor<$IO_DATATYPE,$IO_DATATYPE,$ACCUM_DATATYPE,$IO_DATATYPE,16,16,1024>:run/run/accumulation_buffer.value:rsc -MAP_TO_MODULE custom1024x128.custom1024x128
 }
-directive set /Accelerator/ArithmeticUnit<ac_int<8,true>,16,16>/run/maxpool_comparator.value:rsc -MAP_TO_MODULE {[Register]}
-directive set /Accelerator/WeightController<ac_int<8,true>,16,16>/WeightController<ac_int<8,true>,16,16>:transposer/transposer/while:if#1:transposeBuffer:rsc -MAP_TO_MODULE {[Register]}
+directive set /Accelerator/ArithmeticUnit<$IO_DATATYPE,$DIMENSION,$DIMENSION>/run/while:maxpool_comparator.value.bits:rsc -MAP_TO_MODULE {[Register]}
+
+directive set /Accelerator/WeightController<$IO_DATATYPE,$DIMENSION,$DIMENSION>/WeightController<$IO_DATATYPE,$DIMENSION,$DIMENSION>:transposer/transposer/while:if#1:transposeBuffer.bits:rsc -MAP_TO_MODULE {[Register]}
 
 go architect
 

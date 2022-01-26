@@ -1,1 +1,11 @@
 set DIMENSION 16
+
+# set IO_DATATYPE "ac_int<8,true>"
+# set ACCUM_DATATYPE "ac_int<32,true>"
+# set ACCUM_DATATYPE_WIDTH 32
+
+set IO_DATATYPE "Posit"
+set ACCUM_DATATYPE "PositFP"
+set ACCUM_DATATYPE_WIDTH 25
+
+set IO_DATATYPE_WIDTH 8

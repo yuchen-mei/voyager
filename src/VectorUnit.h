@@ -386,11 +386,11 @@ SC_MODULE(ReduceUnit) {
         for (int chunk = 0; chunk < cols / WIDTH; chunk++) {
           Pack1D<DTYPE, WIDTH> vector = vectorIn.Pop();
 
+// #pragma cluster addtree
+// #pragma cluster_type both
 #pragma hls_unroll yes
-#pragma cluster addtree
-#pragma cluster_type both
           for (int i = 0; i < WIDTH; i++) {
-            sum += vector.value[i];
+            // sum += vector.value[i]; // FIXME
           }
         }
 
@@ -481,6 +481,15 @@ SC_MODULE(ArithmeticUnit) {
     async_reset_signal_is(rstn, false);
   }
 
+#pragma hls_design interface ccore
+  void add(Pack1D<DTYPE, WIDTH> & a, Pack1D<DTYPE, WIDTH> & b,
+           Pack1D<DTYPE, WIDTH> & c) {
+#pragma hls_unroll yes
+    for (int i = 0; i < WIDTH; i++) {
+      a[i] = a[i] + b[i] + c[i];
+    }
+  }
+
   void run() {
     paramsIn.Reset();
     tensorIn.Reset();
@@ -507,6 +516,8 @@ SC_MODULE(ArithmeticUnit) {
       loop_bounds[1][params.fyIndex] = 1;
 
       Pack1D<DTYPE, NROWS> bias;
+      Pack1D<DTYPE, WIDTH> avgpool;
+      Pack1D<DTYPE, WIDTH> maxpool_comparator[16];  // row buffer for maxpool
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
@@ -563,20 +574,24 @@ SC_MODULE(ArithmeticUnit) {
 
                         Pack1D<DTYPE, NROWS> outputPixel = tensorIn.Pop();
 
-                        if (params.BIAS) {
+                        if (!params.BIAS) {
 #pragma hls_unroll yes
                           for (int i = 0; i < NROWS; i++) {
-                            outputPixel.value[i] += bias.value[i];
+                            bias[i] = 0;
                           }
                         }
 
+                        Pack1D<DTYPE, NROWS> residualPixel;
                         if (params.RESIDUAL) {
-                          Pack1D<DTYPE, NROWS> residualPixel = residualIn.Pop();
+                          residualPixel = residualIn.Pop();
+                        } else {
 #pragma hls_unroll yes
                           for (int i = 0; i < NROWS; i++) {
-                            outputPixel.value[i] += residualPixel.value[i];
+                            residualPixel[i] = 0;
                           }
                         }
+
+                        add(outputPixel, bias, residualPixel);
 
                         if (params.MAXPOOL) {
                           if (x0 % 2 == 0 && y0 % 2 == 0) {
@@ -671,10 +686,6 @@ SC_MODULE(ArithmeticUnit) {
       }
     }
   }
-
- private:
-  Pack1D<DTYPE, WIDTH> maxpool_comparator[16];  // row buffer for maxpool
-  Pack1D<DTYPE, WIDTH> avgpool;
 };
 
 template <int NROWS, int WIDTH>

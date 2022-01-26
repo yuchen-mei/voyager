@@ -34,24 +34,24 @@ SC_MODULE(SystolicArray) {
   sc_fifo<Pack1D<IDTYPE, NROWS> > outputFifo;
 
   SC_CTOR(SystolicArray) {
-    ProcessingElement<IDTYPE, WDTYPE, ODTYPE> *pe[NROWS][NCOLS];
+    ProcessingElement<IDTYPE, WDTYPE, ODTYPE> *pe[NROWS * NCOLS];
     for (int i = 0; i < NROWS; i++) {
       for (int j = 0; j < NCOLS; j++) {
-        pe[i][j] = new ProcessingElement<IDTYPE, WDTYPE, ODTYPE>(
+        pe[i * NCOLS + j] = new ProcessingElement<IDTYPE, WDTYPE, ODTYPE>(
             sc_gen_unique_name("pe_inst"));
-        pe[i][j]->clk(clk);
-        pe[i][j]->rstn(rstn);
-        pe[i][j]->input_in(inputConnection[i][j]);
-        pe[i][j]->weight_in(weightConnection[i][j]);
-        pe[i][j]->psum_in(psumConnection[i][j]);
-        pe[i][j]->swap_weights_in(weightSwap[i][j]);
-        pe[i][j]->swap_weights_out(weightSwap[i][j + 1]);
-        pe[i][j]->input_out(inputConnection[i][j + 1]);
-        pe[i][j]->weight_out(weightConnection[i + 1][j]);
-        pe[i][j]->psum_out(psumConnection[i + 1][j]);
-        pe[i][j]->valid_output(validOutput[i][j]);
-        pe[i][j]->toggle(peToggle);
-        pe[i][j]->push_weights(weightPush);
+        pe[i * NCOLS + j]->clk(clk);
+        pe[i * NCOLS + j]->rstn(rstn);
+        pe[i * NCOLS + j]->input_in(inputConnection[i][j]);
+        pe[i * NCOLS + j]->weight_in(weightConnection[i][j]);
+        pe[i * NCOLS + j]->psum_in(psumConnection[i][j]);
+        pe[i * NCOLS + j]->swap_weights_in(weightSwap[i][j]);
+        pe[i * NCOLS + j]->swap_weights_out(weightSwap[i][j + 1]);
+        pe[i * NCOLS + j]->input_out(inputConnection[i][j + 1]);
+        pe[i * NCOLS + j]->weight_out(weightConnection[i + 1][j]);
+        pe[i * NCOLS + j]->psum_out(psumConnection[i + 1][j]);
+        pe[i * NCOLS + j]->valid_output(validOutput[i][j]);
+        pe[i * NCOLS + j]->toggle(peToggle);
+        pe[i * NCOLS + j]->push_weights(weightPush);
       }
     }
 

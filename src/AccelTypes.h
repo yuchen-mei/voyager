@@ -65,6 +65,117 @@ class Pack1D {
   }
 };
 
+template <size_t SIZE>
+class Pack1D<PositFP, SIZE> {
+ public:
+  PositFP value[SIZE];
+
+  static const unsigned int width = PositFP::width * SIZE;
+
+  Pack1D() {}
+  Pack1D(const int a) {}
+
+  operator int() const { return Pack1D<PositFP, SIZE>(); }
+
+  PositFP &operator[](unsigned int i) { return this->value[i]; }
+  const PositFP &operator[](unsigned int i) const { return this->value[i]; }
+
+  template <unsigned int Size>
+  void Marshall(Marshaller<Size> &m) {
+#pragma hls_unroll yes
+    for (unsigned int i = 0; i < SIZE; i++) {
+      m &value[i].bits;
+      // m &value[i].scale;
+      // m &value[i].fraction;
+    }
+    // #pragma hls_unroll yes
+    //     for (unsigned int i = 0; i < SIZE; i++) {
+    //       // m &value[i].sign;
+    //       m &value[i].scale;
+    //       // m &value[i].fraction;
+    //     }
+    // #pragma hls_unroll yes
+    //     for (unsigned int i = 0; i < SIZE; i++) {
+    //       // m &value[i].sign;
+    //       // m &value[i].scale;
+    //       m &value[i].fraction;
+    //     }
+  }
+};
+
+// template <typename TYPE, size_t SIZE>
+// class Wrapped<Pack1D<TYPE, SIZE> > {
+//  public:
+//   Pack1D<TYPE, SIZE> val;
+//   Wrapped() : val(0) {}
+//   Wrapped(const Pack1D<TYPE, SIZE> &v) : val(v) {}
+//   static const unsigned int width = TYPE::width * SIZE;
+//   static const bool is_signed = false;
+//   template <unsigned int Size>
+//   void Marshall(Marshaller<Size> &m) {
+//     m &val;
+//   }
+// };
+
+// template <unsigned int Size, typename TYPE, size_t SIZE>
+// Marshaller<Size> &operator&(Marshaller<Size> &m, Pack1D<TYPE, SIZE> &rhs) {
+// #pragma hls_unroll yes
+//   for (unsigned int i = 0; i < SIZE; i++) {
+//     m &rhs.value[i];
+//   }
+// }
+
+// template <unsigned int Size, size_t SIZE>
+// Marshaller<Size> &operator&(Marshaller<Size> &m, Pack1D<PositFP, SIZE> &rhs)
+// { #pragma hls_unroll yes
+//   for (unsigned int i = 0; i < SIZE; i++) {
+//     m &value[i].sign;
+//     m &value[i].scale;
+//     m &value[i].fraction;
+//   }
+// }
+
+// template <size_t SIZE>
+// template <unsigned int Size>
+// void Pack1D<PositFP, SIZE>::Marshall(Marshaller<Size> &m) {
+//   for (unsigned int i = 0; i < SIZE; i++) {
+//     m &value[i].sign;
+//   }
+//   for (unsigned int i = 0; i < SIZE; i++) {
+//     m &value[i].scale;
+//   }
+//   for (unsigned int i = 0; i < SIZE; i++) {
+//     m &value[i].fraction;
+//   }
+// }
+
+// template <typename TYPE, size_t SIZE>
+// class Wrapped<Pack1D<TYPE, SIZE> > {
+//  public:
+//   typedef PositFP Type;
+//   Type val;
+//   Wrapped() {}
+//   Wrapped(const Type &v) : val(v) {}
+//   static const unsigned int width = Type::width * SIZE;
+//   static const bool is_signed = 1;
+//   template <unsigned int Size>
+//   void Marshall(Marshaller<Size> &m) {
+//     for (int i = 0; i < SIZE; i++) {
+//     }
+//     m &val.sign;
+//     m &val.scale;
+//     m &val.fraction;
+//   }
+// };
+// template <unsigned int Size, size_t SIZE>
+// Marshaller<Size> &operator&(Marshaller<Size> &m, Pack1D < PositFP & rhs) {
+//   typedef PositFP Type;
+//   m.template AddField<ac_int<1, false>, 1>(rhs.sign);
+//   m.template AddField<ac_int<8, true>, 8>(rhs.scale);
+//   m.template AddField<ac_int<16, false>, 16>(rhs.fraction);
+//   return m;
+// }
+
 template <typename TYPE, size_t SIZE>
 inline bool operator==(const Pack1D<TYPE, SIZE> &lhs,
                        const Pack1D<TYPE, SIZE> &rhs) {
