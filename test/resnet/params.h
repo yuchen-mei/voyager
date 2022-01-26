@@ -487,7 +487,7 @@ std::map<std::string, Params> resnet{
          0,                                           // VEC_SCALE_OFFSET
          0,                                           // VEC_SUB_OFFSET
          true,                                       // RELU
-         {{1, 1, 2, 1, 1, 1}, {16, 8, 3, 3, 7, 7}}, // LOOPS
+         {{2, 2, 2, 1, 1, 1}, {16, 8, 3, 3, 7, 7}}, // LOOPS
          {0, 5},                                      // INPUTX
          {1, 4},                                      // INPUTY
          {3, 0},                                      // REDUCTION
@@ -522,7 +522,7 @@ std::map<std::string, Params> resnet{
          0,                                           // VEC_SCALE_OFFSET
          0,                                           // VEC_SUB_OFFSET
          true,                                       // RELU
-         {{1, 1, 2, 1, 1, 1}, {16, 8, 3, 3, 7, 7}}, // LOOPS
+         {{2, 2, 2, 1, 1, 1}, {16, 8, 3, 3, 7, 7}}, // LOOPS
          {0, 5},                                      // INPUTX
          {1, 4},                                      // INPUTY
          {3, 0},                                      // REDUCTION
@@ -641,7 +641,7 @@ std::map<std::string, Params> resnet{
          false,                                      // maxpool
          true,                                       // bias
          11682176,                                   // BIAS_OFFSET
-         false,                                       // residual
+         true,                                       // residual
          802816,                                     // RESIDUAL_OFFSET
          false                                       // avgpool
      }},
