@@ -1,5 +1,7 @@
 #include "test/common/GoldModel.h"
 
+#include <algorithm>
+
 ACCUM_DATATYPE fma(ACCUM_DATATYPE input, ACCUM_DATATYPE weight,
                    ACCUM_DATATYPE psum) {
 #ifdef POSIT
@@ -126,6 +128,9 @@ void run_gold_op(const Params params, INPUT_DATATYPE *matrixA,
           if (params.RESIDUAL) {
             acc += residualMatrix[y * X * K + x * K + k];
           }
+
+          if (params.RELU) acc = std::max(0, (int)acc);
+
           matrixC[y * X * K + x * K + k] = acc;
         }
       }
