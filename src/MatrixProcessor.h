@@ -165,7 +165,7 @@ SC_MODULE(MatrixProcessor) {
 #pragma hls_pipeline_init_interval 1
       for (int weight_count = 0; weight_count < NROWS; weight_count++) {
         Pack1D<WDTYPE, NCOLS> arrayWeights = weightsChannel.Pop();
-        std::cout << "Weights: " << arrayWeights << std::endl;
+        // std::cout << "Weights: " << arrayWeights << std::endl;
 
         Pack1D<ADTYPE, NCOLS> convertedArrayWeights;
 #pragma hls_unroll yes
@@ -251,7 +251,11 @@ SC_MODULE(MatrixProcessor) {
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
       while (step < totalOps + (NROWS - 1) + (NCOLS - 1) + latency) {
-        CCS_LOG("step " << step << " out of " << totalOps);
+#ifndef __SYNTHESIS__
+        if (step % 10000 == 0) {
+          CCS_LOG("step " << step << " out of " << totalOps);
+        }
+#endif
 
         Pack1D<ac_int<1, false>, NROWS> weightSwap;
         bool newWeights = loop_counters[1][params.weightReuseIndex[0]] == 0 &&
@@ -348,7 +352,7 @@ SC_MODULE(MatrixProcessor) {
             }
 
             outputsChannel.Push(convertedOutputs);
-            std::cout << "Output: " << flippedOutputs << std::endl;
+            // std::cout << "Output: " << flippedOutputs << std::endl;
           } else {
             int writeAddress = loop_counters_out[1][params.weightLoopIndex[1]] *
                                    params.loops[1][params.inputXLoopIndex[1]] *
