@@ -7,8 +7,8 @@ std::map<std::string, Params> simple{
     {"simple",
      {
          0,                                          // INPUT_OFFSET
-         1024 * 1024,                                // WEIGHT_OFFSET
-         2 * 1024 * 1024,                            // OUTPUT_OFFSET
+         0,                                          // WEIGHT_OFFSET
+         10 * 1024,                                  // OUTPUT_OFFSET
          false,                                      // SOFTMAX
          1,                                          // SCALE
          false,                                      // TRANSPOSE
@@ -42,8 +42,8 @@ std::map<std::string, Params> simple{
     {"transpose",
      {
          0,                                          // INPUT_OFFSET
-         1024 * 1024,                                // WEIGHT_OFFSET
-         2 * 1024 * 1024,                            // OUTPUT_OFFSET
+         0,                                          // WEIGHT_OFFSET
+         10 * 1024,                                  // OUTPUT_OFFSET
          false,                                      // SOFTMAX
          1,                                          // SCALE
          true,                                       // TRANSPOSE
@@ -77,8 +77,8 @@ std::map<std::string, Params> simple{
     {"conv",
      {
          0,                                         // INPUT_OFFSET
-         1024 * 1024,                               // WEIGHT_OFFSET
-         2 * 1024 * 1024,                           // OUTPUT_OFFSET
+         0,                                         // WEIGHT_OFFSET
+         10 * 1024,                                 // OUTPUT_OFFSET
          false,                                     // SOFTMAX
          1,                                         // SCALE
          false,                                     // TRANSPOSE
@@ -113,8 +113,8 @@ std::map<std::string, Params> simple{
     {"conv_with_replication",
      {
          0,                                          // INPUT_OFFSET
-         1024 * 1024,                                // WEIGHT_OFFSET
-         2 * 1024 * 1024,                            // OUTPUT_OFFSET
+         0,                                          // WEIGHT_OFFSET
+         10 * 1024,                                  // OUTPUT_OFFSET
          false,                                      // SOFTMAX
          1,                                          // SCALE
          false,                                      // TRANSPOSE
@@ -149,8 +149,8 @@ std::map<std::string, Params> simple{
     {"maxpool",
      {
          0,                                           // INPUT_OFFSET
-         1024 * 1024,                                 // WEIGHT_OFFSET
-         2 * 1024 * 1024,                             // OUTPUT_OFFSET
+         0,                                           // WEIGHT_OFFSET
+         10 * 1024,                                   // OUTPUT_OFFSET
          false,                                       // SOFTMAX
          1,                                           // SCALE
          false,                                       // TRANSPOSE
@@ -180,8 +180,8 @@ std::map<std::string, Params> simple{
     {"bias",
      {
          0,                                           // INPUT_OFFSET
-         10 * 1024,                                   // WEIGHT_OFFSET
-         20 * 1024,                                   // OUTPUT_OFFSET
+         0,                                           // WEIGHT_OFFSET
+         10 * 1024,                                   // OUTPUT_OFFSET
          false,                                       // SOFTMAX
          1,                                           // SCALE
          false,                                       // TRANSPOSE
@@ -215,8 +215,8 @@ std::map<std::string, Params> simple{
     {"bias_and_residual",
      {
          0,                                           // INPUT_OFFSET
-         10 * 1024,                                   // WEIGHT_OFFSET
-         20 * 1024,                                   // OUTPUT_OFFSET
+         0,                                           // WEIGHT_OFFSET
+         10 * 1024,                                   // OUTPUT_OFFSET
          false,                                       // SOFTMAX
          1,                                           // SCALE
          false,                                       // TRANSPOSE
