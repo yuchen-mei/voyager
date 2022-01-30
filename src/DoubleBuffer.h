@@ -58,6 +58,14 @@ SC_MODULE(DoubleBuffer) {
 #pragma hls_pipeline_stall_mode flush
       for (int i = 0; i < wsize; i++) {
         int address = writeAddress[0].Pop();
+
+#ifndef __SYNTHESIS__
+        if (address > BUFFER_SIZE) {
+          CCS_LOG("Address " << address << " is out of bounds!");
+          throw std::runtime_error("Address out of bounds");
+        }
+#endif
+
         Pack1D<DTYPE, WIDTH> data = writeData[0].Pop();
         mem0[address] = data;
 
