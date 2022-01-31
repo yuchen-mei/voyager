@@ -22,6 +22,9 @@ build/Catapult_debug/Accelerator.v1/concat_rtl.v: src/Accelerator.cc $(wildcard 
 sim: build/TestRunner
 	./build/TestRunner 
 
+PositTest: build/PositTest
+	./build/PositTest
+
 rtl_sim_clean:
 	rm -rf build/Catapult_debug/Accelerator.v1/scverify/concat_sim_rtl_v_vcs
 
@@ -36,6 +39,9 @@ gui:
 	catapult build/Catapult_debug
 
 build/TestRunner: build/Accelerator.o build/Harness.o build/TestRunner.o build/GoldModel.o build/Utils.o build/DataLoader.o
+	$(CC) -o $@ $^ $(LDLIBS) $(LDFLAGS)
+
+build/PositTest: build/PositTest.o
 	$(CC) -o $@ $^ $(LDLIBS) $(LDFLAGS)
 
 build/Accelerator.o: src/Accelerator.cc $(wildcard src/*.h)
@@ -56,7 +62,9 @@ build/DataLoader.o: test/common/DataLoader.cc test/common/DataLoader.h src/Archi
 build/TestRunner.o: test/common/TestRunner.cc test/mobilebert/params.h test/simple/params.h test/resnet/params.h
 	$(CC) $(CPPFLAGS) -c -o $@ $<
 
+build/PositTest.o: test/common/PositTest.cc src/PositTypes.h
+	$(CC) $(CPPFLAGS) -c -o $@ $<
 
-.PHONY: clean rtl sim
+.PHONY: clean rtl sim PositTest
 clean:
 	rm -rf build/*.o
