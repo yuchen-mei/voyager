@@ -25,15 +25,18 @@ assert(vec.size() == 1000);
   for (int i = 0;i < vec.size();i++)
   {
       Real* posit = reinterpret_cast<Real*>(&vec[i]);
+        // std::cout << *posit << " " << i << std::endl;
 
       if (*posit > *mx)
       {
+        *mx = *posit;
           index = i;
       }
   }
 
   file.close();
 
+std::cout << index << std::endl;
   return index;
 }
 
@@ -58,6 +61,7 @@ int main(int argc, char **argv)
     throw std::runtime_error("File \"" + outfile + "\" does not exist");
 
 std::string postring = std::to_string(pos) + '\n';
+// std::cout << pos << " " <<postring << std::endl;
   wf.write(postring.c_str(), sizeof(postring.size()));
   wf.close();
 

@@ -66,6 +66,7 @@ while(samples < sample_size):
     filename ="/sim/kbartolo/accuracy/test_{:08d}".format(samples)+".pkl"
     infile = open(filename,'rb')
     new_dict = pickle.load(infile)
+    print(filename, new_dict["label"])
     for key, value in new_dict.items():
         if key == "label":
             continue
@@ -96,5 +97,9 @@ while(samples < sample_size):
         correct_samples += 1
         
     # Print running accuracy
-    print("sim caffe: "+result[0]+ ", sim: " + str(clscmap[categories[int(result[0])]])+" vs correct: " + labels[new_dict["label"]])
+    print("sim caffe: "+result[0]+ ", sim: " + str(clscmap[categories[int(result[0])]])+" vs correct: " + str(new_dict["label"]))
     print("running accuracy: " + str(correct_samples / samples))
+
+    with open("accuracy.txt", 'a') as f:
+        acc_msg = "sim caffe: "+result[0]+ ", sim: " + str(clscmap[categories[int(result[0])]])+" vs correct: " + str(new_dict["label"]) +"\nrunning accuracy: " + str(correct_samples / samples) +"\n"
+        f.write(acc_msg)
