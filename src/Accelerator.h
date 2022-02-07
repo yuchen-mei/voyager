@@ -62,25 +62,27 @@ SC_MODULE(Accelerator) {
       outputsFromSystolicArray);
   Connections::Combinational<Params> CCS_INIT_S1(matrixProcessorParams);
 
-  VectorUnit<ACCUM_DATATYPE, OUTPUT_DATATYPE, DIMENSION, DIMENSION> CCS_INIT_S1(
-      vectorUnit);
-  Connections::Out<int> CCS_INIT_S1(vectorFetchAddressRequest);
+  VectorUnit<OUTPUT_DATATYPE, ACCUM_DATATYPE, INTERMEDIATE_DATATYPE, DIMENSION>
+      CCS_INIT_S1(vectorUnit);
+  Connections::Out<MemoryRequest> CCS_INIT_S1(vectorFetch0AddressRequest);
   Connections::In<Pack1D<OUTPUT_DATATYPE, DIMENSION> > CCS_INIT_S1(
-      vectorFetchDataResponse);
-  Connections::Out<int> CCS_INIT_S1(scalarAddressRequest);
-  Connections::In<OUTPUT_DATATYPE> CCS_INIT_S1(scalarDataResponse);
-  Connections::Out<int> CCS_INIT_S1(varianceAddressRequest);
-  Connections::In<OUTPUT_DATATYPE> CCS_INIT_S1(varianceDataResponse);
-  Connections::Out<MemoryRequest> CCS_INIT_S1(biasAddressRequest);
+      vectorFetch0DataResponse);
+  Connections::Out<MemoryRequest> CCS_INIT_S1(vectorFetch1AddressRequest);
   Connections::In<Pack1D<OUTPUT_DATATYPE, DIMENSION> > CCS_INIT_S1(
-      biasDataResponse);
-  Connections::Out<MemoryRequest> CCS_INIT_S1(residualAddressRequest);
+      vectorFetch1DataResponse);
+  Connections::Out<MemoryRequest> CCS_INIT_S1(vectorFetch2AddressRequest);
   Connections::In<Pack1D<OUTPUT_DATATYPE, DIMENSION> > CCS_INIT_S1(
-      residualDataResponse);
+      vectorFetch2DataResponse);
   Connections::Out<Pack1D<OUTPUT_DATATYPE, DIMENSION> > CCS_INIT_S1(
-      vectorUnitOutput);
-  Connections::Out<int> CCS_INIT_S1(outputAddress);
-  Connections::Combinational<Params> CCS_INIT_S1(vectorUnitParams);
+      vectorOutput);
+  Connections::Out<int> CCS_INIT_S1(vectorOutputAddress);
+  Connections::Out<Pack1D<OUTPUT_DATATYPE, DIMENSION> > CCS_INIT_S1(
+      scalarUnitOutput);
+  Connections::Out<int> CCS_INIT_S1(scalarOutputAddress);
+
+  Connections::Combinational<VectorParams> CCS_INIT_S1(vectorUnitParams);
+  Connections::Combinational<VectorInstructionConfig> CCS_INIT_S1(
+      vectorInstructionConfig);
 
   Connections::SyncOut startSignal;
   Connections::SyncOut doneSignal;
@@ -90,6 +92,8 @@ SC_MODULE(Accelerator) {
     paramsDeserializer.rstn(rstn);
     paramsDeserializer.serialParamsIn(serialParamsIn);
     paramsDeserializer.paramsOut(paramsIn);
+    paramsDeserializer.vectorParamsOut(vectorUnitParams);
+    paramsDeserializer.vectorInstructionsOut(vectorInstructionConfig);
 
     inputController.clk(clk);
     inputController.rstn(rstn);
@@ -148,21 +152,19 @@ SC_MODULE(Accelerator) {
 
     vectorUnit.clk(clk);
     vectorUnit.rstn(rstn);
-
     vectorUnit.paramsIn(vectorUnitParams);
+    vectorUnit.vectorInstructionsIn(vectorInstructionConfig);
     vectorUnit.systolicArrayOutput(outputsFromSystolicArray);
-    vectorUnit.vectorFetchAddressRequest(vectorFetchAddressRequest);
-    vectorUnit.vectorFetchDataResponse(vectorFetchDataResponse);
-    vectorUnit.scalarAddressRequest(scalarAddressRequest);
-    vectorUnit.scalarDataResponse(scalarDataResponse);
-    vectorUnit.varianceAddressRequest(varianceAddressRequest);
-    vectorUnit.varianceDataResponse(varianceDataResponse);
-    vectorUnit.biasAddressRequest(biasAddressRequest);
-    vectorUnit.biasDataResponse(biasDataResponse);
-    vectorUnit.residualAddressRequest(residualAddressRequest);
-    vectorUnit.residualDataResponse(residualDataResponse);
-    vectorUnit.vectorUnitOutput(vectorUnitOutput);
-    vectorUnit.outputAddress(outputAddress);
+    vectorUnit.vectorFetch0AddressRequest(vectorFetch0AddressRequest);
+    vectorUnit.vectorFetch0DataResponse(vectorFetch0DataResponse);
+    vectorUnit.vectorFetch1AddressRequest(vectorFetch1AddressRequest);
+    vectorUnit.vectorFetch1DataResponse(vectorFetch1DataResponse);
+    vectorUnit.vectorFetch2AddressRequest(vectorFetch2AddressRequest);
+    vectorUnit.vectorFetch2DataResponse(vectorFetch2DataResponse);
+    vectorUnit.scalarOutputAddress(scalarOutputAddress);
+    vectorUnit.scalarUnitOutput(scalarUnitOutput);
+    vectorUnit.vectorOutputAddress(vectorOutputAddress);
+    vectorUnit.finalVectorOutput(vectorOutput);
     vectorUnit.done(doneSignal);
 
     SC_THREAD(run);

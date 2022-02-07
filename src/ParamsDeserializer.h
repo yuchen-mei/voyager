@@ -11,6 +11,8 @@ SC_MODULE(ParamsDeserializer) {
 
   Connections::In<int> CCS_INIT_S1(serialParamsIn);
   Connections::Out<Params> CCS_INIT_S1(paramsOut);
+  Connections::Out<VectorParams> CCS_INIT_S1(vectorParamsOut);
+  Connections::Out<VectorInstructionConfig> CCS_INIT_S1(vectorInstructionsOut);
 
   SC_CTOR(ParamsDeserializer) {
     SC_THREAD(run);
@@ -21,6 +23,7 @@ SC_MODULE(ParamsDeserializer) {
   void run() {
     serialParamsIn.Reset();
     paramsOut.Reset();
+    vectorParamsOut.Reset();
 
     wait();
     while (true) {
@@ -78,6 +81,14 @@ SC_MODULE(ParamsDeserializer) {
       params.AVGPOOL = serialParamsIn.Pop();
 
       paramsOut.Push(params);
+
+      VectorParams vectorParams;
+      // TODO: read in vector params
+      vectorParamsOut.Push(vectorParams);
+
+      VectorInstructionConfig vectorInstructionConfig;
+      // TODO: read in vector instructions
+      vectorInstructionsOut.Push(vectorInstructionConfig);
     }
   }
 };

@@ -6,7 +6,6 @@ void Accelerator::run() {
   inputControllerParams.ResetWrite();
   weightControllerParams.ResetWrite();
   matrixProcessorParams.ResetWrite();
-  vectorUnitParams.ResetWrite();
 
   wait();
 
@@ -16,6 +15,5 @@ void Accelerator::run() {
     inputControllerParams.Push(params);
     weightControllerParams.Push(params);
     matrixProcessorParams.Push(params);
-    vectorUnitParams.Push(params);
   }
 }

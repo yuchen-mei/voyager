@@ -45,10 +45,16 @@ class Posit {
 
   void sigmoid() {
     // invert MSB
-    ac_int<1, false> msb = bits.slc<1>(7);
-    bits.set_slc(7, msb.bit_complement());
+    // bits.set_slc(7, (bits.slc<1>(7).bit_complement()));
+
+    // ac_int<1, false> msb = bits.slc<1>(7);
+    bits[nbits - 1] = ~bits[nbits - 1];
+
+    // bits.set_slc(7, bits.slc<1>(7).bit_complement());
     bits = bits >> 2;
   }
+
+  void exp();
 
   // overridden operators
   Posit &operator+=(const Posit &rhs);
@@ -85,6 +91,8 @@ class Posit {
 #endif
 };
 
+#pragma hls_design ccore
+#pragma ccore_type combinational
 template <int nbits, int es, int fp_sbits, int fp_fbits>
 Posit<nbits, es, fp_sbits, fp_fbits>::Posit(
     const PositFP<fp_sbits, fp_fbits> &input) {
@@ -171,6 +179,8 @@ class PositFP {
 
   PositFP() {}
 
+#pragma hls_design ccore
+#pragma ccore_type combinational
   template <int nbits, int es>
   PositFP(const Posit<nbits, es, sbits, fbits> &input) {
     ac_int<nbits, false> bits;
@@ -192,10 +202,12 @@ class PositFP {
       this->scale *= (1 << es);
 
       int nrBits = nbits - run - 1;
-      if (nrBits >= es && es > 0) {
-        this->scale += bits.template slc<es>(nrBits - es);
-      } else if (nrBits >= 0 && es > 0) {
-        this->scale += bits & ((1 << nrBits) - 1);
+      if (es > 0) {
+        if (nrBits >= es) {
+          this->scale += bits.template slc<es>(nrBits - es);
+        } else if (nrBits >= 0) {
+          this->scale += bits & ((1 << nrBits) - 1);
+        }
       }
 
       // TODO: handle case where bits has longer length than this->fraction
@@ -229,16 +241,76 @@ class PositFP {
 
   void setZero() { scale = -127; }
 
+  void relu() {
+    if (sign == 1) {
+      setZero();
+    }
+  }
+
+  void negate() { sign = -1; }
+
   template <int nbits, int es, int nbits2, int es2>
   PositFP fma(const Posit<nbits, es, sbits, fbits> &op2,
               const Posit<nbits2, es2, sbits, fbits> &op3);
+  PositFP multiply(const PositFP &op);
+  PositFP add(const PositFP &op);
 
   PositFP &operator+=(const PositFP &rhs);
   PositFP operator*(const PositFP &op);
   PositFP operator+(const PositFP &op);
   PositFP operator-(const PositFP &op);
   bool operator<(const PositFP &rhs) const;
+
+  static const unsigned int width = 1 + sbits + fbits;
+
+#ifdef __SYNTHESIS__
+  template <unsigned int Size>
+  void Marshall(Marshaller<Size> &m) {
+    m &sign;
+    m &scale;
+    m &fraction;
+  }
+
+  inline friend void sc_trace(sc_trace_file *tf, const PositFP &posit,
+                              const std::string &name) {
+    // TODO
+  }
+
+  inline friend std::ostream &operator<<(ostream &os, const PositFP &posit) {
+    // TODO
+
+    return os;
+  }
+#endif
 };
+
+#pragma hls_design ccore
+#pragma ccore_type combinational
+template <int nbits, int es, int fp_sbits, int fp_fbits>
+inline void Posit<nbits, es, fp_sbits, fp_fbits>::exp() {
+  // std::cout << "original:\t" << bits.to_string(AC_BIN, false, true)
+  //           << std::endl;
+  negate();
+  // std::cout << "negative:\t" << bits.to_string(AC_BIN, false, true)
+  //           << std::endl;
+
+  Posit<nbits, 0, fp_sbits, fp_fbits> es0Posit = *this;
+  es0Posit.sigmoid();
+  *this = es0Posit;
+  // std::cout << "sigmoid:\t" << bits.to_string(AC_BIN, false, true)
+  //           << std::endl;
+  reciprocal();
+  // std::cout << "reciprocal:\t" << bits.to_string(AC_BIN, false, true)
+  //           << std::endl;
+  Posit one = 1 << (nbits - 1) - 1;
+
+  PositFP<fp_sbits, fp_fbits> op1 = *this;
+  PositFP<fp_sbits, fp_fbits> op2 = one;
+  PositFP<fp_sbits, fp_fbits> res = op1 - op2;
+  *this = res;
+  // std::cout << "final  :\t" << bits.to_string(AC_BIN, false, true)
+  //           << std::endl;
+}
 
 template <int nbits, int es, int fp_sbits, int fp_fbits>
 inline Posit<nbits, es, fp_sbits, fp_fbits>
@@ -303,8 +375,10 @@ inline bool Posit<nbits, es, fp_sbits, fp_fbits>::operator<(
   return op1 < op2;
 }
 
+#pragma hls_design ccore
+#pragma ccore_type combinational
 template <int fp_sbits, int fp_fbits>
-PositFP<fp_sbits, fp_fbits> PositFP<fp_sbits, fp_fbits>::operator*(
+PositFP<fp_sbits, fp_fbits> PositFP<fp_sbits, fp_fbits>::multiply(
     const PositFP<fp_sbits, fp_fbits> &op) {
   PositFP<fp_sbits, fp_fbits> lhs = *this;
   PositFP<fp_sbits, fp_fbits> rhs = op;
@@ -327,7 +401,15 @@ PositFP<fp_sbits, fp_fbits> PositFP<fp_sbits, fp_fbits>::operator*(
 }
 
 template <int fp_sbits, int fp_fbits>
-PositFP<fp_sbits, fp_fbits> PositFP<fp_sbits, fp_fbits>::operator+(
+PositFP<fp_sbits, fp_fbits> PositFP<fp_sbits, fp_fbits>::operator*(
+    const PositFP<fp_sbits, fp_fbits> &op) {
+  return multiply(op);
+}
+
+#pragma hls_design ccore
+#pragma ccore_type combinational
+template <int fp_sbits, int fp_fbits>
+PositFP<fp_sbits, fp_fbits> PositFP<fp_sbits, fp_fbits>::add(
     const PositFP<fp_sbits, fp_fbits> &op) {
   PositFP<fp_sbits, fp_fbits> lhs = *this;
   PositFP<fp_sbits, fp_fbits> rhs = op;
@@ -368,6 +450,12 @@ PositFP<fp_sbits, fp_fbits> PositFP<fp_sbits, fp_fbits>::operator+(
   result.fraction = sum << (shift + 1);
 
   return result;
+}
+
+template <int fp_sbits, int fp_fbits>
+PositFP<fp_sbits, fp_fbits> PositFP<fp_sbits, fp_fbits>::operator+(
+    const PositFP<fp_sbits, fp_fbits> &op) {
+  return add(op);
 }
 
 template <int fp_sbits, int fp_fbits>
@@ -425,4 +513,29 @@ template <int nbits, int es, int fp_sbits, int fp_fbits>
 inline bool operator==(const Posit<nbits, es, fp_sbits, fp_fbits> &lhs,
                        const Posit<nbits, es, fp_sbits, fp_fbits> &rhs) {
   return lhs.bits == rhs.bits;
+}
+
+template <int sbits, int fbits>
+class Wrapped<PositFP<sbits, fbits> > {
+ public:
+  typedef PositFP<sbits, fbits> Type;
+  Type val;
+  Wrapped() {}
+  Wrapped(const Type &v) : val(v) {}
+  static const unsigned int width = Type::width;
+  static const bool is_signed = false;
+  template <unsigned int Size>
+  void Marshall(Marshaller<Size> &m) {
+    m &val.sign;
+    m &val.scale;
+    m &val.fraction;
+  }
+};
+template <unsigned int Size, int sbits, int fbits>
+Marshaller<Size> &operator&(Marshaller<Size> &m, PositFP<sbits, fbits> &rhs) {
+  typedef PositFP<sbits, fbits> Type;
+  m.template AddField<ac_int<1, false>, 1>(rhs.sign);
+  m.template AddField<ac_int<sbits, true>, sbits>(rhs.scale);
+  m.template AddField<ac_int<fbits, false>, fbits>(rhs.fraction);
+  return m;
 }
