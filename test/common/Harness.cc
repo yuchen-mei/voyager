@@ -22,18 +22,19 @@ Harness::Harness(sc_module_name name, SimplifiedParams params,
   accelerator.inputDataResponse(inputDataResponse);
   accelerator.weightAddressRequest(weightAddressRequest);
   accelerator.weightDataResponse(weightDataResponse);
-  accelerator.vectorFetchAddressRequest(vectorAddressRequest);
-  accelerator.vectorFetchDataResponse(vectorDataResponse);
-  accelerator.scalarAddressRequest(scalarAddressRequest);
-  accelerator.scalarDataResponse(scalarDataResponse);
-  accelerator.varianceAddressRequest(varianceAddressRequest);
-  accelerator.varianceDataResponse(varianceDataResponse);
-  accelerator.biasAddressRequest(biasAddressRequest);
-  accelerator.biasDataResponse(biasDataResponse);
-  accelerator.residualAddressRequest(residualAddressRequest);
-  accelerator.residualDataResponse(residualDataResponse);
-  accelerator.vectorUnitOutput(vectorOutput);
-  accelerator.outputAddress(vectorOutputAddress);
+  // FIXME!
+  // accelerator.vectorFetchAddressRequest(vectorAddressRequest);
+  // accelerator.vectorFetchDataResponse(vectorDataResponse);
+  // accelerator.scalarAddressRequest(scalarAddressRequest);
+  // accelerator.scalarDataResponse(scalarDataResponse);
+  // accelerator.varianceAddressRequest(varianceAddressRequest);
+  // accelerator.varianceDataResponse(varianceDataResponse);
+  // accelerator.biasAddressRequest(biasAddressRequest);
+  // accelerator.biasDataResponse(biasDataResponse);
+  // accelerator.residualAddressRequest(residualAddressRequest);
+  // accelerator.residualDataResponse(residualDataResponse);
+  // accelerator.vectorUnitOutput(vectorOutput);
+  // accelerator.outputAddress(vectorOutputAddress);
   accelerator.startSignal(start);
   accelerator.doneSignal(done);
 
@@ -316,7 +317,7 @@ void Harness::waitForDone() {
   sc_stop();
 }
 
-void run_op(const Params params, INPUT_DATATYPE *sramMemory,
+void run_op(const SimplifiedParams params, INPUT_DATATYPE *sramMemory,
             INPUT_DATATYPE *rramMemory, MemoryMap memoryMap) {
   Harness harness("harness", params, sramMemory, rramMemory, memoryMap);
   sc_start();
