@@ -22,19 +22,16 @@ Harness::Harness(sc_module_name name, SimplifiedParams params,
   accelerator.inputDataResponse(inputDataResponse);
   accelerator.weightAddressRequest(weightAddressRequest);
   accelerator.weightDataResponse(weightDataResponse);
-  // FIXME!
-  // accelerator.vectorFetchAddressRequest(vectorAddressRequest);
-  // accelerator.vectorFetchDataResponse(vectorDataResponse);
-  // accelerator.scalarAddressRequest(scalarAddressRequest);
-  // accelerator.scalarDataResponse(scalarDataResponse);
-  // accelerator.varianceAddressRequest(varianceAddressRequest);
-  // accelerator.varianceDataResponse(varianceDataResponse);
-  // accelerator.biasAddressRequest(biasAddressRequest);
-  // accelerator.biasDataResponse(biasDataResponse);
-  // accelerator.residualAddressRequest(residualAddressRequest);
-  // accelerator.residualDataResponse(residualDataResponse);
-  // accelerator.vectorUnitOutput(vectorOutput);
-  // accelerator.outputAddress(vectorOutputAddress);
+  accelerator.vectorFetch0AddressRequest(vectorFetch0AddressRequest);
+  accelerator.vectorFetch0DataResponse(vectorFetch0DataResponse);
+  accelerator.vectorFetch1AddressRequest(vectorFetch1AddressRequest);
+  accelerator.vectorFetch1DataResponse(vectorFetch1DataResponse);
+  accelerator.vectorFetch2AddressRequest(vectorFetch2AddressRequest);
+  accelerator.vectorFetch2DataResponse(vectorFetch2DataResponse);
+  accelerator.vectorOutput(vectorOutput);
+  accelerator.vectorOutputAddress(vectorOutputAddress);
+  accelerator.scalarUnitOutput(scalarUnitOutput);
+  accelerator.scalarOutputAddress(scalarOutputAddress);
   accelerator.startSignal(start);
   accelerator.doneSignal(done);
 
@@ -48,27 +45,23 @@ Harness::Harness(sc_module_name name, SimplifiedParams params,
   sensitive << clk.posedge_event();
   async_reset_signal_is(rstn, false);
 
-  SC_THREAD(memAccessVector);
+  SC_THREAD(memAccessVector0);
   sensitive << clk.posedge_event();
   async_reset_signal_is(rstn, false);
 
-  SC_THREAD(memAccessScalar);
+  SC_THREAD(memAccessVector1);
   sensitive << clk.posedge_event();
   async_reset_signal_is(rstn, false);
 
-  SC_THREAD(memAccessVariance);
+  SC_THREAD(memAccessVector2);
   sensitive << clk.posedge_event();
   async_reset_signal_is(rstn, false);
 
-  SC_THREAD(memAccessBias);
+  SC_THREAD(storeVectorOutputs);
   sensitive << clk.posedge_event();
   async_reset_signal_is(rstn, false);
 
-  SC_THREAD(memAccessResidual);
-  sensitive << clk.posedge_event();
-  async_reset_signal_is(rstn, false);
-
-  SC_THREAD(storeOutputs);
+  SC_THREAD(storeScalarOutputs);
   sensitive << clk.posedge_event();
   async_reset_signal_is(rstn, false);
 
@@ -166,25 +159,24 @@ void Harness::memAccessWeights() {
   memAccessBurst(&weightAddressRequest, &weightDataResponse, memoryMap.weights);
 }
 
-void Harness::memAccessVector() {
-  memAccessPack(&vectorAddressRequest, &vectorDataResponse, memoryMap.inputs);
+void Harness::memAccessVector0() {
+  memAccessBurst(&vectorFetch0AddressRequest, &vectorFetch0DataResponse,
+                 memoryMap.inputs);
 }
 
-void Harness::memAccessScalar() {
-  memAccess(&scalarAddressRequest, &scalarDataResponse, memoryMap.inputs);
+void Harness::memAccessVector1() {
+  if (params.FC) {
+    memAccessBurst(&vectorFetch1AddressRequest, &vectorFetch1DataResponse,
+                   memoryMap.weights);
+  } else {
+    memAccessBurst(&vectorFetch1AddressRequest, &vectorFetch1DataResponse,
+                   memoryMap.residual);
+  }
 }
 
-void Harness::memAccessVariance() {
-  memAccess(&varianceAddressRequest, &varianceDataResponse, memoryMap.inputs);
-}
-
-void Harness::memAccessBias() {
-  memAccessBurst(&biasAddressRequest, &biasDataResponse, memoryMap.bias);
-}
-
-void Harness::memAccessResidual() {
-  memAccessBurst(&residualAddressRequest, &residualDataResponse,
-                 memoryMap.residual);
+void Harness::memAccessVector2() {
+  memAccessBurst(&vectorFetch2AddressRequest, &vectorFetch2DataResponse,
+                 memoryMap.bias);
 }
 
 template <typename T, unsigned int interfaceWidth>
@@ -282,7 +274,7 @@ void Harness::sendParams() {
   wait();
 }
 
-void Harness::storeOutputs() {
+void Harness::storeVectorOutputs() {
   vectorOutput.ResetRead();
   vectorOutputAddress.ResetRead();
 
@@ -291,6 +283,21 @@ void Harness::storeOutputs() {
   while (true) {
     Pack1D<OUTPUT_DATATYPE, DIMENSION> data = vectorOutput.Pop();
     int address = vectorOutputAddress.Pop();
+    for (int i = 0; i < DIMENSION; i++) {
+      sramMemory[address + i] = data[i];
+    }
+  }
+}
+
+void Harness::storeScalarOutputs() {
+  scalarUnitOutput.ResetRead();
+  scalarOutputAddress.ResetRead();
+
+  wait();
+
+  while (true) {
+    Pack1D<OUTPUT_DATATYPE, DIMENSION> data = scalarUnitOutput.Pop();
+    int address = scalarOutputAddress.Pop();
     for (int i = 0; i < DIMENSION; i++) {
       sramMemory[address + i] = data[i];
     }

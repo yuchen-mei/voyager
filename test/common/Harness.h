@@ -23,27 +23,26 @@ SC_MODULE(Harness) {
   Connections::Combinational<Pack1D<INPUT_DATATYPE, DIMENSION> > CCS_INIT_S1(
       weightDataResponse);
 
-  Connections::Combinational<int> CCS_INIT_S1(vectorAddressRequest);
+  Connections::Combinational<MemoryRequest> CCS_INIT_S1(
+      vectorFetch0AddressRequest);
   Connections::Combinational<Pack1D<INPUT_DATATYPE, DIMENSION> > CCS_INIT_S1(
-      vectorDataResponse);
-
-  Connections::Combinational<int> CCS_INIT_S1(scalarAddressRequest);
-  Connections::Combinational<OUTPUT_DATATYPE> CCS_INIT_S1(scalarDataResponse);
-
-  Connections::Combinational<int> CCS_INIT_S1(varianceAddressRequest);
-  Connections::Combinational<OUTPUT_DATATYPE> CCS_INIT_S1(varianceDataResponse);
-
-  Connections::Combinational<MemoryRequest> CCS_INIT_S1(biasAddressRequest);
+      vectorFetch0DataResponse);
+  Connections::Combinational<MemoryRequest> CCS_INIT_S1(
+      vectorFetch1AddressRequest);
   Connections::Combinational<Pack1D<INPUT_DATATYPE, DIMENSION> > CCS_INIT_S1(
-      biasDataResponse);
-
-  Connections::Combinational<MemoryRequest> CCS_INIT_S1(residualAddressRequest);
+      vectorFetch1DataResponse);
+  Connections::Combinational<MemoryRequest> CCS_INIT_S1(
+      vectorFetch2AddressRequest);
   Connections::Combinational<Pack1D<INPUT_DATATYPE, DIMENSION> > CCS_INIT_S1(
-      residualDataResponse);
+      vectorFetch2DataResponse);
 
   Connections::Combinational<Pack1D<INPUT_DATATYPE, DIMENSION> > CCS_INIT_S1(
       vectorOutput);
   Connections::Combinational<int> CCS_INIT_S1(vectorOutputAddress);
+
+  Connections::Combinational<Pack1D<INPUT_DATATYPE, DIMENSION> > CCS_INIT_S1(
+      scalarUnitOutput);
+  Connections::Combinational<int> CCS_INIT_S1(scalarOutputAddress);
 
   Connections::SyncChannel CCS_INIT_S1(start);
   Connections::SyncChannel CCS_INIT_S1(done);
@@ -74,14 +73,13 @@ SC_MODULE(Harness) {
 
   void memAccessInputs();
   void memAccessWeights();
-  void memAccessVector();
-  void memAccessScalar();
-  void memAccessVariance();
-  void memAccessBias();
-  void memAccessResidual();
+  void memAccessVector0();
+  void memAccessVector1();
+  void memAccessVector2();
 
   void reset();
-  void storeOutputs();
+  void storeVectorOutputs();
+  void storeScalarOutputs();
   void sendParams();
   void waitForStart();
   void waitForDone();
