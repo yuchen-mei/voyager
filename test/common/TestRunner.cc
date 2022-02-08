@@ -18,7 +18,7 @@
 
 // NOTE: Binary data files are always supplied in [Y][X][C][K] ordering
 
-void validateMapping(Params params) {
+void validateMapping(SimplifiedParams params) {
   int x0 = params.loops[1][params.inputXLoopIndex[1]];
   int y0 = params.loops[1][params.inputYLoopIndex[1]];
   int c0 = params.loops[1][params.reductionLoopIndex[1]];
@@ -52,7 +52,7 @@ void validateMapping(Params params) {
   }
 }
 
-int run_test(const Params params, const std::string& dataDir,
+int run_test(const SimplifiedParams params, const std::string& dataDir,
              const Files& files, const MemoryMap& memoryMap, bool useDataFile,
              std::string& fileOutputPrefix) {
   validateMapping(params);
@@ -151,7 +151,7 @@ int run_test(const Params params, const std::string& dataDir,
 }
 
 int sc_main(int argc, char* argv[]) {
-  Params params;
+  SimplifiedParams params;
 
   const char* groupName = std::getenv("GROUP");
   const char* testName = std::getenv("TEST");
@@ -170,7 +170,7 @@ int sc_main(int argc, char* argv[]) {
 
   std::cout << "Running: " << group << ": " << test << std::endl;
 
-  std::map<std::string, Params>* mapPtr;
+  std::map<std::string, SimplifiedParams>* mapPtr;
 
   if (group == "simple") {
     mapPtr = &simple;
