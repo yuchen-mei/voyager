@@ -11,7 +11,7 @@ SC_MODULE(ParamsDeserializer) {
   sc_in<bool> CCS_INIT_S1(rstn);
 
   Connections::In<int> CCS_INIT_S1(serialParamsIn);
-  Connections::Out<Params> CCS_INIT_S1(paramsOut);
+  Connections::Out<MatrixParams> CCS_INIT_S1(paramsOut);
   Connections::Out<VectorParams> CCS_INIT_S1(vectorParamsOut);
   Connections::Out<VectorInstructionConfig> CCS_INIT_S1(vectorInstructionsOut);
 
@@ -43,11 +43,14 @@ SC_MODULE(ParamsDeserializer) {
 
     wait();
     while (true) {
-      // Read params
-      Params params = getSerializedParams<Params, 32>();
-      paramsOut.Push(params);
+      // Matrix Unit Params
+      while (serialParamsIn.Pop() == 1) {
+        MatrixParams params = getSerializedParams<MatrixParams, 32>();
+        paramsOut.Push(params);
+      }
 
-      if (serialParamsIn.Pop() == 1) {  // additional parameters
+      // Vector Unit Params
+      while (serialParamsIn.Pop() == 1) {
         VectorParams vectorParams = getSerializedParams<VectorParams, 32>();
         vectorParamsOut.Push(vectorParams);
 

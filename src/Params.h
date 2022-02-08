@@ -1,6 +1,6 @@
 #pragma once
 
-struct Params {
+struct MatrixParams {
   int INPUT_OFFSET;
   int WEIGHT_OFFSET;
   int OUTPUT_OFFSET;
@@ -91,12 +91,13 @@ struct Params {
     m& AVGPOOL;
   }
 
-  inline friend void sc_trace(sc_trace_file* tf, const Params& params,
+  inline friend void sc_trace(sc_trace_file* tf, const MatrixParams& params,
                               const std::string& name) {
     // TODO
   }
 
-  inline friend std::ostream& operator<<(ostream& os, const Params& params) {
+  inline friend std::ostream& operator<<(ostream& os,
+                                         const MatrixParams& params) {
     // TODO
     return os;
   }

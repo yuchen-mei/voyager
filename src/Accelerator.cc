@@ -10,7 +10,7 @@ void Accelerator::run() {
   wait();
 
   while (true) {
-    Params params = paramsIn.Pop();
+    MatrixParams params = paramsIn.Pop();
     startSignal.SyncPush();
     inputControllerParams.Push(params);
     weightControllerParams.Push(params);

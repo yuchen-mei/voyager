@@ -18,7 +18,7 @@ SC_MODULE(Accelerator) {
 
   Connections::In<int> CCS_INIT_S1(serialParamsIn);
   ParamsDeserializer CCS_INIT_S1(paramsDeserializer);
-  Connections::Combinational<Params> CCS_INIT_S1(paramsIn);
+  Connections::Combinational<MatrixParams> CCS_INIT_S1(paramsIn);
 
   InputController<INPUT_DATATYPE, DIMENSION> CCS_INIT_S1(inputController);
   DoubleBuffer<INPUT_DATATYPE, DIMENSION, INPUT_BUFFER_SIZE> CCS_INIT_S1(
@@ -34,7 +34,7 @@ SC_MODULE(Accelerator) {
   Connections::Combinational<int> inputBufferReadControl[2];
   Connections::Combinational<Pack1D<INPUT_DATATYPE, DIMENSION> > CCS_INIT_S1(
       inputsToWindowBuffer);
-  Connections::Combinational<Params> inputControllerParams;
+  Connections::Combinational<MatrixParams> inputControllerParams;
 
   WeightController<INPUT_DATATYPE, DIMENSION, DIMENSION> CCS_INIT_S1(
       weightController);
@@ -49,7 +49,7 @@ SC_MODULE(Accelerator) {
   Connections::Combinational<int> weightBufferWriteControl[2];
   Connections::Combinational<int> weightBufferReadAddress[2];
   Connections::Combinational<int> weightBufferReadControl[2];
-  Connections::Combinational<Params> weightControllerParams;
+  Connections::Combinational<MatrixParams> weightControllerParams;
 
   MatrixProcessor<INPUT_DATATYPE, INTERMEDIATE_DATATYPE, ACCUM_DATATYPE,
                   DIMENSION, DIMENSION, ACCUMULATION_BUFFER_SIZE>
@@ -60,7 +60,7 @@ SC_MODULE(Accelerator) {
       weightsToSystolicArray);
   Connections::Combinational<Pack1D<ACCUM_DATATYPE, DIMENSION> > CCS_INIT_S1(
       outputsFromSystolicArray);
-  Connections::Combinational<Params> CCS_INIT_S1(matrixProcessorParams);
+  Connections::Combinational<MatrixParams> CCS_INIT_S1(matrixProcessorParams);
 
   VectorUnit<OUTPUT_DATATYPE, ACCUM_DATATYPE, INTERMEDIATE_DATATYPE, DIMENSION>
       CCS_INIT_S1(vectorUnit);
