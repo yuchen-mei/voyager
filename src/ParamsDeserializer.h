@@ -48,7 +48,7 @@ SC_MODULE(ParamsDeserializer) {
       while (serialParamsIn.Pop() == 1) {
         MatrixParams params = getSerializedParams<MatrixParams, 32>();
 
-        std::cout << "Params received:" << std::endl;
+        std::cout << "Matrix Params Received" << std::endl;
         std::cout << params << std::endl;
         paramsOut.Push(params);
       }
@@ -56,10 +56,18 @@ SC_MODULE(ParamsDeserializer) {
       // Vector Unit Params
       while (serialParamsIn.Pop() == 1) {
         VectorParams vectorParams = getSerializedParams<VectorParams, 32>();
+
+        std::cout << "Vector Params Received" << std::endl;
+        std::cout << vectorParams << std::endl;
+
         vectorParamsOut.Push(vectorParams);
 
         VectorInstructionConfig vectorInstructionConfig =
             getSerializedParams<VectorInstructionConfig, 32>();
+
+        std::cout << "Vector Instructions Received" << std::endl;
+        std::cout << vectorInstructionConfig << std::endl;
+
         vectorInstructionsOut.Push(vectorInstructionConfig);
       }
     }
