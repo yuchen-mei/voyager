@@ -82,13 +82,13 @@ class Posit {
                               const std::string &name) {
     sc_trace(tf, posit.bits, name + ".bits");
   }
+#endif
 
   inline friend std::ostream &operator<<(ostream &os, const Posit &posit) {
     os << posit.bits << " ";
 
     return os;
   }
-#endif
 };
 
 #pragma hls_design ccore
@@ -228,7 +228,7 @@ class PositFP {
 #endif
 
 #ifndef __SYNTHESIS__
-  float to_float() {
+  float to_float() const {
     union ufloat uf;
     uf.u = this->sign ? 1 << 31 : 0;
     uf.u += (this->scale + 127) << 23;
@@ -275,13 +275,13 @@ class PositFP {
                               const std::string &name) {
     // TODO
   }
+#endif
 
   inline friend std::ostream &operator<<(ostream &os, const PositFP &posit) {
-    // TODO
+    os << posit.to_float();
 
     return os;
   }
-#endif
 };
 
 #pragma hls_design ccore

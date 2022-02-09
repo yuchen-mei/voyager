@@ -247,7 +247,20 @@ struct VectorInstructions {
 
   inline friend std::ostream& operator<<(ostream& os,
                                          const VectorInstructions& params) {
-    // TODO
+    os << "instType: " << params.instType << std::endl;
+    os << "vInput: " << params.vInput << std::endl;
+    os << "vOp0Src1: " << params.vOp0Src1 << std::endl;
+    os << "vOp0: " << params.vOp0 << std::endl;
+    os << "vOp1: " << params.vOp1 << std::endl;
+    os << "vOp2: " << params.vOp2 << std::endl;
+    os << "vOp3Src0: " << params.vOp3Src0 << std::endl;
+    os << "vOp3Src1: " << params.vOp3Src1 << std::endl;
+    os << "vOp3: " << params.vOp3 << std::endl;
+    os << "vOp4: " << params.vOp4 << std::endl;
+    os << "vDest: " << params.vDest << std::endl;
+    os << "rCount: " << params.rCount << std::endl;
+    os << "rOp: " << params.rOp << std::endl;
+    os << "rDest: " << params.rDest << std::endl;
     return os;
   }
 };
