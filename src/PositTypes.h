@@ -373,7 +373,7 @@ class PositFP {
     if (!fraction) return 0;
 
     union ufloat uf;
-    uf.u += sign ? 1 << 31 : 0;
+    uf.u = sign ? 1 << 31 : 0;
     uf.u += (scale + 127) << 23;
 
     ac_int<23, false> mantissa;
