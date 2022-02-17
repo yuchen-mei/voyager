@@ -269,10 +269,10 @@ std::map<std::string, Files> mobilebertFiles {
         "activations/mobilebert_encoder_layer_0_bottleneck_input_dense"
     }},
     {"inputLayerNorm", {
-        "mobilebert_encoder_layer_0_bottleneck_input_dense",
-        "mobilebert_encoder_layer_0_bottleneck_input_LayerNorm_weight",
-        "mobilebert_encoder_layer_0_bottleneck_input_LayerNorm_bias",
-        "mobilebert_encoder_layer_0_bottleneck_input_LayerNorm"
+        "activations/mobilebert_encoder_layer_0_bottleneck_input_dense",
+        "weights/mobilebert_encoder_layer_0_bottleneck_input_LayerNorm_weight",
+        "weights/mobilebert_encoder_layer_0_bottleneck_input_LayerNorm_bias",
+        "activations/mobilebert_encoder_layer_0_bottleneck_input_LayerNorm"
     }},
     {"qkvProjection", {}},
     {"qkAttention", {}},
