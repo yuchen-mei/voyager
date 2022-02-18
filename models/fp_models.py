@@ -16,12 +16,12 @@ def arrange_data(name, tensor):
     print(name)
     x = tensor.cpu()
     x = x.type(torch.float64)
+    print(np.shape(x))
     arr = []
     # FC edge case
     if (name == 'fc.weight'):
         K = np.shape(x)[0]
         C = np.shape(x)[1]
-        print(K, C)
 
         for c in range(C):
             for k in range(K):
@@ -31,7 +31,6 @@ def arrange_data(name, tensor):
         return np.array(arr)
 
     if (len(np.shape(x)) < 4):
-        print(np.shape(x))
         x = torch.flatten(x)
         for i in range(np.shape(x)[0]):
             arr.append(x[i])
@@ -343,8 +342,6 @@ class ResNet(nn.Module):
         global complete
         global export
 
-        print(np.shape(x))
-
         if export:
             complete["conv1.input"] = arrange_data("conv1.input", x)
 
@@ -352,8 +349,6 @@ class ResNet(nn.Module):
         x = self.bn1(x)
         x = self.relu(x)
         x = self.maxpool(x)
-
-        print(np.shape(x))
 
         if export:
             complete["conv1.comp"] = arrange_data("conv1.comp", x)

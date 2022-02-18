@@ -10,6 +10,7 @@ def write_fp64(filename, data):
         floatlist = []
         
         for i in np.nditer(data):
+            # print(i)
             floatlist.append(i)
 
         buf = struct.pack('%sd' % len(floatlist), *floatlist)
@@ -30,7 +31,7 @@ def clean_name(name):
     return result
 
 # Test settings
-sample_size = 2
+sample_size = 1000
 buildfolder = "pybuild"
 imagenetfolder = "data/imagenet"
 toolfolder = "tools"
@@ -68,24 +69,27 @@ while(samples < sample_size):
     new_dict = pickle.load(infile)
     print(filename, new_dict["label"])
     for key, value in new_dict.items():
-        if key == "label":
+        if key != "conv1.input":
             continue
         prefilename = buildfolder + "/" + "pre" + clean_name(key)
         #MOD
         postfilename = "data/resnet" + "/" + clean_name(key)
 
         # Convert input to posit
-        write_fp64(prefilename, value)
-        os.system(toolfolder+"/decode " + prefilename + " " + postfilename)
+        # write_fp64(prefilename, value)
+        os.system("rm data/resnet/conv1_input")
+
+        write_fp64(postfilename, value)
+        # os.system(toolfolder+"/decode " + prefilename + " " + postfilename)
         print(postfilename)
     infile.close()
 
     # Run complete simulation to file
-    os.system("make sim GROUP=resnet TEST=conv1")
+    os.system("make -j sim GROUP=resnet TEST=conv1")
 
 
     # Convert output to floating point and get max
-    os.system(toolfolder + "/interpreter "+buildfolder+"/output "+buildfolder+"/result.txt")
+    # os.system(toolfolder + "/interpreter "+buildfolder+"/output "+buildfolder+"/result.txt")
     
     with open(buildfolder + "/result.txt", "r") as f:
         result = [s.strip() for s in f.readlines()]
@@ -94,7 +98,7 @@ while(samples < sample_size):
 
     # Compare max to label list and check if right or wrong
     # if (int(result[0]) == new_dict("label")
-    if (int(clscmap[categories[int(result[0])]]) == int(labels[new_dict["label"]])):
+    if (int(clscmap[categories[int(result[0])]]) == new_dict["label"]):
         correct_samples += 1
         
     # Print running accuracy

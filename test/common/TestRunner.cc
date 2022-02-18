@@ -103,7 +103,13 @@ void run_sequence(const std::string& group, const std::vector<std::string> &test
   load_memory((*param_map)[tests[0]], data_dir,
               (*file_map)[tests[0]], (*mem_map)[tests[0]],
               use_data_file, acc_sram_memory,
-              acc_rram_memory, hls_gold_sram_memory + (*param_map)[tests[0]].INPUT_OFFSET, (INPUT_DATATYPE*)trash, (INPUT_DATATYPE*)trash, (INPUT_DATATYPE*)trash, (INPUT_DATATYPE*)trash, (INPUT_DATATYPE*)trash,
+              acc_rram_memory, 
+              hls_gold_sram_memory + (*param_map)[tests[0]].INPUT_OFFSET, 
+              (INPUT_DATATYPE*)trash, 
+              (INPUT_DATATYPE*)trash, 
+              (INPUT_DATATYPE*)trash, 
+              (INPUT_DATATYPE*)trash, 
+              (INPUT_DATATYPE*)trash,
               uni_gold_sram_memory + (*param_map)[tests[0]].INPUT_OFFSET,
               (UniversalPosit*)trash,
               (UniversalPosit*)trash,
@@ -180,19 +186,23 @@ void run_sequence(const std::string& group, const std::vector<std::string> &test
               acc_rram_memory, (INPUT_DATATYPE*)trash,
                 hls_gold_rram_memory + (*param_map)[test].WEIGHT_OFFSET,
                 hls_gold_rram_memory + (*param_map)[test].BIAS_OFFSET,
-                hls_gold_sram_memory + (*param_map)[test].RESIDUAL_OFFSET,
-                hls_gold_sram_memory + (*param_map)[test].OUTPUT_OFFSET,
+(INPUT_DATATYPE*)trash,
+(INPUT_DATATYPE*)trash,
+                // hls_gold_sram_memory + (*param_map)[test].RESIDUAL_OFFSET,
+                // hls_gold_sram_memory + (*param_map)[test].OUTPUT_OFFSET,
                 hls_comp,
               (UniversalPosit*)trash,
                 uni_gold_rram_memory + (*param_map)[test].WEIGHT_OFFSET,
                 uni_gold_rram_memory + (*param_map)[test].BIAS_OFFSET,
-                uni_gold_sram_memory + (*param_map)[test].RESIDUAL_OFFSET,
+(UniversalPosit*)trash,
+                // uni_gold_sram_memory + (*param_map)[test].RESIDUAL_OFFSET,
                 uni_gold_sram_memory + (*param_map)[test].OUTPUT_OFFSET,
                 uni_comp,
               (float*) trash,  
                 float_gold_rram_memory + (*param_map)[test].WEIGHT_OFFSET,
                 float_gold_rram_memory + (*param_map)[test].BIAS_OFFSET,
-                float_gold_sram_memory + (*param_map)[test].RESIDUAL_OFFSET,
+(float*)trash,
+                // float_gold_sram_memory + (*param_map)[test].RESIDUAL_OFFSET,
                 float_gold_sram_memory + (*param_map)[test].OUTPUT_OFFSET,
                 fp_comp
               );
@@ -204,42 +214,61 @@ void run_sequence(const std::string& group, const std::vector<std::string> &test
                 hls_gold_sram_memory + (*param_map)[test].OUTPUT_OFFSET,
                 hls_gold_rram_memory + (*param_map)[test].BIAS_OFFSET,
                 hls_gold_sram_memory + (*param_map)[test].RESIDUAL_OFFSET);
-  run_universal_posit_gold_model((*param_map)[test],
-                uni_gold_sram_memory + (*param_map)[test].INPUT_OFFSET,
-                uni_gold_rram_memory + (*param_map)[test].WEIGHT_OFFSET,
-                uni_gold_sram_memory + (*param_map)[test].OUTPUT_OFFSET,
-                uni_gold_rram_memory + (*param_map)[test].BIAS_OFFSET,
-                uni_gold_sram_memory + (*param_map)[test].RESIDUAL_OFFSET);
-  run_fp_gold_model((*param_map)[test],
-                float_gold_sram_memory + (*param_map)[test].INPUT_OFFSET,
-                float_gold_rram_memory + (*param_map)[test].WEIGHT_OFFSET,
-                float_gold_sram_memory + (*param_map)[test].OUTPUT_OFFSET,
-                float_gold_rram_memory + (*param_map)[test].BIAS_OFFSET,
-                float_gold_sram_memory + (*param_map)[test].RESIDUAL_OFFSET);
+  // run_universal_posit_gold_model((*param_map)[test],
+  //               uni_gold_sram_memory + (*param_map)[test].INPUT_OFFSET,
+  //               uni_gold_rram_memory + (*param_map)[test].WEIGHT_OFFSET,
+  //               uni_gold_sram_memory + (*param_map)[test].OUTPUT_OFFSET,
+  //               uni_gold_rram_memory + (*param_map)[test].BIAS_OFFSET,
+  //               uni_gold_sram_memory + (*param_map)[test].RESIDUAL_OFFSET);
+  // run_fp_gold_model((*param_map)[test],
+  //               float_gold_sram_memory + (*param_map)[test].INPUT_OFFSET,
+  //               float_gold_rram_memory + (*param_map)[test].WEIGHT_OFFSET,
+  //               float_gold_sram_memory + (*param_map)[test].OUTPUT_OFFSET,
+  //               float_gold_rram_memory + (*param_map)[test].BIAS_OFFSET,
+  //               float_gold_sram_memory + (*param_map)[test].RESIDUAL_OFFSET);
 
-std::string unigold_diff_file = "test_outputs/"+group+"resnet."+test+"unigold_vs_pytorch.txt";
-    compare_arrays(uni_gold_sram_memory + (*param_map)[test].OUTPUT_OFFSET, uni_comp, X * Y * K, unigold_diff_file);
+// std::string unigold_diff_file = "test_outputs/"+group+"resnet."+test+"unigold_vs_pytorch.txt";
+// std::cout << unigold_diff_file << std::endl;
+//     compare_arrays(uni_gold_sram_memory + (*param_map)[test].OUTPUT_OFFSET, uni_comp, X * Y * K, unigold_diff_file);
 
 std::string hlsgold_diff_file = "test_outputs/"+group+"resnet."+test+"hlsgold_vs_pytorch.txt";
+std::cout << hlsgold_diff_file << std::endl;
     compare_arrays(hls_gold_sram_memory + (*param_map)[test].OUTPUT_OFFSET, hls_comp, X * Y * K, hlsgold_diff_file);
 
-std::string fpgold_diff_file = "test_outputs/"+group+"resnet."+test+"fpgold_vs_pytorch.txt";
-    compare_arrays(float_gold_sram_memory + (*param_map)[test].OUTPUT_OFFSET, fp_comp, X * Y * K, fpgold_diff_file);
+// std::string input_diff_file = "test_outputs/series"+group+"."+test+".input_vs_pytorch.txt";
+//     compare_arrays(float_gold_sram_memory + (*param_map)[test].INPUT_OFFSET, fp_comp, X * Y * K, input_diff_file);
+
+// std::string fpgold_diff_file = "test_outputs/"+group+"resnet."+test+"fpgold_vs_pytorch.txt";
+// std::cout << fpgold_diff_file << std::endl;
+//     compare_arrays(float_gold_sram_memory + (*param_map)[test].OUTPUT_OFFSET, fp_comp, X * Y * K, fpgold_diff_file);
   delete[] hls_comp;
   delete[] uni_comp;
   delete[] fp_comp;
 
   }
-  std::ofstream wf("pybuild/output", std::ios::out | std::ios::binary);
+  std::ofstream wf("pybuild/result.txt", std::ios::out | std::ios::trunc);
   if (!wf.good())
     throw std::runtime_error("File write failed");
 
+  INPUT_DATATYPE* output = hls_gold_sram_memory + (*param_map)["fc"].OUTPUT_OFFSET;
+  int index = 0;
+  float max = (float)output[0];
   for (int i = 0; i < 1000; i++)
   {
-    wf.write((char *)(hls_gold_sram_memory + resnetParams["fc"].OUTPUT_OFFSET + i * 4),
-             sizeof(char));
+   std::cout << (float)output[i] << " " << max<<" "<< i << std::endl;
+   if ((float)output[i] >= max)
+   { 
+     index = i;
+     max = (float)output[i];
+   }
+    // printf("val: %f\n",(float)(*(hls_gold_sram_memory + resnetParams["fc"].OUTPUT_OFFSET + i * 4)));
+    // wf.write((char *)(uni_gold_sram_memory + resnetParams["fc"].OUTPUT_OFFSET + i * 4),
+    //          sizeof(char));
   }
+  wf << index <<'\n';
+  printf("max: %f, index: %d", max, index);
   wf.close();
+  printf("donzo\n");
 }
 
 int run_test(const SimplifiedParams params, const std::string& dataDir,
@@ -453,7 +482,7 @@ extern "C" int sc_main(int argc, char* argv[]) {
     }
   }
 
-  // run_sequence(group, std::vector<std::string>(resnet_order.begin(), resnet_order.end()));
+  run_sequence(group, std::vector<std::string>(resnet_order.begin(), resnet_order.end()));
 
-  return run_test(params, dataDir, files, memoryMap, useDataFiles, fullName);
+  // return run_test(params, dataDir, files, memoryMap, useDataFiles, fullName);
 }

@@ -32,7 +32,8 @@ gold_model.eval()
 
 # Load bn folded comparison model
 comp_model = fp_models.resnet18()
-comp_model.load_state_dict(gold_model.state_dict())
+comp_model.load_state_dict(torch.load("/sim/kbartolo/accelerator/models/resnet18_mp2.pth").state_dict(), strict=False)
+# comp_model.load_state_dict(gold_model.state_dict())
 comp_model.eval()
 comp_model = bn_folding.bn_folding_model(comp_model)
 
@@ -52,8 +53,8 @@ while(samples < sample_size):
     image_index = index + 1
     print(index)
 
-    # filename = "/sim/kbartolo/accelerator/data/imagenet/ILSVRC2012_val_"+"{:08d}".format(image_index)+".jpeg"
-    filename = "/sim/kbartolo/accelerator/data/imagenet/ILSVRC2012_val_"+"{:08d}".format(1)+".jpeg"
+    filename = "/sim/kbartolo/accelerator/data/imagenet/ILSVRC2012_val_"+"{:08d}".format(image_index)+".jpeg"
+    filename = "/sim/kbartolo/accelerator/data/imagenet/ILSVRC2012_val_"+"{:08d}".format(0)+".jpeg"
 
     # Create Mini-Batch
     input_image = Image.open(filename)
