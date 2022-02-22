@@ -244,7 +244,7 @@ std::map<std::string, SimplifiedParams> simple{
          false,                                      // residual
          40 * 1024,                                  // RESIDUAL_OFFSET
          false,                                      // maxpool
-         true,                                       // avgpool
+         false,                                      // avgpool
          false,                                      // SOFTMAX
          false,                                      // FC
          true,                                       // NO_NORM
