@@ -39,8 +39,13 @@ int compare_arrays_internal(TA *matrixA, TB *matrixB, size_t size,
   std::ofstream diffFile(filename);
   for (int index = 0; index < size; index++) {
     diffFile << (float)matrixA[index] << " vs. " << (float)matrixB[index]
-             << std::endl;
+             << " ";
     float diff = abs(((float)matrixA[index] - (float)matrixB[index]));
+
+    for (float i = 0.001; i < diff; i *= 10.0) {
+      diffFile << "*";
+    }
+    diffFile << std::endl;
 
     if (diff < 0.001) {
       diff_buckets[0]++;
