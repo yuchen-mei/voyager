@@ -282,6 +282,8 @@ SC_MODULE(VectorUnit) {
 
   Connections::Out<MemoryRequest> CCS_INIT_S1(vectorFetch2AddressRequest);
   Connections::In<Pack1D<ODTYPE, WIDTH> > CCS_INIT_S1(vectorFetch2DataResponse);
+  Connections::Combinational<Pack1D<ODTYPE, WIDTH> > CCS_INIT_S1(
+      vectorFetch2DataResponseReplicated);
 
   Connections::Out<int> CCS_INIT_S1(scalarOutputAddress);
   Connections::Out<Pack1D<ODTYPE, WIDTH> > CCS_INIT_S1(scalarUnitOutput);
@@ -293,7 +295,7 @@ SC_MODULE(VectorUnit) {
 
   Connections::SyncOut CCS_INIT_S1(done);
 
-  VectorFetchUnit<WIDTH> CCS_INIT_S1(vectorFetch);
+  VectorFetchUnit<ODTYPE, WIDTH> CCS_INIT_S1(vectorFetch);
   Connections::Combinational<VectorParams> CCS_INIT_S1(vectorFetchParams);
 
   VectorOpUnit<ODTYPE, ACC_DTYPE, WIDTH> CCS_INIT_S1(vectorOpUnit);
@@ -318,6 +320,9 @@ SC_MODULE(VectorUnit) {
     vectorFetch.vectorFetch0AddressRequest(vectorFetch0AddressRequest);
     vectorFetch.vectorFetch1AddressRequest(vectorFetch1AddressRequest);
     vectorFetch.vectorFetch2AddressRequest(vectorFetch2AddressRequest);
+    vectorFetch.vectorFetch2DataResponse(vectorFetch2DataResponse);
+    vectorFetch.vectorFetch2DataResponseReplicated(
+        vectorFetch2DataResponseReplicated);
 
     vectorOpUnit.clk(clk);
     vectorOpUnit.rstn(rstn);
@@ -326,7 +331,7 @@ SC_MODULE(VectorUnit) {
     vectorOpUnit.systolicArrayOutput(systolicArrayOutput);
     vectorOpUnit.vectorFetch0Output(vectorFetch0DataResponse);
     vectorOpUnit.vectorFetch1Output(vectorFetch1DataResponse);
-    vectorOpUnit.vectorFetch2Output(vectorFetch2DataResponse);
+    vectorOpUnit.vectorFetch2Output(vectorFetch2DataResponseReplicated);
     vectorOpUnit.vectorOpUnitOutput(vectorOpUnitOutput);
     vectorOpUnit.scalarOpUnitOutput(scalarUnitOutput);
 
