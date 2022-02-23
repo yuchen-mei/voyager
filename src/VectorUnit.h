@@ -98,7 +98,7 @@ SC_MODULE(VectorOpUnit) {
         }
       }
 
-      CCS_LOG("vector unit input: " << op0Src0);
+      DLOG("vector unit input: " << op0Src0);
 
       if (inst.vOp0 == VectorInstructions::vadd ||
           inst.vOp0 == VectorInstructions::vsub) {
@@ -117,7 +117,7 @@ SC_MODULE(VectorOpUnit) {
         res0 = op0Src0;
       }
 
-      CCS_LOG("res0: " << res0);
+      DLOG("res0: " << res0);
       /*
        * Stage 1: exp
        */
@@ -127,7 +127,7 @@ SC_MODULE(VectorOpUnit) {
         res1 = res0;
       }
 
-      CCS_LOG("res1: " << res1);
+      DLOG("res1: " << res1);
 
       /*
        * Stage 2: reduction
@@ -138,7 +138,7 @@ SC_MODULE(VectorOpUnit) {
         res2 = res1;
       }
 
-      CCS_LOG("res2: " << res2);
+      DLOG("res2: " << res2);
 
       /*
        * Stage 3: add, div
@@ -171,7 +171,7 @@ SC_MODULE(VectorOpUnit) {
         res3 = res2;
       }
 
-      CCS_LOG("res3: " << res3);
+      DLOG("res3: " << res3);
 
       /*
        * Stage 4: relu
@@ -182,7 +182,7 @@ SC_MODULE(VectorOpUnit) {
         res4 = res3;
       }
 
-      CCS_LOG("res4: " << res4);
+      DLOG("res4: " << res4);
 
       if (inst.vWriteOut) {
         // convert to Posit8 and write out
@@ -190,7 +190,7 @@ SC_MODULE(VectorOpUnit) {
         for (int i = 0; i < WIDTH; i++) {
           tmp[i] = static_cast<IDTYPE>(res4[i]);
         }
-        CCS_LOG("vector unit output: " << tmp);
+        DLOG("vector unit output: " << tmp);
 
         vectorOpUnitOutput.Push(tmp);
       }
