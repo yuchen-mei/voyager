@@ -113,16 +113,16 @@ void run_gold_op(const SimplifiedParams params, T *matrixA, T *matrixB,
   } else if (params.NO_NORM) {
     // elementwise multiplication and addition of matrices
     int C = params.loops[1][params.reductionLoopIndex[1]] * DIMENSION;
-    int K = params.loops[0][params.weightLoopIndex[0]] *
-            params.loops[1][params.weightLoopIndex[1]] * DIMENSION;
-    for (int k = 0; k < K; k++) {
+    int Y = params.loops[0][params.inputYLoopIndex[0]] *
+            params.loops[1][params.inputYLoopIndex[1]];
+    for (int y = 0; y < Y; y++) {
       for (int c = 0; c < C; c++) {
-        ACC_T a = matrixA[c * K + k];
-        ACC_T b = matrixB[c * K + k];
-        ACC_T bias = biasMatrix[c * K + k];
+        ACC_T a = matrixA[y * C + c];
+        ACC_T b = matrixB[c];
+        ACC_T bias = biasMatrix[c];
         ACC_T acc = gold_fma(a, b, bias);
 
-        matrixC[c * K + k] = acc;
+        matrixC[y * C + c] = acc;
       }
     }
   } else {  // normal operation
