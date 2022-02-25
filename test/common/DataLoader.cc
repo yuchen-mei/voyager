@@ -125,6 +125,11 @@ void load_weights(const SimplifiedParams& params, const std::string& filename,
     FX = 7;
     C = 3;
   }
+  if (params.NO_NORM) {
+    FX = 1;
+    FY = 1;
+    K = 1;
+  }
 
   int size = FY * FX * C * K;
   double* tmpValues = read_file_as_double(filename, size, useDataFile);
@@ -166,6 +171,9 @@ void load_bias(const SimplifiedParams& params, const std::string& filename,
   if (params.REPLICATION) {
     FX = 7;
     C = 3;
+  }
+  if (params.NO_NORM) {
+    K = C;
   }
 
   int size = K;
@@ -252,6 +260,9 @@ void load_datafile_outputs(const SimplifiedParams params,
   if (params.AVGPOOL) {
     X = 1;
     Y = 1;
+  }
+  if (params.NO_NORM) {
+    K = C;
   }
 
   int size = X * Y * K;

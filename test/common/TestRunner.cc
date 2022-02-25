@@ -280,6 +280,7 @@ int run_test(const SimplifiedParams params, const std::string& dataDir,
   int FX = params.loops[1][params.fxIndex];
   int FY = params.loops[1][params.fyIndex];
   int STRIDE = params.STRIDE;
+  int outputSize = params.NO_NORM ? X * Y * C : X * Y * K;
 
   if (params.REPLICATION) {
     FX = 7;
@@ -294,25 +295,26 @@ int run_test(const SimplifiedParams params, const std::string& dataDir,
 
   INPUT_DATATYPE* matrixA = new INPUT_DATATYPE[(STRIDE * X) * (STRIDE * Y) * C];
   INPUT_DATATYPE* matrixB = new INPUT_DATATYPE[FX * FY * C * K];
-  INPUT_DATATYPE* biasMatrix = new INPUT_DATATYPE[K];
+  INPUT_DATATYPE* biasMatrix = new INPUT_DATATYPE[params.NO_NORM ? C : K];
   INPUT_DATATYPE* residualMatrix = new INPUT_DATATYPE[X * Y * K];
-  OUTPUT_DATATYPE* matrixC = new OUTPUT_DATATYPE[X * Y * K];
-  OUTPUT_DATATYPE* dataFileOutput = new OUTPUT_DATATYPE[X * Y * K];
+  OUTPUT_DATATYPE* matrixC = new OUTPUT_DATATYPE[outputSize];
+  OUTPUT_DATATYPE* dataFileOutput = new OUTPUT_DATATYPE[outputSize];
 
   UniversalPosit* universalMatrixA =
       new UniversalPosit[(STRIDE * X) * (STRIDE * Y) * C];
   UniversalPosit* universalMatrixB = new UniversalPosit[FX * FY * C * K];
-  UniversalPosit* universalBiasMatrix = new UniversalPosit[K];
+  UniversalPosit* universalBiasMatrix =
+      new UniversalPosit[params.NO_NORM ? C : K];
   UniversalPosit* universalResidualMatrix = new UniversalPosit[X * Y * K];
-  UniversalPosit* universalMatrixC = new UniversalPosit[X * Y * K];
-  UniversalPosit* universalDataFileOutput = new UniversalPosit[X * Y * K];
+  UniversalPosit* universalMatrixC = new UniversalPosit[outputSize];
+  UniversalPosit* universalDataFileOutput = new UniversalPosit[outputSize];
 
   float* floatMatrixA = new float[(STRIDE * X) * (STRIDE * Y) * C];
   float* floatMatrixB = new float[FX * FY * C * K];
-  float* floatBiasMatrix = new float[K];
+  float* floatBiasMatrix = new float[params.NO_NORM ? C : K];
   float* floatResidualMatrix = new float[X * Y * K];
-  float* floatMatrixC = new float[X * Y * K];
-  float* floatDataFileOutput = new float[X * Y * K];
+  float* floatMatrixC = new float[outputSize];
+  float* floatDataFileOutput = new float[outputSize];
 
   load_memory(params, dataDir, files, memoryMap, useDataFile, sramMemory,
               rramMemory, matrixA, matrixB, biasMatrix, residualMatrix, matrixC,
@@ -332,6 +334,7 @@ int run_test(const SimplifiedParams params, const std::string& dataDir,
     Y = 1;
   }
 
+
   run_op({params}, sramMemory, rramMemory, memoryMap);
   run_custom_posit_gold_model(params, matrixA, matrixB, matrixC, biasMatrix,
                               residualMatrix);
@@ -345,34 +348,34 @@ int run_test(const SimplifiedParams params, const std::string& dataDir,
   std::cout << "(reveals bugs in accelerator or memory placement)" << std::endl;
   std::string diffFile = fileOutputPrefix + "accel_vs_hlsgold.txt";
   int errors = compare_arrays(&sramMemory[params.OUTPUT_OFFSET], matrixC,
-                              X * Y * K, diffFile);
+                              outputSize, diffFile);
 
-  // std::cout << "HLS Posit Gold Model vs. Universal Posit Gold Model"
-  //           << std::endl;
-  // std::cout << "(reveals bugs in implementation of custom HLS Posit
-  // operators)"
-  //           << std::endl;
-  // diffFile = fileOutputPrefix + "hlsgold_vs_universalgold.txt";
-  // errors += compare_arrays(matrixC, universalMatrixC, X * Y * K, diffFile);
+  std::cout << "HLS Posit Gold Model vs. Universal Posit Gold Model"
+            << std::endl;
+  std::cout << "(reveals bugs in implementation of custom HLS Posit operators)"
+            << std::endl;
+  diffFile = fileOutputPrefix + "hlsgold_vs_universalgold.txt";
+  errors += compare_arrays(matrixC, universalMatrixC, outputSize, diffFile);
 
   if (useDataFile) {
     std::cout << "HLS Posit Gold Model vs. Pytorch" << std::endl;
     std::cout << "(reveals bugs in mapping operations to accelerator)"
               << std::endl;
     diffFile = fileOutputPrefix + "hlsgold_vs_pytorch.txt";
-    errors += compare_arrays(matrixC, dataFileOutput, X * Y * K, diffFile);
+    errors += compare_arrays(matrixC, dataFileOutput, outputSize, diffFile);
 
     std::cout << "Universal Posit Gold Model vs. Pytorch" << std::endl;
     std::cout << "(reveals issues in representing float as Posit)" << std::endl;
     diffFile = fileOutputPrefix + "universalgold_vs_pytorch.txt";
     errors += compare_arrays(universalMatrixC, universalDataFileOutput,
-                             X * Y * K, diffFile);
+                             outputSize, diffFile);
+
 
     std::cout << "FP32 Gold Model vs. Pytorch" << std::endl;
     std::cout << "(reveals issues in data loading or mapping)" << std::endl;
     diffFile = fileOutputPrefix + "fpgold_vs_pytorch.txt";
     errors +=
-        compare_arrays(floatMatrixC, floatDataFileOutput, X * Y * K, diffFile);
+        compare_arrays(floatMatrixC, floatDataFileOutput, outputSize, diffFile);
   }
   // delete[] matrixA;
   // delete[] matrixB;
@@ -422,7 +425,19 @@ extern "C" int sc_main(int argc, char* argv[]) {
     throw std::runtime_error("Group: " + group + " not found");
   }
 
-  auto search = mapPtr->find(test);
+  std::string operation;
+  if (group == "mobilebert") {
+    auto operationSearch = mobilebertOps.find(test);
+    if (operationSearch != mobilebertOps.end()) {
+      operation = operationSearch->second;
+    } else {
+      throw std::runtime_error("Operation for " + test + " not found");
+    }
+  } else {
+    operation = test;
+  }
+
+  auto search = mapPtr->find(operation);
   if (search != mapPtr->end()) {
     params = search->second;
   } else {
