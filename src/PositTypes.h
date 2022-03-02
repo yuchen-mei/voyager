@@ -88,10 +88,12 @@ void decode(ac_int<nbits, false> bits, bool &sign, int &scale,
     scale *= (1 << es);
 
     int nrBits = nbits - run - 1;
-    if (nrBits >= es && es > 0) {
-      scale += bits.template slc<es>(nrBits - es);
-    } else if (nrBits >= 0 && es > 0) {
-      scale += bits & ((1 << nrBits) - 1);
+    if (es > 0) {
+      if (nrBits >= es) {
+        scale += bits.template slc<es>(nrBits - es);
+      } else if (nrBits >= 0) {
+        scale += bits & ((1 << nrBits) - 1);
+      }
     }
 
     bits <<= run + 1 + es;
@@ -135,6 +137,7 @@ class Posit {
 
   void setbits(int i) { bits = i; }
   bool isZero() const { return bits == 0; }
+  void setZero() { bits = 0; }
 
   void relu() {
     if (bits[nbits - 1] == 1) bits = 0;
@@ -312,6 +315,16 @@ Posit<nbits, es>::operator float() const {
 }
 #endif
 
+template <int nbits, int es>
+inline std::ostream &operator<<(std::ostream &os, const Posit<nbits, es> &val) {
+#ifndef __SYNTHESIS__
+  os << static_cast<float>(val) << " ";
+#else
+  os << val.bits << " ";
+#endif
+  return os;
+}
+
 /*
  * Intermediate representation used for MAC
  */
@@ -322,11 +335,12 @@ class PositFP {
       fbits + 1;  // maximum number of fraction + one hidden bit
   static constexpr int abits = fhbits + 3;  // size of the addend
   static constexpr int mbits = 2 * fhbits;  // size of the multiplier output
+  static const unsigned int width = 1 + sbits + fbits + 1;
 
   ac_int<1, false> sign;
   ac_int<sbits, true> scale;
   ac_int<fbits, false> fraction;
-  bool _zero = false;
+  bool _zero;
 
   PositFP() {}
 
@@ -556,7 +570,7 @@ Posit<nbits2, es2> fma(const Posit<nbits, es> &a, const Posit<nbits, es> &b,
   if (a.isZero() || b.isZero()) {
     return Posit<nbits2, es2>(c);
   } else {
-    product = a * b;
+    product = PositFP<8, mbits>(va * vb);
     if (c.isZero()) {
       return Posit<nbits2, es2>(product);
     } else {
@@ -592,7 +606,7 @@ inline bool operator==(const PositFP<sbits, fbits> &lhs,
          (lhs.fraction == rhs.fraction);
 }
 
-template <int nbits, int es, int sbits, int fbits>
+template <int nbits, int es>
 inline bool operator==(const Posit<nbits, es> &lhs,
                        const Posit<nbits, es> &rhs) {
   return lhs.bits == rhs.bits;

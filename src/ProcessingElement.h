@@ -49,9 +49,9 @@ SC_MODULE(ProcessingElement) {
     bool swap_weights_reg;
     bool old_swap_weights_reg;
 
-    input_out.write(0);
-    psum_out.write(0);
-    weight_out.write(0);
+    input_out.write(IDTYPE());
+    psum_out.write(ODTYPE());
+    weight_out.write(IDTYPE());
     swap_weights_out.write(false);
     valid_output.write(false);
 

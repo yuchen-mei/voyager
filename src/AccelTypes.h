@@ -101,6 +101,10 @@ class Pack1D<PositFP<sbits, fbits>, SIZE> {
     for (unsigned int i = 0; i < SIZE; i++) {
       m &value[i].fraction;
     }
+#pragma hls_unroll yes
+    for (unsigned int i = 0; i < SIZE; i++) {
+      m &value[i]._zero;
+    }
   }
 };
 

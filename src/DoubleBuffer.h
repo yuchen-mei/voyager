@@ -87,7 +87,7 @@ SC_MODULE(DoubleBuffer) {
         } else {
 #pragma hls_unroll yes
           for (int j = 0; j < WIDTH; j++) {
-            data[j] = 0;
+            data[j].setZero();
           }
         }
 
@@ -141,7 +141,7 @@ SC_MODULE(DoubleBuffer) {
         } else {
 #pragma hls_unroll yes
           for (int j = 0; j < WIDTH; j++) {
-            data[j] = 0;
+            data[j].setZero();
           }
         }
 

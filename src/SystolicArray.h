@@ -73,7 +73,7 @@ SC_MODULE(SystolicArray) {
 
   void push_weights() {
     for (int i = 0; i < NCOLS; i++) {
-      weightConnection[0][i].write(0);
+      weightConnection[0][i].write(IDTYPE());
     }
     weightPush.write(false);
     bool oldToggle = false;
@@ -106,11 +106,11 @@ SC_MODULE(SystolicArray) {
     swapWeights.Reset();
 
     for (int i = 0; i < NCOLS; i++) {
-      psumConnection[0][i].write(0);
+      psumConnection[0][i].write(ODTYPE());
     }
 
     for (int i = 0; i < NROWS; i++) {
-      inputConnection[i][0].write(0);
+      inputConnection[i][0].write(IDTYPE());
       weightSwap[i][0].write(0);
     }
 

@@ -355,7 +355,7 @@ SC_MODULE(InputController) {
                             (full_y >= params.STRIDE * Y0 * Y1)) {
 #pragma hls_unroll yes
                           for (int dims = 0; dims < 3 * 3; dims++) {
-                            data[dims] = 0;
+                            data[dims].setZero();
                           }
                         }
 
@@ -388,7 +388,7 @@ SC_MODULE(InputController) {
 #pragma hls_unroll yes
                             for (int dims = 0; dims < 3; dims++) {
                               int index = 3 * ((x + fx_bound) % 4) + dims;
-                              data.value[index] = 0;
+                              data.value[index].setZero();
                             }
                           } else {
                             temp = dataResponse.Pop();
@@ -417,7 +417,7 @@ SC_MODULE(InputController) {
                               for (int dims = 0; dims < 3; dims++) {
                                 int index =
                                     3 * ((next_x + fx_bound) % 4) + dims;
-                                data.value[index] = 0;
+                                data.value[index].setZero();
                               }
                             }
                           } else {
@@ -450,7 +450,7 @@ SC_MODULE(InputController) {
 #pragma hls_unroll yes
                           for (int dims = 0; dims < 3; dims++) {
                             int index = 3 * ((x + fx_bound) % 4) + dims;
-                            data.value[index] = 0;
+                            data.value[index].setZero();
                           }
                         } else {
                           temp = dataResponse.Pop();
@@ -478,7 +478,7 @@ SC_MODULE(InputController) {
 #pragma hls_unroll yes
                             for (int dims = 0; dims < 3; dims++) {
                               int index = 3 * ((next_x + fx_bound) % 4) + dims;
-                              data.value[index] = 0;
+                              data.value[index].setZero();
                             }
                           }
                         } else {
@@ -605,7 +605,7 @@ SC_MODULE(InputController) {
                               (full_y >= params.STRIDE * Y0 * Y1)) {
 #pragma hls_unroll yes
                             for (int dims = 0; dims < NROWS; dims++) {
-                              data[dims] = 0;
+                              data[dims].setZero();
                             }
                           } else {
                             data = dataResponse.Pop();

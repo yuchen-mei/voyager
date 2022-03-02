@@ -284,7 +284,7 @@ SC_MODULE(MatrixProcessor) {
         Pack1D<ODTYPE, NCOLS> psum;
 #pragma hls_unroll yes
         for (int i = 0; i < NCOLS; i++) {
-          psum.value[i] = 0;
+          psum.value[i].setZero();
         }
 
         if (!(loop_counters[1][params.reductionLoopIndex[1]] == 0 &&
