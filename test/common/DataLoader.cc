@@ -4,6 +4,8 @@
 #include <iostream>
 #include <random>
 
+#define PIPE_INPUT 1
+
 void save_double(INPUT_DATATYPE* array, double val) {
   float fval = (float)val;
   *array = INPUT_DATATYPE(fval);
@@ -42,6 +44,20 @@ double* read_file_as_double(const std::string& filename, int size,
   return tmpValuePtr;
 }
 
+double* read_input_as_double(int size
+                            ) {
+  // Files are written in binary format as dtype=float64 (double in c)
+  char* tmpValuesArray = new char[size * sizeof(double)];
+  double* tmpValuePtr = (double*)tmpValuesArray;
+
+    // if (!std::cin.good())
+    //   throw std::runtime_error("STDIN is bad");
+    std::cin.read(tmpValuesArray, size * sizeof(double));
+
+  return tmpValuePtr;
+}
+
+
 void load_inputs(const SimplifiedParams& params, const std::string& filename,
                  bool useDataFile, INPUT_DATATYPE* acceleratorMemory,
                  INPUT_DATATYPE* goldMemory,
@@ -63,12 +79,14 @@ void load_inputs(const SimplifiedParams& params, const std::string& filename,
 
   int size = STRIDE * Y * STRIDE * X * C;
 
+#if PIPE_INPUT == 1
+  double* tmpValues = read_input_as_double(size);
+#else
   double* tmpValues = read_file_as_double(filename, size, useDataFile);
+#endif
   double* tmpValuePtr = tmpValues;
 
-  // if (params.REPLICATION) {
-  // TODO:WARNING:CHANGE: quick fix
-  if (false) {
+  if (params.REPLICATION) {
     for (int y = 0; y < STRIDE * Y; y++) {
       for (int x_o = 0; x_o < (STRIDE * X) / 4; x_o++) {
         for (int x_i = 0; x_i < 4; x_i++) {  // 4 packed together
@@ -332,5 +350,28 @@ void load_memory(
   if (useDataFile) {
     load_datafile_outputs(params, dataDir + files.outputs_file, dataFileOutput,
                           universalDataFileOutput, floatDataFileOutput);
+  }
+}
+
+void load_wb(
+    const SimplifiedParams& params, const std::string& dataDir,
+    const Files& files, const MemoryMap& memoryMap, bool useDataFile,
+    INPUT_DATATYPE* sramMemory, INPUT_DATATYPE* rramMemory,
+    INPUT_DATATYPE* matrixA, INPUT_DATATYPE* matrixB,
+    INPUT_DATATYPE* biasMatrix, INPUT_DATATYPE* residualMatrix,
+    INPUT_DATATYPE* matrixC, INPUT_DATATYPE* dataFileOutput,
+    UniversalPosit* universalMatrixA, UniversalPosit* universalMatrixB,
+    UniversalPosit* universalBiasMatrix,
+    UniversalPosit* universalResidualMatrix, UniversalPosit* universalMatrixC,
+    UniversalPosit* universalDataFileOutput, float* floatMatrixA,
+    float* floatMatrixB, float* floatBiasMatrix, float* floatResidualMatrix,
+    float* floatMatrixC, float* floatDataFileOutput) {
+  load_weights(params, dataDir + files.weights_file, useDataFile,
+               memoryMap.weights == SRAM ? sramMemory : rramMemory, matrixB,
+               universalMatrixB, floatMatrixB);
+  if (params.BIAS) {
+    load_bias(params, dataDir + files.bias_file, useDataFile,
+              memoryMap.bias == SRAM ? sramMemory : rramMemory, biasMatrix,
+              universalBiasMatrix, floatBiasMatrix);
   }
 }
