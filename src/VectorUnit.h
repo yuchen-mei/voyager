@@ -53,9 +53,9 @@ SC_MODULE(VectorOpUnit) {
     sensitive << clk.pos();
     async_reset_signal_is(rstn, false);
 
-    SC_THREAD(reductionOpRun);
-    sensitive << clk.pos();
-    async_reset_signal_is(rstn, false);
+    // SC_THREAD(reductionOpRun);
+    // sensitive << clk.pos();
+    // async_reset_signal_is(rstn, false);
   }
 
   void vectorOpRun() {
@@ -196,8 +196,8 @@ SC_MODULE(VectorOpUnit) {
         vadd<typename ACC_DTYPE::DecomposedPosit, WIDTH>(op3Src0, op3Src1,
                                                          res3);
       } else if (inst.vOp3 == VectorInstructions::vdiv) {
-        vdiv<typename ACC_DTYPE::DecomposedPosit, WIDTH>(op3Src0, op3Src1,
-                                                         res3);
+        // vdiv<typename ACC_DTYPE::DecomposedPosit, WIDTH>(op3Src0, op3Src1,
+        //                                                  res3);
       } else {
         res3 = op3Src0;
       }
@@ -231,6 +231,7 @@ SC_MODULE(VectorOpUnit) {
   void accumulationOpRun() {
     accumulationOpInput.ResetRead();
     accumulationOpOutput.ResetWrite();
+    accumulationOpUnitInstructions.Reset();
 
     wait();
 
@@ -288,9 +289,9 @@ SC_MODULE(VectorOpUnit) {
           for (int i = 0; i < inst.rCount; i++) {
             Pack1D<typename ACC_DTYPE::DecomposedPosit, WIDTH> op =
                 reductionOpInput.Pop();
-            typename ACC_DTYPE::DecomposedPosit result =
-                TreeOps<typename ACC_DTYPE::DecomposedPosit, WIDTH>().treeadd(
-                    op);
+            typename ACC_DTYPE::DecomposedPosit result = treeadd16(op);
+            // TreeOps<typename ACC_DTYPE::DecomposedPosit, WIDTH>().treeadd(
+            //     op);
             DLOG("reduction: " << op << " = " << result);
             if (i != 0) {
               // result = (typename ACC_DTYPE::DecomposedPosit)(result +
@@ -304,9 +305,9 @@ SC_MODULE(VectorOpUnit) {
           for (int i = 0; i < inst.rCount; i++) {
             Pack1D<typename ACC_DTYPE::DecomposedPosit, WIDTH> op =
                 reductionOpInput.Pop();
-            typename ACC_DTYPE::DecomposedPosit result =
-                TreeOps<typename ACC_DTYPE::DecomposedPosit, WIDTH>().treemax(
-                    op);
+            typename ACC_DTYPE::DecomposedPosit result = treemax16(op);
+            // TreeOps<typename ACC_DTYPE::DecomposedPosit, WIDTH>().treemax(
+            //     op);
             if (i != 0) {
               result = result < prevResult ? prevResult : result;
             }

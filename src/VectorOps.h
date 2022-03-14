@@ -45,7 +45,6 @@ void vrelu(Pack1D<ACC_DTYPE, WIDTH>& op0, Pack1D<ACC_DTYPE, WIDTH>& res) {
 }
 
 #pragma hls_design ccore
-#pragma ccore_type combinational
 template <typename ACC_DTYPE, int WIDTH>
 void vexp(Pack1D<ACC_DTYPE, WIDTH>& op0, Pack1D<ACC_DTYPE, WIDTH>& res) {
   // convert to Posit16
@@ -57,7 +56,7 @@ void vexp(Pack1D<ACC_DTYPE, WIDTH>& op0, Pack1D<ACC_DTYPE, WIDTH>& res) {
 
 #pragma hls_unroll yes
   for (int i = 0; i < WIDTH; i++) {
-    tmp[i].exp();
+    posit_exp(tmp[i]);
   }
 
 // convert back to decoded format
@@ -68,7 +67,6 @@ void vexp(Pack1D<ACC_DTYPE, WIDTH>& op0, Pack1D<ACC_DTYPE, WIDTH>& res) {
 }
 
 #pragma hls_design ccore
-#pragma ccore_type combinational
 template <typename ACC_DTYPE, int WIDTH>
 void vdiv(Pack1D<ACC_DTYPE, WIDTH>& op0, Pack1D<ACC_DTYPE, WIDTH>& op1,
           Pack1D<ACC_DTYPE, WIDTH>& res) {
@@ -93,53 +91,103 @@ void vdiv(Pack1D<ACC_DTYPE, WIDTH>& op0, Pack1D<ACC_DTYPE, WIDTH>& op1,
   vmult<ACC_DTYPE, WIDTH>(op0, res, res);
 }
 
-// Compile-time template recursion
-// used to generate tree structures
-template <typename ACC_DTYPE, int WIDTH>
-struct TreeOps {
-#pragma hls_design ccore
-  ACC_DTYPE treeadd(Pack1D<ACC_DTYPE, WIDTH>& op) {
-    // split into two
-    Pack1D<ACC_DTYPE, WIDTH / 2> op_half_0;
-    Pack1D<ACC_DTYPE, WIDTH / 2> op_half_1;
-#pragma hls_unroll yes
-    for (int i = 0; i < WIDTH / 2; i++) {
-      op_half_0[i] = op[i];
-      op_half_1[i] = op[WIDTH / 2 + i];
-    }
-
-    Pack1D<ACC_DTYPE, 2> res;
-    res[0] = TreeOps<ACC_DTYPE, WIDTH / 2>().treeadd(op_half_0);
-    res[1] = TreeOps<ACC_DTYPE, WIDTH / 2>().treeadd(op_half_1);
-    return TreeOps<ACC_DTYPE, 2>().treeadd(res);
-  }
-
-#pragma hls_design ccore
-  ACC_DTYPE treemax(Pack1D<ACC_DTYPE, WIDTH>& op) {
-    // split into two
-    Pack1D<ACC_DTYPE, WIDTH / 2> op_half_0;
-    Pack1D<ACC_DTYPE, WIDTH / 2> op_half_1;
-#pragma hls_unroll yes
-    for (int i = 0; i < WIDTH / 2; i++) {
-      op_half_0[i] = op[i];
-      op_half_1[i] = op[WIDTH / 2 + i];
-    }
-
-    Pack1D<ACC_DTYPE, 2> res;
-    res[0] = TreeOps<ACC_DTYPE, WIDTH / 2>().treemax(op_half_0);
-    res[1] = TreeOps<ACC_DTYPE, WIDTH / 2>().treemax(op_half_1);
-    return TreeOps<ACC_DTYPE, 2>().treemax(res);
-  }
-};
-
-template <typename ACC_DTYPE>
-struct TreeOps<ACC_DTYPE, 2> {
 #pragma hls_design ccore
 #pragma ccore_type combinational
-  ACC_DTYPE treeadd(Pack1D<ACC_DTYPE, 2>& op) {
-    return static_cast<ACC_DTYPE>(op[0] + op[1]);
+template <typename ACC_DTYPE>
+ACC_DTYPE treeadd16(Pack1D<ACC_DTYPE, 16>& op) {
+  Pack1D<ACC_DTYPE, 8> lvl0;
+#pragma hls_unroll yes
+  for (int i = 0; i < 8; i++) {
+    lvl0[i] = static_cast<ACC_DTYPE>(op[i * 2] + op[i * 2 + 1]);
   }
-  ACC_DTYPE treemax(Pack1D<ACC_DTYPE, 2>& op) {
-    return op[0] < op[1] ? op[1] : op[0];
+
+  Pack1D<ACC_DTYPE, 4> lvl1;
+#pragma hls_unroll yes
+  for (int i = 0; i < 4; i++) {
+    lvl1[i] = static_cast<ACC_DTYPE>(lvl0[i * 2] + lvl0[i * 2 + 1]);
   }
-};
+
+  Pack1D<ACC_DTYPE, 2> lvl2;
+#pragma hls_unroll yes
+  for (int i = 0; i < 2; i++) {
+    lvl2[i] = static_cast<ACC_DTYPE>(lvl1[i * 2] + lvl1[i * 2 + 1]);
+  }
+
+  return static_cast<ACC_DTYPE>(lvl2[0] + lvl2[1]);
+}
+
+#pragma hls_design ccore
+#pragma ccore_type combinational
+template <typename ACC_DTYPE>
+ACC_DTYPE treemax16(Pack1D<ACC_DTYPE, 16>& op) {
+  Pack1D<ACC_DTYPE, 8> lvl0;
+#pragma hls_unroll yes
+  for (int i = 0; i < 8; i++) {
+    lvl0[i] = op[i * 2] < op[i * 2 + 1] ? op[i * 2 + 1] : op[i * 2];
+  }
+
+  Pack1D<ACC_DTYPE, 4> lvl1;
+#pragma hls_unroll yes
+  for (int i = 0; i < 4; i++) {
+    lvl1[i] = lvl0[i * 2] < lvl0[i * 2 + 1] ? lvl0[i * 2 + 1] : lvl0[i * 2];
+  }
+
+  Pack1D<ACC_DTYPE, 2> lvl2;
+#pragma hls_unroll yes
+  for (int i = 0; i < 2; i++) {
+    lvl2[i] = lvl1[i * 2] < lvl1[i * 2 + 1] ? lvl1[i * 2 + 1] : lvl1[i * 2];
+  }
+
+  return lvl2[0] < lvl2[1] ? lvl2[1] : lvl2[0];
+}
+
+// // Compile-time template recursion
+// // used to generate tree structures
+// template <typename ACC_DTYPE, int WIDTH>
+// struct TreeOps {
+// #pragma hls_design ccore
+//   ACC_DTYPE treeadd(Pack1D<ACC_DTYPE, WIDTH>& op) {
+//     // split into two
+//     Pack1D<ACC_DTYPE, WIDTH / 2> op_half_0;
+//     Pack1D<ACC_DTYPE, WIDTH / 2> op_half_1;
+// #pragma hls_unroll yes
+//     for (int i = 0; i < WIDTH / 2; i++) {
+//       op_half_0[i] = op[i];
+//       op_half_1[i] = op[WIDTH / 2 + i];
+//     }
+
+//     Pack1D<ACC_DTYPE, 2> res;
+//     res[0] = TreeOps<ACC_DTYPE, WIDTH / 2>().treeadd(op_half_0);
+//     res[1] = TreeOps<ACC_DTYPE, WIDTH / 2>().treeadd(op_half_1);
+//     return TreeOps<ACC_DTYPE, 2>().treeadd(res);
+//   }
+
+// #pragma hls_design ccore
+//   ACC_DTYPE treemax(Pack1D<ACC_DTYPE, WIDTH>& op) {
+//     // split into two
+//     Pack1D<ACC_DTYPE, WIDTH / 2> op_half_0;
+//     Pack1D<ACC_DTYPE, WIDTH / 2> op_half_1;
+// #pragma hls_unroll yes
+//     for (int i = 0; i < WIDTH / 2; i++) {
+//       op_half_0[i] = op[i];
+//       op_half_1[i] = op[WIDTH / 2 + i];
+//     }
+
+//     Pack1D<ACC_DTYPE, 2> res;
+//     res[0] = TreeOps<ACC_DTYPE, WIDTH / 2>().treemax(op_half_0);
+//     res[1] = TreeOps<ACC_DTYPE, WIDTH / 2>().treemax(op_half_1);
+//     return TreeOps<ACC_DTYPE, 2>().treemax(res);
+//   }
+// };
+
+// template <typename ACC_DTYPE>
+// struct TreeOps<ACC_DTYPE, 2> {
+// #pragma hls_design ccore
+// #pragma ccore_type combinational
+//   ACC_DTYPE treeadd(Pack1D<ACC_DTYPE, 2>& op) {
+//     return static_cast<ACC_DTYPE>(op[0] + op[1]);
+//   }
+//   ACC_DTYPE treemax(Pack1D<ACC_DTYPE, 2>& op) {
+//     return op[0] < op[1] ? op[1] : op[0];
+//   }
+// };

@@ -155,8 +155,6 @@ class Posit {
     bits = bits >> 2;
   }
 
-  void exp();
-
   // overridden operators
   template <int nbits2, int es2>
   Posit operator+(const Posit<nbits2, es2> &rhs);
@@ -211,34 +209,35 @@ Posit<nbits, es>::Posit(const float f) {
 }
 #endif
 
-#pragma hls_design ccore
-#pragma ccore_type combinational
 template <int nbits, int es>
-inline void Posit<nbits, es>::exp() {
+void posit_exp(Posit<nbits, es> &val) {
   // std::cout << "original:\t" << bits.to_string(AC_BIN, false, true)
   //           << std::endl;
-  negate();
+  val.negate();
   // std::cout << "negative:\t" << bits.to_string(AC_BIN, false, true)
   //           << std::endl;
 
-  Posit<nbits, 0> es0Posit = *this;
+  Posit<nbits, 0> es0Posit(val);
   es0Posit.sigmoid();
-  *this = es0Posit;
+  val = es0Posit;
   // std::cout << "sigmoid:\t" << bits.to_string(AC_BIN, false, true)
   //           << std::endl;
-  reciprocal();
+  val.reciprocal();
   // std::cout << "reciprocal:\t" << bits.to_string(AC_BIN, false, true)
   //           << std::endl;
 
-  DecomposedPosit op1 = *this;
-  DecomposedPosit op2;
+  Posit<nbits, es>::DecomposedPosit op1(val);
+  Posit<nbits, es>::DecomposedPosit op2;
   op2.sign = 1;
   op2.scale = 0;
   op2.fraction = 0;
-  DecomposedPosit res = (DecomposedPosit)(op1 + op2);
-  *this = res;
-  // std::cout << "final  :\t" << bits.to_string(AC_BIN, false, true)
-  //           << std::endl;
+  op2._zero = false;
+  Posit<nbits, es>::DecomposedPosit res =
+      static_cast<Posit<nbits, es>::DecomposedPosit>(op1 + op2);
+  // FIXME!! the following line does not work:
+  //  val = res;
+  //  std::cout << "final  :\t" << bits.to_string(AC_BIN, false, true)
+  //            << std::endl;
 }
 
 template <int nbits, int es>
@@ -342,7 +341,7 @@ class PositFP {
   ac_int<fbits, false> fraction;
   bool _zero;
 
-  PositFP() {}
+  PositFP() {_zero = false;}
 
 #pragma hls_design ccore
 #pragma ccore_type combinational
@@ -410,16 +409,17 @@ template <int nbits, int es>
 PositFP<sbits, fbits>::PositFP(const Posit<nbits, es> &input) {
   if (input.isZero()) {
     setZero();
-    return;
-  }
-  bool sign;
-  int scale;
-  ac_int<fbits, false> fraction;
-  decode<nbits, es, fbits>(input.bits, sign, scale, fraction);
+  } else {
+    this->_zero = false;
+    bool sign;
+    int scale;
+    ac_int<fbits, false> fraction;
+    decode<nbits, es, fbits>(input.bits, sign, scale, fraction);
 
-  this->sign = sign;
-  this->scale = scale;
-  this->fraction = fraction;
+    this->sign = sign;
+    this->scale = scale;
+    this->fraction = fraction;
+  }
 }
 
 #ifndef __SYNTHESIS__
