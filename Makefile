@@ -81,8 +81,8 @@ sim_sysc:
 	syscan -kdb -cflags "$(C17FLAGS) -g" -Mdir=$(build_folder) test/common/Utils.cc
 	syscan -kdb -cflags "$(C17FLAGS) -g" -Mdir=$(build_folder) test/common/DataLoader.cc
 	syscan -kdb -cflags "$(C17FLAGS) -g" -Mdir=$(build_folder) test/common/TestRunner.cc
-	vcs -full64 -sysc sc_main -kdb -debug_access+all -Mdir=$(build_folder) -o $(simv_name)
-	./$(simv_name) -verdi
+	vcs -full64 -sysc sc_main -kdb -debug_access+all -Mdir=$(build_folder) -o build/$(simv_name)
+	./build/$(simv_name) -verdi
 
 ###########################################################
 # Untimed C Simulations (Faster than SystemC)
