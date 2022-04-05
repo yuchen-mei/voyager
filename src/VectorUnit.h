@@ -218,6 +218,7 @@ SC_MODULE(VectorOpUnit) {
       if (inst.vDest == VectorInstructions::vWriteOut) {
         // convert to Posit8 and write out
         Pack1D<IDTYPE, WIDTH> tmp;
+#pragma hls_unroll yes
         for (int i = 0; i < WIDTH; i++) {
           tmp[i] = static_cast<IDTYPE>(res4[i]);
         }
