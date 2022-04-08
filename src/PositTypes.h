@@ -259,9 +259,14 @@ inline Posit<nbits, es> Posit<nbits, es>::operator*(
 template <int nbits, int es>
 inline Posit<nbits, es> Posit<nbits, es>::operator/(
     const Posit<nbits, es> &rhs) {
+#ifdef __SYNTHESIS__
+  return *this;
+#else
+  // TODO: make synthesisable
   PositFP<8, fbits> op1 = *this;
   PositFP<8, fbits> op2 = 1.0 / static_cast<float>(rhs);
   return op1 * op2;
+#endif
 }
 
 template <int nbits, int es>

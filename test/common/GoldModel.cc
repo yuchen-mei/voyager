@@ -104,9 +104,19 @@ void run_gold_op(const SimplifiedParams params, T *matrixA, T *matrixB,
   } else if (params.FC) {
     // fully connected layer (matrix-vector)
     int C = params.loops[1][params.reductionLoopIndex[1]] * DIMENSION;
-    // TODO: pad input to K * DIMENSION
     int K = params.loops[0][params.weightLoopIndex[0]] *
-            params.loops[1][params.weightLoopIndex[1]];
+            params.loops[1][params.weightLoopIndex[1]] * DIMENSION;
+
+    // TODO: Confirm FC support for weight transpose
+    if (params.TRANSPOSE) {
+      T tmpMatrixB[C * K];
+      for (int c = 0; c < C; c++) {
+        for (int k = 0; k < K; k++) {
+          tmpMatrixB[c * K + k] = matrixB[k * C + c];
+        }
+      }
+      memcpy(matrixB, tmpMatrixB, sizeof(T) * C * K);
+    }
 
     for (int k = 0; k < K; k++) {
       ACC_T acc = 0;
@@ -194,6 +204,16 @@ void run_gold_op(const SimplifiedParams params, T *matrixA, T *matrixB,
     ACC_T columnSums[K];
     memset(columnSums, 0, sizeof(columnSums));
 #endif
+
+    if (params.INPUT_TRANSPOSE) {
+      T tmpMatrixA[X * C];
+      for (int x = 0; x < X; x++) {
+        for (int c = 0; c < C; c++) {
+          tmpMatrixA[x * C + c] = matrixA[c * X + x];
+        }
+      }
+      memcpy(matrixA, tmpMatrixA, sizeof(T) * X * C);
+    }
 
     if (params.TRANSPOSE) {
       T tmpMatrixB[C * K];

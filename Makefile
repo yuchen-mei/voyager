@@ -84,7 +84,7 @@ build/DataLoader.o: test/common/DataLoader.cc test/common/DataLoader.h src/Archi
 build/TestRunner.o: test/common/TestRunner.cc test/simple/params.h test/resnet/params.h
 	$(CC) $(C17FLAGS) -c -o $@ $<
 
-build/MobilebertTest.o: test/mobilebert/TestRunner.cc test/mobilebert/params.h
+build/MobilebertTest.o: test/mobilebert/TestRunner.cc test/mobilebert/params.h test/mobilebert/training.h
 	$(CC) $(C17FLAGS) -c -o $@ $<
 
 build/PositTest.o: test/common/PositTest.cc src/PositTypes.h

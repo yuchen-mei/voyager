@@ -144,10 +144,6 @@ void load_weights(const SimplifiedParams& params, const std::string& filename,
     FY = 1;
     C = 1;
   }
-  if (params.FC) {
-    K = params.loops[0][params.weightLoopIndex[0]] *
-        params.loops[1][params.weightLoopIndex[1]];
-  }
 
   int size = FY * FX * C * K;
 #ifdef WEIGHT_SCALING
@@ -200,10 +196,6 @@ void load_bias(const SimplifiedParams& params, const std::string& filename,
   if (params.REPLICATION) {
     FX = 7;
     C = 3;
-  }
-  if (params.FC) {
-    K = params.loops[0][params.weightLoopIndex[0]] *
-        params.loops[1][params.weightLoopIndex[1]];
   }
 
   int size = K;
@@ -302,10 +294,6 @@ void load_datafile_outputs(const SimplifiedParams params,
   }
   if (params.SOFTMAX) {
     K = 1;
-  }
-  if (params.FC) {
-    K = params.loops[0][params.weightLoopIndex[0]] *
-        params.loops[1][params.weightLoopIndex[1]];
   }
 
   int size = X * Y * K;

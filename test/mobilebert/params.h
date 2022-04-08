@@ -1,10 +1,14 @@
 #pragma once
 
-#include <array>
 #include <map>
 #include <string>
+#include <vector>
 
-std::map<std::string, SimplifiedParams> mobilebert{
+#include "test/common/VerificationTypes.h"
+
+using namespace std;
+
+map<string, SimplifiedParams> inferenceParams{
     // (128 x 512) * (512 x 128)
     {"inputBottleneck",
      {
@@ -362,7 +366,7 @@ std::map<std::string, SimplifiedParams> mobilebert{
          0,                                          // WEIGHT_OFFSET
          10 * 1024,                                  // OUTPUT_OFFSET
          false,                                      // TRANSPOSE
-         {{1, 1, 1, 1, 1, 1}, {32, 2, 1, 1, 1, 1}},  // LOOPS
+         {{1, 1, 1, 1, 1, 1}, {32, 1, 1, 1, 1, 1}},  // LOOPS
          {0, 5},                                     // INPUTX
          {1, 4},                                     // INPUTY
          {3, 0},                                     // REDUCTION
@@ -387,46 +391,7 @@ std::map<std::string, SimplifiedParams> mobilebert{
      }},
 };
 
-std::array<std::string, 36> mobilebertOrder{
-    "bottleneck_input_dense",
-    "bottleneck_input_LayerNorm",
-    "bottleneck_attention_dense",
-    "bottleneck_attention_LayerNorm",
-    "attention_self_query",
-    "attention_self_key",
-    "attention_self_attention_scores_0",
-    "attention_self_attention_scores_1",
-    "attention_self_attention_scores_2",
-    "attention_self_attention_scores_3",
-    "attention_self_attention_probs_0",
-    "attention_self_attention_probs_1",
-    "attention_self_attention_probs_2",
-    "attention_self_attention_probs_3",
-    "attention_self_value",
-    "attention_self_context_layer_0",
-    "attention_self_context_layer_1",
-    "attention_self_context_layer_2",
-    "attention_self_context_layer_3",
-    "attention_output_dense",
-    "attention_output_LayerNorm",
-    "ffn_0_intermediate_dense",
-    "ffn_0_output_dense",
-    "ffn_0_output_LayerNorm",
-    "ffn_1_intermediate_dense",
-    "ffn_1_output_dense",
-    "ffn_1_output_LayerNorm",
-    "ffn_2_intermediate_dense",
-    "ffn_2_output_dense",
-    "ffn_2_output_LayerNorm",
-    "intermediate_dense",
-    "output_dense",
-    "output_LayerNorm",
-    "output_bottleneck_dense",
-    "output_bottleneck_LayerNorm",
-    "classifier",
-};
-
-std::map<std::string, std::string> mobilebertOperations{
+vector<pair<string, string>> inferenceOperations{
     {"bottleneck_input_dense", "inputBottleneck"},
     {"bottleneck_input_LayerNorm", "bottleneckLayerNorm"},
     {"bottleneck_attention_dense", "inputBottleneck"},
@@ -465,16 +430,7 @@ std::map<std::string, std::string> mobilebertOperations{
     {"classifier", "classifier"},
 };
 
-// TODO: add padding for head per-channel scaling factor
-const int HEAD_SIZE = 128 * 32 + 32;
-const int HIDDEN_SIZE = 128 * 128 + 128;
-const int INTERMEDIATE_SIZE = 4 * HIDDEN_SIZE;
-const int PER_LAYER_HIDDEN_SIZE = 128 * 128 + 1;
-const int PER_LAYER_INTERMEDIATE_SIZE = 128 * 512 + 1;
-const int HIDDEN_BIAS_SIZE = 128 + 1;
-const int INTERMEDIATE_BIAS_SIZE = 512 + 1;
-
-std::map<std::string, Offsets> mobilebertOffsets{
+map<string, MemoryOffsets> inferenceMemOffsets{
     {"bottleneck_input_dense",
      {
          0,
@@ -756,144 +712,284 @@ std::map<std::string, Offsets> mobilebertOffsets{
          0,
          288 * PER_LAYER_INTERMEDIATE_SIZE + 168 * INTERMEDIATE_BIAS_SIZE +
              72 * PER_LAYER_HIDDEN_SIZE + 576 * HIDDEN_BIAS_SIZE,
-         1224 * HIDDEN_SIZE + 1248 * HIDDEN_BIAS_SIZE,
          4 * HIDDEN_SIZE,
          288 * PER_LAYER_INTERMEDIATE_SIZE + 168 * INTERMEDIATE_BIAS_SIZE +
              72 * PER_LAYER_HIDDEN_SIZE + 584 * HIDDEN_BIAS_SIZE,
      }},
 };
 
-std::string mobilebertDataDir = "data/mobilebert_scaled/";
-
-std::map<std::string, Files> mobilebertFiles{
+std::map<std::string, Files> inferenceTestFiles{
     // Input Bottleneck
     {"bottleneck_input_dense",
-     {"hidden_states", "bottleneck_input_dense_weight",
-      "bottleneck_input_dense_bias", "bottleneck_input_dense"}},
+     {
+         "hidden_states",
+         "bottleneck_input_dense_weight",
+         "bottleneck_input_dense_bias",
+         "bottleneck_input_dense",
+     }},
     {"bottleneck_input_LayerNorm",
-     {"bottleneck_input_dense", "bottleneck_input_LayerNorm_weight",
-      "bottleneck_input_LayerNorm_bias", "bottleneck_input_LayerNorm"}},
+     {
+         "bottleneck_input_dense",
+         "bottleneck_input_LayerNorm_weight",
+         "bottleneck_input_LayerNorm_bias",
+         "bottleneck_input_LayerNorm",
+     }},
     {"bottleneck_attention_dense",
-     {"hidden_states", "bottleneck_attention_dense_weight",
-      "bottleneck_attention_dense_bias", "bottleneck_attention_dense"}},
+     {
+         "hidden_states",
+         "bottleneck_attention_dense_weight",
+         "bottleneck_attention_dense_bias",
+         "bottleneck_attention_dense",
+     }},
     {"bottleneck_attention_LayerNorm",
-     {"bottleneck_attention_dense", "bottleneck_attention_LayerNorm_weight",
-      "bottleneck_attention_LayerNorm_bias", "bottleneck_attention_LayerNorm"}},
+     {
+         "bottleneck_attention_dense",
+         "bottleneck_attention_LayerNorm_weight",
+         "bottleneck_attention_LayerNorm_bias",
+         "bottleneck_attention_LayerNorm",
+     }},
 
     // QKV Projection
     {"attention_self_query",
-     {"bottleneck_attention_LayerNorm", "attention_self_query_weight",
-      "attention_self_query_bias", "attention_self_query"}},
+     {
+         "bottleneck_attention_LayerNorm",
+         "attention_self_query_weight",
+         "attention_self_query_bias",
+         "attention_self_query",
+     }},
     {"attention_self_key",
-     {"bottleneck_attention_LayerNorm", "attention_self_key_weight",
-      "attention_self_key_bias", "attention_self_key"}},
+     {
+         "bottleneck_attention_LayerNorm",
+         "attention_self_key_weight",
+         "attention_self_key_bias",
+         "attention_self_key",
+     }},
     {"attention_self_value",
-     {"hidden_states", "attention_self_value_weight",
-      "attention_self_value_bias", "attention_self_value"}},
+     {
+         "hidden_states",
+         "attention_self_value_weight",
+         "attention_self_value_bias",
+         "attention_self_value",
+     }},
 
     // Multi-Head Self Attention
     {"attention_self_attention_scores_0",
-     {"attention_self_query_layer_0", "attention_self_key_layer_0", "",
-      "attention_self_attention_scores_div_0"}},
+     {
+         "attention_self_query_layer_0",
+         "attention_self_key_layer_0",
+         "",
+         "attention_self_attention_scores_scaled_0",
+     }},
     {"attention_self_attention_scores_1",
-     {"attention_self_query_layer_1", "attention_self_key_layer_1", "",
-      "attention_self_attention_scores_div_1"}},
+     {
+         "attention_self_query_layer_1",
+         "attention_self_key_layer_1",
+         "",
+         "attention_self_attention_scores_scaled_1",
+     }},
     {"attention_self_attention_scores_2",
-     {"attention_self_query_layer_2", "attention_self_key_layer_2", "",
-      "attention_self_attention_scores_div_2"}},
+     {
+         "attention_self_query_layer_2",
+         "attention_self_key_layer_2",
+         "",
+         "attention_self_attention_scores_scaled_2",
+     }},
     {"attention_self_attention_scores_3",
-     {"attention_self_query_layer_3", "attention_self_key_layer_3", "",
-      "attention_self_attention_scores_div_3"}},
+     {
+         "attention_self_query_layer_3",
+         "attention_self_key_layer_3",
+         "",
+         "attention_self_attention_scores_scaled_3",
+     }},
 
     {"attention_self_attention_probs_0",
-     {"attention_self_attention_scores_div_0", "", "",
-      "attention_self_attention_probs_0"}},
+     {
+         "attention_self_attention_scores_scaled_0",
+         "",
+         "",
+         "attention_self_attention_probs_0",
+     }},
     {"attention_self_attention_probs_1",
-     {"attention_self_attention_scores_div_1", "", "",
-      "attention_self_attention_probs_1"}},
+     {
+         "attention_self_attention_scores_scaled_1",
+         "",
+         "",
+         "attention_self_attention_probs_1",
+     }},
     {"attention_self_attention_probs_2",
-     {"attention_self_attention_scores_div_2", "", "",
-      "attention_self_attention_probs_2"}},
+     {
+         "attention_self_attention_scores_scaled_2",
+         "",
+         "",
+         "attention_self_attention_probs_2",
+     }},
     {"attention_self_attention_probs_3",
-     {"attention_self_attention_scores_div_3", "", "",
-      "attention_self_attention_probs_3"}},
+     {
+         "attention_self_attention_scores_scaled_3",
+         "",
+         "",
+         "attention_self_attention_probs_3",
+     }},
 
     {"attention_self_context_layer_0",
-     {"attention_self_attention_probs_0", "attention_self_value_layer_0", "",
-      "attention_self_context_layer_0"}},
+     {
+         "attention_self_attention_probs_0",
+         "attention_self_value_layer_0",
+         "",
+         "attention_self_context_layer_0",
+     }},
     {"attention_self_context_layer_1",
-     {"attention_self_attention_probs_1", "attention_self_value_layer_1", "",
-      "attention_self_context_layer_1"}},
+     {
+         "attention_self_attention_probs_1",
+         "attention_self_value_layer_1",
+         "",
+         "attention_self_context_layer_1",
+     }},
     {"attention_self_context_layer_2",
-     {"attention_self_attention_probs_2", "attention_self_value_layer_2", "",
-      "attention_self_context_layer_2"}},
+     {
+         "attention_self_attention_probs_2",
+         "attention_self_value_layer_2",
+         "",
+         "attention_self_context_layer_2",
+     }},
     {"attention_self_context_layer_3",
-     {"attention_self_attention_probs_3", "attention_self_value_layer_3", "",
-      "attention_self_context_layer_3"}},
+     {
+         "attention_self_attention_probs_3",
+         "attention_self_value_layer_3",
+         "",
+         "attention_self_context_layer_3",
+     }},
 
     {"attention_output_dense",
-     {"attention_self_context_layer", "attention_output_dense_weight",
-      "attention_output_dense_bias", "attention_output_residual",
-      "bottleneck_input_LayerNorm"}},
+     {
+         "attention_self_context_layer",
+         "attention_output_dense_weight",
+         "attention_output_dense_bias",
+         "attention_output_residual",
+         "bottleneck_input_LayerNorm",
+     }},
     {"attention_output_LayerNorm",
-     {"attention_output_residual", "attention_output_LayerNorm_weight",
-      "attention_output_LayerNorm_bias", "attention_output_LayerNorm"}},
+     {
+         "attention_output_residual",
+         "attention_output_LayerNorm_weight",
+         "attention_output_LayerNorm_bias",
+         "attention_output_LayerNorm",
+     }},
 
     // FFN Layers
     {"ffn_0_intermediate_dense",
-     {"attention_output_LayerNorm", "ffn_0_intermediate_dense_weight",
-      "ffn_0_intermediate_dense_bias",
-      "ffn_0_intermediate_intermediate_act_fn"}},
+     {
+         "attention_output_LayerNorm",
+         "ffn_0_intermediate_dense_weight",
+         "ffn_0_intermediate_dense_bias",
+         "ffn_0_intermediate_intermediate_act_fn",
+     }},
     {"ffn_0_output_dense",
-     {"ffn_0_intermediate_intermediate_act_fn", "ffn_0_output_dense_weight",
-      "ffn_0_output_dense_bias", "ffn_0_output_residual",
-      "attention_output_LayerNorm"}},
+     {
+         "ffn_0_intermediate_intermediate_act_fn",
+         "ffn_0_output_dense_weight",
+         "ffn_0_output_dense_bias",
+         "ffn_0_output_residual",
+         "attention_output_LayerNorm",
+     }},
     {"ffn_0_output_LayerNorm",
-     {"ffn_0_output_residual", "ffn_0_output_LayerNorm_weight",
-      "ffn_0_output_LayerNorm_bias", "ffn_0_output_LayerNorm"}},
+     {
+         "ffn_0_output_residual",
+         "ffn_0_output_LayerNorm_weight",
+         "ffn_0_output_LayerNorm_bias",
+         "ffn_0_output_LayerNorm",
+     }},
 
     {"ffn_1_intermediate_dense",
-     {"ffn_0_output_LayerNorm", "ffn_1_intermediate_dense_weight",
-      "ffn_1_intermediate_dense_bias",
-      "ffn_1_intermediate_intermediate_act_fn"}},
+     {
+         "ffn_0_output_LayerNorm",
+         "ffn_1_intermediate_dense_weight",
+         "ffn_1_intermediate_dense_bias",
+         "ffn_1_intermediate_intermediate_act_fn",
+     }},
     {"ffn_1_output_dense",
-     {"ffn_1_intermediate_intermediate_act_fn", "ffn_1_output_dense_weight",
-      "ffn_1_output_dense_bias", "ffn_1_output_residual",
-      "ffn_0_output_LayerNorm"}},
+     {
+         "ffn_1_intermediate_intermediate_act_fn",
+         "ffn_1_output_dense_weight",
+         "ffn_1_output_dense_bias",
+         "ffn_1_output_residual",
+         "ffn_0_output_LayerNorm",
+     }},
     {"ffn_1_output_LayerNorm",
-     {"ffn_1_output_residual", "ffn_1_output_LayerNorm_weight",
-      "ffn_1_output_LayerNorm_bias", "ffn_1_output_LayerNorm"}},
+     {
+         "ffn_1_output_residual",
+         "ffn_1_output_LayerNorm_weight",
+         "ffn_1_output_LayerNorm_bias",
+         "ffn_1_output_LayerNorm",
+     }},
 
     {"ffn_2_intermediate_dense",
-     {"ffn_1_output_LayerNorm", "ffn_2_intermediate_dense_weight",
-      "ffn_2_intermediate_dense_bias",
-      "ffn_2_intermediate_intermediate_act_fn"}},
+     {
+         "ffn_1_output_LayerNorm",
+         "ffn_2_intermediate_dense_weight",
+         "ffn_2_intermediate_dense_bias",
+         "ffn_2_intermediate_intermediate_act_fn",
+     }},
     {"ffn_2_output_dense",
-     {"ffn_2_intermediate_intermediate_act_fn", "ffn_2_output_dense_weight",
-      "ffn_2_output_dense_bias", "ffn_2_output_residual",
-      "ffn_1_output_LayerNorm"}},
+     {
+         "ffn_2_intermediate_intermediate_act_fn",
+         "ffn_2_output_dense_weight",
+         "ffn_2_output_dense_bias",
+         "ffn_2_output_residual",
+         "ffn_1_output_LayerNorm",
+     }},
     {"ffn_2_output_LayerNorm",
-     {"ffn_2_output_residual", "ffn_2_output_LayerNorm_weight",
-      "ffn_2_output_LayerNorm_bias", "ffn_2_output_LayerNorm"}},
+     {
+         "ffn_2_output_residual",
+         "ffn_2_output_LayerNorm_weight",
+         "ffn_2_output_LayerNorm_bias",
+         "ffn_2_output_LayerNorm",
+     }},
 
     {"intermediate_dense",
-     {"ffn_2_output_LayerNorm", "intermediate_dense_weight",
-      "intermediate_dense_bias", "intermediate_intermediate_act_fn"}},
+     {
+         "ffn_2_output_LayerNorm",
+         "intermediate_dense_weight",
+         "intermediate_dense_bias",
+         "intermediate_intermediate_act_fn",
+     }},
     {"output_dense",
-     {"intermediate_intermediate_act_fn", "output_dense_weight",
-      "output_dense_bias", "output_residual", "ffn_2_output_LayerNorm"}},
+     {
+         "intermediate_intermediate_act_fn",
+         "output_dense_weight",
+         "output_dense_bias",
+         "output_residual",
+         "ffn_2_output_LayerNorm",
+     }},
     {"output_LayerNorm",
-     {"output_residual", "output_LayerNorm_weight", "output_LayerNorm_bias",
-      "output_LayerNorm"}},
+     {
+         "output_residual",
+         "output_LayerNorm_weight",
+         "output_LayerNorm_bias",
+         "output_LayerNorm",
+     }},
 
     {"output_bottleneck_dense",
-     {"output_LayerNorm", "output_bottleneck_dense_weight",
-      "output_bottleneck_dense_bias", "output_bottleneck_residual",
-      "hidden_states"}},
+     {
+         "output_LayerNorm",
+         "output_bottleneck_dense_weight",
+         "output_bottleneck_dense_bias",
+         "output_bottleneck_residual",
+         "hidden_states",
+     }},
     {"output_bottleneck_LayerNorm",
-     {"output_bottleneck_residual", "output_bottleneck_LayerNorm_weight",
-      "output_bottleneck_LayerNorm_bias", "output_bottleneck_LayerNorm"}},
+     {
+         "output_bottleneck_residual",
+         "output_bottleneck_LayerNorm_weight",
+         "output_bottleneck_LayerNorm_bias",
+         "output_bottleneck_LayerNorm",
+     }},
+
     {"classifier",
-     {"mobilebert_encoder_layer_23_output_bottleneck_LayerNorm",
-      "classifier_weight", "classifier_bias", "mobilebert_classifier"}},
+     {
+         "mobilebert_encoder_layer_23_output_bottleneck_LayerNorm",
+         "classifier_weight",
+         "classifier_bias",
+         "mobilebert_classifier",
+     }},
 };
