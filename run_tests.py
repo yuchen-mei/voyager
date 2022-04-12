@@ -49,7 +49,7 @@ for group in TESTS:
     file = open('test_outputs/' + group + '.' + test + '.out', 'w')
     test_results.append(
       [
-        group + ", " +test, 
+        group + "." +test, 
         subprocess.Popen(['make', 'sim', 'GROUP='+group, 'TESTS='+test, 'SIMS=accelerator,customposit'], stdout=file, stderr=subprocess.STDOUT)
       ])
 
@@ -58,6 +58,13 @@ failing_tests = []
 
 for test in test_results:
   if test[1].wait() == 0:
+    print(test[0])
+    file = 'test_outputs/'+test[0] + '.out'
+    output = subprocess.Popen(['tail', '-n' , '14', file], stdout=subprocess.PIPE).stdout.readlines()
+    for line in output:
+      print(line.decode('utf-8').rstrip())
+    
+
     passing_tests.append(test[0])
   else:
     failing_tests.append(test[0])
