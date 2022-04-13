@@ -40,6 +40,9 @@ map<string, SimplifiedParams> inferenceParams{
          false,                                       // ATTENTION_SCALING
          false,                                       // STORE_IN_ACC
          false,                                       // ACC_FROM_ACC
+         false,                                       // INPUT_TRANSPOSE
+         false,                                       // SPLIT_HEAD
+         false,                                       // CONCAT_HEAD
      }},
 
     // elementwise product and addition for matrix of size:
@@ -74,6 +77,9 @@ map<string, SimplifiedParams> inferenceParams{
          false,                                       // ATTENTION_SCALING
          false,                                       // STORE_IN_ACC
          false,                                       // ACC_FROM_ACC
+         false,                                       // INPUT_TRANSPOSE
+         false,                                       // SPLIT_HEAD
+         false,                                       // CONCAT_HEAD
      }},
 
     // (128 x 128) x (128 x 128)
@@ -179,6 +185,9 @@ map<string, SimplifiedParams> inferenceParams{
          true,                                       // ATTENTION_SCALING
          false,                                      // STORE_IN_ACC
          false,                                      // ACC_FROM_ACC
+         false,                                      // INPUT_TRANSPOSE
+         false,                                      // SPLIT_HEAD
+         false,                                      // CONCAT_HEAD
      }},
 
     // Attention probability
@@ -213,6 +222,9 @@ map<string, SimplifiedParams> inferenceParams{
          false,                                         // ATTENTION_SCALING
          false,                                         // STORE_IN_ACC
          false,                                         // ACC_FROM_ACC
+         false,                                         // INPUT_TRANSPOSE
+         false,                                         // SPLIT_HEAD
+         false,                                         // CONCAT_HEAD
      }},
 
     // QK x V
@@ -247,6 +259,9 @@ map<string, SimplifiedParams> inferenceParams{
          false,                                      // ATTENTION_SCALING
          false,                                      // STORE_IN_ACC
          false,                                      // ACC_FROM_ACC
+         false,                                      // INPUT_TRANSPOSE
+         false,                                      // SPLIT_HEAD
+         false,                                      // CONCAT_HEAD
      }},
 
     // Self-attention output
@@ -318,6 +333,9 @@ map<string, SimplifiedParams> inferenceParams{
          false,                                      // ATTENTION_SCALING
          false,                                      // STORE_IN_ACC
          false,                                      // ACC_FROM_ACC
+         false,                                      // INPUT_TRANSPOSE
+         false,                                      // SPLIT_HEAD
+         false,                                      // CONCAT_HEAD
      }},
 
     // FFN 2
@@ -352,6 +370,9 @@ map<string, SimplifiedParams> inferenceParams{
          false,                                       // ATTENTION_SCALING
          false,                                       // STORE_IN_ACC
          false,                                       // ACC_FROM_ACC
+         false,                                       // INPUT_TRANSPOSE
+         false,                                       // SPLIT_HEAD
+         false,                                       // CONCAT_HEAD
      }},
 
     // output bottleneck
@@ -386,6 +407,9 @@ map<string, SimplifiedParams> inferenceParams{
          false,                                      // ATTENTION_SCALING
          false,                                      // STORE_IN_ACC
          false,                                      // ACC_FROM_ACC
+         false,                                      // INPUT_TRANSPOSE
+         false,                                      // SPLIT_HEAD
+         false,                                      // CONCAT_HEAD
      }},
 
     // elementwise product and addition for matrix of size:
@@ -420,6 +444,9 @@ map<string, SimplifiedParams> inferenceParams{
          false,                                         // ATTENTION_SCALING
          false,                                         // STORE_IN_ACC
          false,                                         // ACC_FROM_ACC
+         false,                                         // INPUT_TRANSPOSE
+         false,                                         // SPLIT_HEAD
+         false,                                         // CONCAT_HEAD
      }},
 
     // (1 x 512) * (512 x 2)
@@ -453,6 +480,9 @@ map<string, SimplifiedParams> inferenceParams{
          false,                                      // ATTENTION_SCALING
          false,                                      // STORE_IN_ACC
          false,                                      // ACC_FROM_ACC
+         false,                                      // INPUT_TRANSPOSE
+         false,                                      // SPLIT_HEAD
+         false,                                      // CONCAT_HEAD
      }},
 };
 
