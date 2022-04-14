@@ -573,6 +573,8 @@ void Harness::sendParams() {
       matrixParams.AVGPOOL = params.AVGPOOL;
       matrixParams.STORE_IN_ACC = params.STORE_IN_ACC;
       matrixParams.ACC_FROM_ACC = params.ACC_FROM_ACC;
+      matrixParams.CONCAT_HEAD = params.CONCAT_HEAD;
+
       sendSerializedParams<MatrixParams, 32>(matrixParams, &serialParamsIn);
 
       serialParamsIn.Push(0);

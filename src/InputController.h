@@ -193,6 +193,10 @@ SC_MODULE(InputController) {
                           if (params.REPLICATION) {
                             baseAddress = y * (X / 4) * 16 + (x / 4) * 16 + c;
                           }
+                          if (params.CONCAT_HEAD) {
+                            baseAddress =
+                                ((c / 32) * X * 32) + (x * 32) + (c % 32);
+                          }
 
                           memRequest = {params.INPUT_OFFSET + baseAddress,
                                         burstSize};
