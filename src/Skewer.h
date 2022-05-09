@@ -38,7 +38,10 @@ class Fifo {
 template <typename DTYPE, int SIZE>
 SC_MODULE(SerializedSkewer) {
  private:
-  sc_fifo<DTYPE> fifo[SIZE];
+#define DECL_FIFOS(z, i, unused) sc_fifo<DTYPE> BOOST_PP_CAT(fifo, i);
+  REPEAT(DECL_FIFOS)
+#undef DECL_FIFOS
+  int dummy;
 
  public:
   sc_in<bool> CCS_INIT_S1(clk);
@@ -47,7 +50,10 @@ SC_MODULE(SerializedSkewer) {
   Connections::In<Pack1D<DTYPE, SIZE> > CCS_INIT_S1(din);
   Connections::Out<DTYPE> dout[SIZE];
 
-  SC_CTOR(SerializedSkewer) {
+#define FIFO_SIZE_INIT(z, i, unused) BOOST_PP_CAT(fifo, i)(i + 2),
+
+  SC_CTOR(SerializedSkewer) : REPEAT(FIFO_SIZE_INIT) dummy(0) {
+#undef FIFO_SIZE_INIT
     SC_THREAD(writeFifos);
     sensitive << clk.pos();
     async_reset_signal_is(rstn, false);
@@ -72,23 +78,25 @@ SC_MODULE(SerializedSkewer) {
 
     wait();
 
+#pragma hls_pipeline_init_interval 1
+#pragma hls_pipeline_stall_mode flush
     while (true) {
       Pack1D<DTYPE, SIZE> input = din.Pop();
 
-#pragma hls_unroll yes
-      for (int i = 0; i < SIZE; i++) {
-        fifo[i].write(input[i]);
-      }
+#define FIFO_WRITE(z, i, unused) BOOST_PP_CAT(fifo, i).write(input[i]);
+      REPEAT(FIFO_WRITE)
+#undef FIFO_WRITE
     }
   }
 
-#define DECL_FUNCS(z, i, unused)      \
-  void BOOST_PP_CAT(readFifos, i)() { \
-    dout[i].Reset();                  \
-    wait();                           \
-    while (true) {                    \
-      dout[i].Push(fifo[i].read());   \
-    }                                 \
+#define DECL_FUNCS(z, i, unused)                                \
+  void BOOST_PP_CAT(readFifos, i)() {                           \
+    dout[i].Reset();                                            \
+    wait();                                                     \
+    _Pragma("hls_pipeline_init_interval 1")                     \
+        _Pragma("hls_pipeline_stall_mode flush") while (true) { \
+      dout[i].Push(BOOST_PP_CAT(fifo, i).read());               \
+    }                                                           \
   }
 
   REPEAT(DECL_FUNCS)
@@ -102,7 +110,11 @@ SC_MODULE(SerializedSkewer) {
 template <typename DTYPE, int SIZE>
 SC_MODULE(DeserializedSkewer) {
  private:
-  sc_fifo<DTYPE> fifo[SIZE];
+#define DECL_FIFOS(z, i, unused) sc_fifo<DTYPE> BOOST_PP_CAT(fifo, i);
+  REPEAT(DECL_FIFOS)
+#undef DECL_FIFOS
+
+  int dummy;
 
  public:
   sc_in<bool> CCS_INIT_S1(clk);
@@ -111,7 +123,10 @@ SC_MODULE(DeserializedSkewer) {
   Connections::In<DTYPE> din[SIZE];
   Connections::Out<Pack1D<DTYPE, SIZE> > CCS_INIT_S1(dout);
 
-  SC_CTOR(DeserializedSkewer) {
+#define FIFO_SIZE_INIT(z, i, unused) BOOST_PP_CAT(fifo, i)(DIMENSION - i + 1),
+
+  SC_CTOR(DeserializedSkewer) : REPEAT(FIFO_SIZE_INIT) dummy(0) {
+#undef FIFO_SIZE_INIT
     SC_THREAD(readFifos);
     sensitive << clk.pos();
     async_reset_signal_is(rstn, false);
@@ -133,25 +148,27 @@ SC_MODULE(DeserializedSkewer) {
 
     wait();
 
+#pragma hls_pipeline_init_interval 1
+#pragma hls_pipeline_stall_mode flush
     while (true) {
       Pack1D<DTYPE, SIZE> output;
 
-#pragma hls_unroll yes
-      for (int i = 0; i < SIZE; i++) {
-        output[i] = fifo[i].read();
-      }
+#define FIFO_READ(z, i, unused) output[i] = BOOST_PP_CAT(fifo, i).read();
+      REPEAT(FIFO_READ)
+#undef FIFO_READ
 
       dout.Push(output);
     }
   }
 
-#define DECL_FUNCS(z, i, unused)       \
-  void BOOST_PP_CAT(writeFifos, i)() { \
-    din[i].Reset();                    \
-    wait();                            \
-    while (true) {                     \
-      fifo[i].write(din[i].Pop());     \
-    }                                  \
+#define DECL_FUNCS(z, i, unused)                                \
+  void BOOST_PP_CAT(writeFifos, i)() {                          \
+    din[i].Reset();                                             \
+    wait();                                                     \
+    _Pragma("hls_pipeline_init_interval 1")                     \
+        _Pragma("hls_pipeline_stall_mode flush") while (true) { \
+      BOOST_PP_CAT(fifo, i).write(din[i].Pop());                \
+    }                                                           \
   }
 
   REPEAT(DECL_FUNCS)
