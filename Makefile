@@ -99,9 +99,6 @@ sim_sysc_gui:
 sim: build/TestRunner
 	./build/TestRunner 
 
-MobilebertTest: build/MobilebertTest
-	./build/MobilebertTest
-
 PositTest: build/PositTest
 	./build/PositTest
 
@@ -119,9 +116,6 @@ gui:
 	catapult build/Catapult_debug
 
 build/TestRunner: build/Accelerator.o build/Harness.o build/TestRunner.o build/GoldModel.o build/Utils.o build/DataLoader.o
-	$(CC) -o $@ $^ $(LDLIBS) $(LDFLAGS)
-
-build/MobilebertTest: build/Accelerator.o build/Harness.o build/MobilebertTest.o build/GoldModel.o build/Utils.o build/DataLoader.o
 	$(CC) -o $@ $^ $(LDLIBS) $(LDFLAGS)
 
 build/PositTest: build/PositTest.o
@@ -146,9 +140,6 @@ build/DataLoader.o: test/common/DataLoader.cc test/common/DataLoader.h src/Archi
 	$(CC) $(C17FLAGS) -c -o $@ $<
 
 build/TestRunner.o: test/common/TestRunner.cc test/simple/params.h test/resnet/params.h
-	$(CC) $(C17FLAGS) -c -o $@ $<
-
-build/MobilebertTest.o: test/mobilebert/TestRunner.cc test/mobilebert/params.h test/mobilebert/training.h
 	$(CC) $(C17FLAGS) -c -o $@ $<
 
 build/PositTest.o: test/common/PositTest.cc src/PositTypes.h
