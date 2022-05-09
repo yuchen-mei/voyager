@@ -72,6 +72,8 @@ struct SimplifiedParams {
   bool INPUT_TRANSPOSE;
   bool SPLIT_HEAD;
   bool CONCAT_HEAD;
+  bool SOFTMAX_GRAD;
+  bool NO_OP;
 };
 
 struct MemoryOffsets {
@@ -82,10 +84,28 @@ struct MemoryOffsets {
   int RESIDUAL_OFFSET;
 };
 
+#ifdef INPUT_SCALING
 const int HEAD_SIZE = 128 * 32 + 32;
 const int HIDDEN_SIZE = 128 * 128 + 128;
 const int INTERMEDIATE_SIZE = 4 * HIDDEN_SIZE;
-const int PER_LAYER_HIDDEN_SIZE = 128 * 128 + 1;
-const int PER_LAYER_INTERMEDIATE_SIZE = 128 * 512 + 1;
-const int HIDDEN_BIAS_SIZE = 128 + 1;
-const int INTERMEDIATE_BIAS_SIZE = 512 + 1;
+#else
+const int HEAD_SIZE = 128 * 32;
+const int HIDDEN_SIZE = 128 * 128;
+const int INTERMEDIATE_SIZE = 4 * HIDDEN_SIZE;
+#endif
+
+#ifdef WEIGHT_SCALING
+const int WEIGHT_HIDDEN_SIZE = 128 * 128 + 1;
+const int WEIGHT_INTERMEDIATE_SIZE = 128 * 512 + 1;
+const int BIAS_HIDDEN_SIZE = 128 + 1;
+const int BIAS_INTERMEDIATE_SIZE = 512 + 1;
+#else
+const int WEIGHT_HIDDEN_SIZE = 128 * 128; // 16384
+const int WEIGHT_INTERMEDIATE_SIZE = 128 * 512; // 65536
+const int BIAS_HIDDEN_SIZE = 128;
+const int BIAS_INTERMEDIATE_SIZE = 512;
+#endif
+
+const int ENCODER_SIZE = 12 * WEIGHT_INTERMEDIATE_SIZE +
+                         7 * BIAS_INTERMEDIATE_SIZE + 3 * WEIGHT_HIDDEN_SIZE +
+                         24 * BIAS_HIDDEN_SIZE;

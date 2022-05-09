@@ -113,6 +113,27 @@ void run_gold_op(const SimplifiedParams params, T *matrixA, T *matrixB,
       }
     }
 #endif
+  } else if (params.SOFTMAX_GRAD) {
+    int X = params.loops[0][params.inputXLoopIndex[0]] *
+            params.loops[1][params.inputXLoopIndex[1]];
+    int Y = params.loops[0][params.inputYLoopIndex[0]] *
+            params.loops[1][params.inputYLoopIndex[1]];
+
+    for (int j = 0; j < Y; j++) {
+      for (int x = 0; x < X; x++) {
+        ACC_T acc = 0;
+        for (int y = 0; y < Y; y++) {
+          ACC_T prob_kj;
+          prob_kj = -residualMatrix[x * Y + y] * residualMatrix[x * Y + j];
+          if (y == j) {
+            prob_kj += residualMatrix[x * Y + j];
+          }
+          prob_kj *= matrixA[x * Y + y];
+          acc += prob_kj;
+        }
+        matrixC[x * Y + j] = static_cast<float>(acc) / sqrt(32);
+      }
+    }
   } else if (params.FC) {
     // fully connected layer (matrix-vector)
     int C = params.loops[1][params.reductionLoopIndex[1]] * DIMENSION;
@@ -122,7 +143,7 @@ void run_gold_op(const SimplifiedParams params, T *matrixA, T *matrixB,
     //   ACC_T a = matrixA[c];
     //   std::cout << a << " ";
     // }
-    std::cout << std::endl << std::endl;
+    // std::cout << std::endl << std::endl;
     for (int k = 0; k < K; k++) {
       ACC_T acc = 0;
       // for (int c = 0; c < C; c++) {
@@ -134,6 +155,7 @@ void run_gold_op(const SimplifiedParams params, T *matrixA, T *matrixB,
       for (int c = 0; c < C; c++) {
         ACC_T a = matrixA[c];
         ACC_T b = matrixB[k * C + c];
+        // ACC_T b = matrixB[c * K + k];
 #ifdef INPUT_SCALING
         a *= static_cast<ACC_T>(matrixA[C + c]);
 #endif
@@ -221,18 +243,25 @@ void run_gold_op(const SimplifiedParams params, T *matrixA, T *matrixB,
     if (params.CONCAT_HEAD) {
       T tmpMatrixA[X * C + C];
       int addr = 0;
-      for (int i = 0; i <= 128; i++) {
+#ifdef INPUT_SCALING
+      for (int i = 0; i < 129; i++) {
         for (int j = 0; j < 4; j++) {
           for (int k = 0; k < 32; k++) {
-#ifdef INPUT_SCALING
             tmpMatrixA[addr++] = matrixA[(j * 129 + i) * 32 + k];
-#else
-            tmpMatrixA[addr++] = matrixA[(j * 128 + i) * 32 + k];
-#endif
           }
         }
       }
       memcpy(matrixA, tmpMatrixA, (X * C + C) * sizeof(T));
+#else
+      for (int i = 0; i < 128; i++) {
+        for (int j = 0; j < 4; j++) {
+          for (int k = 0; k < 32; k++) {
+            tmpMatrixA[addr++] = matrixA[(j * 128 + i) * 32 + k];
+          }
+        }
+      }
+      memcpy(matrixA, tmpMatrixA, (X * C) * sizeof(T));
+#endif
     }
 
     if (params.INPUT_TRANSPOSE) {
@@ -315,6 +344,7 @@ void run_gold_op(const SimplifiedParams params, T *matrixA, T *matrixB,
           if (params.ATTENTION_SCALING) {
             acc = static_cast<float>(acc) / sqrt(32);
           }
+
 #ifdef INPUT_SCALING
           columnSums[k] += abs(static_cast<float>(acc));
           unscaledMatrix[y * X * K + x * K + k] = acc;
@@ -324,32 +354,70 @@ void run_gold_op(const SimplifiedParams params, T *matrixA, T *matrixB,
         }
       }
     }
+
+    // if (params.RELU) {
+    //   for (int x = 0; x <= X; x++) {
+    //     for (int k = 0; k < K; k++) {
+    //       std::cerr << unscaledMatrix[x * K + k] << "  ";
+    //     }
+    //     std::cerr << std::endl;
+    //   }
+    // }
+
 #ifdef INPUT_SCALING
     for (int k = 0; k < K; k++) {
       float sum = static_cast<float>(columnSums[k]);
-      ACC_T scalingFactor = sum ? pow(2, round(log2(sum / X))) : 1;
+      ACC_T scalingFactor =
+          (sum && !params.RELU) ? pow(2, round(log2(sum / X))) : 1;
+      // if (params.RELU)
+      //   std::cerr << static_cast<float>(scalingFactor) << std::endl;
       matrixC[X * K + k] = scalingFactor;
+
+      // for (int x = 0; x < X; x++) {
+      //   if (params.RELU) std::cerr << unscaledMatrix[x * K + k] << "  ";
+      // }
+      // if (params.RELU) std::cerr << "\nAfter scaling:" << std::endl;
+
       for (int x = 0; x < X; x++) {
-        matrixC[x * K + k] = unscaledMatrix[x * K + k] / scalingFactor;
+        ACC_T value = unscaledMatrix[x * K + k] / scalingFactor;
+        matrixC[x * K + k] = value;
+        // if (params.RELU) std::cerr << value << "  ";
       }
+      // if (params.RELU) std::cerr << std::endl << std::endl;
     }
 #endif
+
+    // if (params.RELU) {
+    //   for (int x = 0; x <= X; x++) {
+    //     for (int k = 0; k < K; k++) {
+    //       std::cerr << matrixC[x * K + k] << "  ";
+    //     }
+    //     std::cerr << std::endl;
+    //   }
+    // }
 
     if (params.SPLIT_HEAD) {
       T tmpMatrixC[X * K + K];
       int addr = 0;
-      for (int i = 0; i < 4; i++) {
 #ifdef INPUT_SCALING
-        for (int j = 0; j <= 128; j++) {
-#else
-        for (int j = 0; j < 128; j++) {
-#endif
+      for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 129; j++) {
           for (int k = 0; k < 32; k++) {
             tmpMatrixC[addr++] = matrixC[j * 128 + i * 32 + k];
           }
         }
       }
       memcpy(matrixC, tmpMatrixC, (X * K + K) * sizeof(T));
+#else
+      for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 128; j++) {
+          for (int k = 0; k < 32; k++) {
+            tmpMatrixC[addr++] = matrixC[j * 128 + i * 32 + k];
+          }
+        }
+      }
+      memcpy(matrixC, tmpMatrixC, (X * K) * sizeof(T));
+#endif
     }
 
     if (params.MAXPOOL) {
