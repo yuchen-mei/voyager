@@ -372,9 +372,15 @@ extern "C" int sc_main(int argc, char* argv[]) {
   }
 
   if (group == "mobilebert") {
-    for (auto test : testList) {
-      return runMbTest("inference", test, compList);
+    if (tests == "all") {
+      return runMbTest("inference", "all", compList);
     }
+
+    int error = 0;
+    for (auto test : testList) {
+      error |= runMbTest("inference", test, compList);
+    }
+    return error;
   }
 
   // Get sequence to run

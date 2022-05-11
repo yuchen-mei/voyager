@@ -32,6 +32,10 @@ std::string errorDataDir = "/sim/jeffreyy/accelerator/data/mobilebert/errors/";
 std::string gradientDataDir =
     "/sim/jeffreyy/accelerator/data/mobilebert/gradients/";
 
+std::string ACTIVATION = "ACTIVATION";
+std::string ACTIVATION_GRADIENT = "ACTIVATION_GRADIENT";
+std::string WEIGHT_GRADIENT = "WEIGHT_GRADIENT";
+
 void validateMapping(SimplifiedParams params);
 void run_op(std::vector<SimplifiedParams> params_list,
             INPUT_DATATYPE* sramMemory, INPUT_DATATYPE* rramMemory,
@@ -563,8 +567,6 @@ int runMobilebert(
       }
 
       std::cout << "Test passed!" << std::endl;
-
-      // if (test == "ffn_0_intermediate_dense") return 1;
 #endif
     }
   }
@@ -642,11 +644,15 @@ int runMbTest(std::string task, std::string test,
       std::string layerName =
           test == "classifier" ? "" : "mobilebert_encoder_layer_23_";
 
-      params.INPUT_OFFSET = memOffsets.INPUT_OFFSET;
+      params.INPUT_OFFSET = memOffsets.INPUT_OFFSET + 45056;
       params.WEIGHT_OFFSET = memOffsets.WEIGHT_OFFSET;
-      params.OUTPUT_OFFSET = memOffsets.OUTPUT_OFFSET;
+      params.OUTPUT_OFFSET = memOffsets.OUTPUT_OFFSET + 45056;
       params.BIAS_OFFSET = memOffsets.BIAS_OFFSET;
-      params.RESIDUAL_OFFSET = memOffsets.RESIDUAL_OFFSET;
+      params.RESIDUAL_OFFSET = memOffsets.RESIDUAL_OFFSET + 45056;
+
+      if (!params.WEIGHT) {
+        params.WEIGHT_OFFSET += 45056;
+      }
 
       MemoryMap memoryMap = {SRAM, (params.WEIGHT ? RRAM : SRAM), RRAM, SRAM,
                              SRAM};

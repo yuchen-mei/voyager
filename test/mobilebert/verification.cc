@@ -28,12 +28,15 @@ extern "C" int sc_main(int argc, char* argv[]) {
     Files files = inferenceTestFiles.at(op.first);
     MemoryOffsets memOffsets = inferenceMemOffsets.at(op.first);
 
-    params.INPUT_OFFSET = memOffsets.INPUT_OFFSET;
-    params.WEIGHT_OFFSET =
-        params.WEIGHT ? memOffsets.WEIGHT_OFFSET : memOffsets.WEIGHT_OFFSET;
-    params.OUTPUT_OFFSET = memOffsets.OUTPUT_OFFSET;
+    params.INPUT_OFFSET = memOffsets.INPUT_OFFSET + 45056;
+    params.WEIGHT_OFFSET = memOffsets.WEIGHT_OFFSET;
+    params.OUTPUT_OFFSET = memOffsets.OUTPUT_OFFSET + 45056;
     params.BIAS_OFFSET = memOffsets.BIAS_OFFSET;
-    params.RESIDUAL_OFFSET = memOffsets.RESIDUAL_OFFSET;
+    params.RESIDUAL_OFFSET = memOffsets.RESIDUAL_OFFSET + 45056;
+
+    if (!params.WEIGHT) {
+      params.WEIGHT_OFFSET += 45056;
+    }
 
     myfile << "const SimplifiedParams " << op.first << "_params = {\n"
            << "    " << params.INPUT_OFFSET << ", // INPUT_OFFSET\n"
