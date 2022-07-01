@@ -305,7 +305,7 @@ int runMobileBertUnitTest(std::string task, std::string test,
                         params.WEIGHT ? weightDataDir : activationDataDir,
                         activationDataDir, activationDataDir, layerName,
                         outfilePrefix, compList, false, false);
-  } else if (task == "error") {
+  } else if (task == "backprop") {
     if (test.find("attention_self_value_layer") != std::string::npos) {
       return runOperation(params, files, memoryMap, activationDataDir,
                           errorDataDir, errorDataDir, errorDataDir, layerName,
