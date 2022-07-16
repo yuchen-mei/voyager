@@ -1122,6 +1122,6 @@ std::map<std::string, Files> inferenceTestFiles{
          "mobilebert_encoder_layer_23_output_bottleneck_LayerNorm",
          "classifier_weight",
          "classifier_bias",
-         "mobilebert_classifier",
+         "mobilebert_logits",
      }},
 };

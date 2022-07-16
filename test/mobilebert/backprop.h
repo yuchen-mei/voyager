@@ -54,6 +54,7 @@ std::vector<std::string> backpropOrder{
 };
 
 std::map<std::string, std::string> backpropParamsMapping{
+    {"classifier", "crossEntropyLoss"},
     {"output_bottleneck_LayerNorm", "classifier"},
     {"output_bottleneck_dense", "outputLayerNorm"},
     {"output_LayerNorm", "outputBottleneck"},
@@ -101,6 +102,50 @@ std::map<std::string, std::string> backpropParamsMapping{
 };
 
 std::map<std::string, SimplifiedParams> backpropParams{
+    {"crossEntropyLoss",
+     {
+         0,                                           // INPUT_OFFSET
+         0,                                           // WEIGHT_OFFSET
+         131072,                                      // OUTPUT_OFFSET
+         false,                                       // TRANSPOSE
+         {{4, 1, 1, 1, 1, 1}, {8, 32, 1, 1, 1, 32}},  // LOOPS
+         {0, 5},                                      // INPUTX
+         {1, 4},                                      // INPUTY
+         {3, 0},                                      // REDUCTION
+         {2, 1},                                      // WEIGHT
+         3,                                           // fxIndex
+         2,                                           // fyIndex
+         {5, 5},                                      // weightReuseIndex
+         1,                                           // stride
+         false,                                       // replication
+         false,                                       // RELU
+         false,                                       // bias
+         30 * 1024,                                   // BIAS_OFFSET
+         false,                                       // residual
+         40 * 1024,                                   // RESIDUAL_OFFSET
+         false,                                       // maxpool
+         false,                                       // avgpool
+         false,                                       // SOFTMAX
+         false,                                       // FC
+         false,                                       // NO-NORM
+         false,                                       // weight
+         false,                                       // ATTENTION_SCALING
+         false,                                       // STORE_IN_ACC
+         false,                                       // ACC_FROM_ACC
+         false,                                       // INPUT_TRANSPOSE
+         false,                                       // SPLIT_HEAD
+         false,                                       // CONCAT_HEAD
+         false,                                       // SOFTMAX_GRAD
+         false,                                       // NO_NORM_GRAD
+         false,                                       // RELU_GRAD
+         false,                                       // WEIGHT_PERMUTE
+         false,                                       // WEIGHT_ADDITION
+         true,                                        // CROSS_ENTROPY_LOSS_GRAD
+         false,                                       // MSE_LOSS_GRAD
+         false,                                       // BCE_LOGITS_LOSS_GRAD
+         false,                                       // GRAD_NORM_CLIP
+     }},
+
     // (128 x 128) * (128 x 512)
     {"inputBottleneck",
      {
@@ -694,6 +739,13 @@ std::map<std::string, SimplifiedParams> backpropParams{
 };
 
 std::map<std::string, MemoryOffsets> backpropMemOffsets{
+    {"classifier",
+     {
+         0,
+         0,
+         0,
+         0,
+     }},
     {"output_bottleneck_LayerNorm",
      {
          0,
@@ -1046,9 +1098,15 @@ std::map<std::string, MemoryOffsets> backpropMemOffsets{
 };
 
 std::map<std::string, Files> backpropTestFiles{
+    {"classifier",
+     {
+         "mobilebert_logits",  // activation
+         "classifier_labels", "",
+         "mobilebert_logits",  // error
+     }},
     {"output_bottleneck_LayerNorm",
      {
-         "mobilebert_classifier",
+         "mobilebert_logits",
          "classifier_weight",
          "",
          "mobilebert_encoder_layer_23_output_bottleneck_LayerNorm",
@@ -1337,14 +1395,14 @@ std::map<std::string, Files> backpropTestFiles{
 
     {"bottleneck_attention_LayerNorm_0",
      {
-         "attention_self_query",
+         "attention_self_mixed_query_layer",
          "attention_self_query_weight",
          "",
          "bottleneck_attention_LayerNorm",
      }},
     {"bottleneck_attention_LayerNorm_1",
      {
-         "attention_self_key",
+         "attention_self_mixed_key_layer",
          "attention_self_key_weight",
          "",
          "bottleneck_attention_LayerNorm",
@@ -1366,7 +1424,7 @@ std::map<std::string, Files> backpropTestFiles{
      }},
     {"hidden_states_1",
      {
-         "attention_self_value",
+         "attention_self_mixed_value_layer",
          "attention_self_value_weight",
          "",
          "hidden_states",

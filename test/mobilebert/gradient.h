@@ -378,7 +378,7 @@ std::map<std::string, MemoryOffsets> gradientMemOffsets{
     {"classifier",
      {
          0,
-         7 * INTERMEDIATE_SIZE + 26 * HIDDEN_SIZE,
+         6 * INTERMEDIATE_SIZE + 26 * HIDDEN_SIZE,
          INTERMEDIATE_SIZE,
      }},
     {"output_bottleneck_LayerNorm",
@@ -533,7 +533,7 @@ std::map<std::string, MemoryOffsets> gradientMemOffsets{
 std::map<std::string, Files> gradientTestFiles{
     {"classifier",
      {
-         "mobilebert_classifier",
+         "mobilebert_logits",
          "mobilebert_encoder_layer_23_output_bottleneck_LayerNorm",
          "",
          "classifier_weight",

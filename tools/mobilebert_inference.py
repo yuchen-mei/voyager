@@ -1,3 +1,4 @@
+import datetime
 import multiprocessing as mp
 import os
 import struct
@@ -6,7 +7,7 @@ from subprocess import PIPE
 
 import argparse
 from datasets import load_dataset, load_metric
-import datetime
+
 import numpy as np
 import torch
 from torch.utils.data import DataLoader

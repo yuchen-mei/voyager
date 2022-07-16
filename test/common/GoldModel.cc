@@ -124,19 +124,19 @@ void run_gold_op(const SimplifiedParams params, T *matrixA, T *matrixB,
     int Y = params.loops[0][params.inputYLoopIndex[0]] *
             params.loops[1][params.inputYLoopIndex[1]];
 
-    for (int j = 0; j < Y; j++) {
-      for (int x = 0; x < X; x++) {
+    for (int x = 0; x < X; x++) {
+      for (int y = 0; y < Y; y++) {
         ACC_T acc = 0;
-        for (int y = 0; y < Y; y++) {
+        for (int k = 0; k < Y; k++) {
           ACC_T prob_kj;
-          prob_kj = -residualMatrix[x * Y + y] * residualMatrix[x * Y + j];
-          if (y == j) {
-            prob_kj += residualMatrix[x * Y + j];
+          prob_kj = -residualMatrix[x * Y + k] * residualMatrix[x * Y + y];
+          if (k == y) {
+            prob_kj += residualMatrix[x * Y + y];
           }
-          prob_kj *= matrixA[x * Y + y];
+          prob_kj *= matrixA[x * Y + k];
           acc += prob_kj;
         }
-        matrixC[x * Y + j] = static_cast<float>(acc) / sqrt(32);
+        matrixC[x * Y + y] = static_cast<float>(acc) / sqrt(32);
       }
     }
   } else if (params.FC) {
@@ -168,7 +168,7 @@ void run_gold_op(const SimplifiedParams params, T *matrixA, T *matrixB,
       matrixC[k] = acc;
     }
   } else if (params.NO_NORM) {
-    // elementwise multiplication and addition of matrices
+    // elementwise multiplication and addition between a matrix and a vector
     int X = params.loops[0][params.inputXLoopIndex[0]] *
             params.loops[1][params.inputXLoopIndex[1]];
     int K = params.loops[0][params.weightLoopIndex[0]] *
@@ -181,10 +181,10 @@ void run_gold_op(const SimplifiedParams params, T *matrixA, T *matrixB,
       for (int k = 0; k < K; k++) {
         ACC_T a = matrixA[x * K + k];
         ACC_T b = matrixB[k];
-        ACC_T bias = biasMatrix[k];
         ACC_T acc;
 
         if (params.BIAS) {
+          ACC_T bias = biasMatrix[k];
           acc = gold_fma(a, b, bias);
         } else {
           acc = a * b;
@@ -246,6 +246,78 @@ void run_gold_op(const SimplifiedParams params, T *matrixA, T *matrixB,
 
     for (int c = 0; c < C; c++) {
       matrixC[c] = accumMatrix[c];
+    }
+  // Cross Entropy Loss
+  } else if (params.CROSS_ENTROPY_LOSS_GRAD) {
+    // matrix A: logits
+    // matrix B: one-hot encoded targets
+    int X = params.loops[0][params.inputXLoopIndex[0]] *
+            params.loops[1][params.inputXLoopIndex[1]];
+
+    ACC_T accumMatrix[X];
+    memset(accumMatrix, 0, sizeof(accumMatrix));
+
+    for (int i = 0; i < X; i++) {
+      accumMatrix[i] = matrixA[i];
+      if (inputScaling) {
+        accumMatrix[i] *= static_cast<ACC_T>(matrixA[X + i]);
+      }
+    }
+
+    ACC_T max = 0;
+    ACC_T sum = 0;
+
+    for (int i = 0; i < X; i++) {
+      if (accumMatrix[i] > max) {
+        max = accumMatrix[i];
+      }
+    }
+
+    for (int i = 0; i < X; i++) {
+      accumMatrix[i] = exp(static_cast<float>(accumMatrix[i] - max));
+      sum += accumMatrix[i];
+    }
+
+    for (int i = 0; i < X; i++) {
+      accumMatrix[i] /= sum;
+      accumMatrix[i] -= matrixB[i];
+    }
+  } else if (params.MSE_LOSS_GRAD) {
+    int X = params.loops[0][params.inputXLoopIndex[0]] *
+            params.loops[1][params.inputXLoopIndex[1]];
+
+    ACC_T divisor = 2 / X;
+    for (int i = 0; i < X; i++) {
+      matrixC[i] = static_cast<ACC_T>(matrixA[i] - matrixB[i]) * divisor;
+    }
+  } else if (params.BCE_LOGITS_LOSS_GRAD) {
+    int X = params.loops[0][params.inputXLoopIndex[0]] *
+            params.loops[1][params.inputXLoopIndex[1]];
+
+    ACC_T divisor = 1 / X;
+    for (int i = 0; i < X; i++) {
+      matrixC[i] = static_cast<ACC_T>(matrixA[i] - matrixB[i]) * divisor;
+    }
+  } else if (params.GRAD_NORM_CLIP) {
+    int X = params.loops[0][params.inputXLoopIndex[0]] *
+            params.loops[1][params.inputXLoopIndex[1]];
+    int Y = params.loops[0][params.inputYLoopIndex[0]] *
+            params.loops[1][params.inputYLoopIndex[1]];
+
+    ACC_T acc = 0;
+    for (int i = 0; i < X; i++) {
+      for (int j = 0; j < Y; j++) {
+        acc = gold_fma(matrixA[i][j], matrixA[i][j], acc);
+      }
+    }
+
+    // FIXME: square root
+    if (acc > 1) {
+      for (int i = 0; i < X; i++) {
+        for (int j = 0; j < Y; j++) {
+          matrixC[i][j] = static_cast<float>(matrixC[i][j]) / static_cast<float>(acc);
+        }
+      }
     }
   } else {  // normal operation
     int X = params.loops[0][params.inputXLoopIndex[0]] *
@@ -382,7 +454,12 @@ void run_gold_op(const SimplifiedParams params, T *matrixA, T *matrixB,
           }
 
           if (params.ATTENTION_SCALING) {
+#ifdef POSIT
+            ACC_T divisor = 1 / sqrt(32);
+            acc *= divisor;
+#else
             acc = static_cast<float>(acc) / sqrt(32);
+#endif
           }
 
           accumMatrix[y * X * K + x * K + k] = acc;

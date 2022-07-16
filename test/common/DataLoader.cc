@@ -97,7 +97,15 @@ void load_inputs(const SimplifiedParams& params, const std::string& filename,
 #endif
   double* tmpValuePtr = tmpValues;
 
-  if (params.REPLICATION) {
+  if (params.CROSS_ENTROPY_LOSS_GRAD) {
+    for (int i = 0; i < X; i++) {
+      double val = *(tmpValuePtr++);
+      save_double(&acceleratorMemory[params.INPUT_OFFSET + i], val);
+      save_double(&goldMemory[i], val);
+      save_double(&universalGoldMemory[i], val);
+      save_double(&floatGoldMemory[i], val);
+    }
+  } else if (params.REPLICATION) {
     for (int y = 0; y < STRIDE * Y; y++) {
       for (int x_o = 0; x_o < (STRIDE * X) / 4; x_o++) {
         for (int x_i = 0; x_i < 4; x_i++) {  // 4 packed together

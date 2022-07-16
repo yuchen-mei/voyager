@@ -125,7 +125,7 @@ int runOperation(const SimplifiedParams params, const Files files,
   bool accelerator =
       std::find(groups.begin(), groups.end(), "accelerator") != groups.end();
   bool hlsposit =
-      std::find(groups.begin(), groups.end(), "customposit") != groups.end();
+      std::find(groups.begin(), groups.end(), "hlsposit") != groups.end();
   bool universal =
       std::find(groups.begin(), groups.end(), "universal") != groups.end();
   bool fp32 = std::find(groups.begin(), groups.end(), "fp32") != groups.end();
@@ -283,7 +283,7 @@ int runMobileBertUnitTest(std::string task, std::string test,
   Files files = mobileBertTestFiles.at(test);
   MemoryOffsets offsets = mobileBertMemOffsets.at(test);
   std::string layerName =
-      test == "classifier" ? "" : "mobilebert_encoder_layer_23_";
+      test == "classifier" ? "" : "mobilebert_encoder_layer_0_";
 
   params.INPUT_OFFSET = offsets.INPUT_OFFSET + STACK_SIZE;
   params.WEIGHT_OFFSET = offsets.WEIGHT_OFFSET;
