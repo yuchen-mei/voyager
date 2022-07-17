@@ -454,12 +454,8 @@ void run_gold_op(const SimplifiedParams params, T *matrixA, T *matrixB,
           }
 
           if (params.ATTENTION_SCALING) {
-#ifdef POSIT
-            ACC_T divisor = 1 / sqrt(32);
-            acc *= divisor;
-#else
-            acc = static_cast<float>(acc) / sqrt(32);
-#endif
+            ACC_T scale = static_cast<ACC_T>(static_cast<T>( 1.0 / sqrt(32) ));
+            acc *= scale;
           }
 
           accumMatrix[y * X * K + x * K + k] = acc;

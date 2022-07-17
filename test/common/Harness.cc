@@ -350,7 +350,7 @@ void Harness::sendParams() {
       vInst0.vOp4 = params.RELU;
       vInst0.vDest = VectorInstructions::vWriteOut;
 
-      vectorInstructionConfig.inst[0] = static_cast<int>(vInst0);
+      vectorInstructionConfig.inst[0] = vInst0;
       // C/DIMENSION to do the complete reduction
       // DIMENSION to fill up the entire vector
       vectorInstructionConfig.instCount[0] = Y * C / DIMENSION;
@@ -436,7 +436,7 @@ void Harness::sendParams() {
       vInst0.rOp = VectorInstructions::radd;
       vInst0.rDuplicate = 0;
       vInst0.rDest = VectorInstructions::toVectorSrc0;
-      vectorInstructionConfig.inst[0] = static_cast<int>(vInst0);
+      vectorInstructionConfig.inst[0] = vInst0;
       vectorInstructionConfig.instCount[0] = 1;
 
       // inst 1- inputs x weights, send to reduce
@@ -453,7 +453,7 @@ void Harness::sendParams() {
       vInst1.vOp3 = VectorInstructions::nop;
       vInst1.vOp4 = VectorInstructions::nop;
       vInst1.vDest = VectorInstructions::nop;
-      vectorInstructionConfig.inst[1] = static_cast<int>(vInst1);
+      vectorInstructionConfig.inst[1] = vInst1;
 
       // C/DIMENSION to do the complete reduction
       // DIMENSION to fill up the entire vector
@@ -474,7 +474,7 @@ void Harness::sendParams() {
       vInst2.vOp3 = VectorInstructions::nop;
       vInst2.vOp4 = params.RELU;
       vInst2.vDest = VectorInstructions::vWriteOut;
-      vectorInstructionConfig.inst[2] = static_cast<int>(vInst2);
+      vectorInstructionConfig.inst[2] = vInst2;
       vectorInstructionConfig.instCount[2] = 1;
 
       vectorInstructionConfig.instLen = 3;
@@ -551,7 +551,7 @@ void Harness::sendParams() {
       vInst0.vOp3 = VectorInstructions::vadd;
       vInst0.vOp4 = params.RELU;
       vInst0.vDest = VectorInstructions::vWriteOut;
-      vectorInstructionConfig.inst[0] = static_cast<int>(vInst0);
+      vectorInstructionConfig.inst[0] = vInst0;
 
       // C/DIMENSION to do the complete reduction
       // DIMENSION to fill up the entire vector
@@ -818,7 +818,7 @@ void Harness::sendParams() {
         vInst0.instType = VectorInstructions::accumulation;
         vInst0.rCount = X * Y;
         vectorInstructionConfig.instCount[0] = 1;
-        vectorInstructionConfig.inst[0] = static_cast<int>(vInst0);
+        vectorInstructionConfig.inst[0] = vInst0;
 
         VectorInstructions vInst1;
         vInst1.instType = VectorInstructions::vector;
@@ -833,7 +833,7 @@ void Harness::sendParams() {
         vInst1.vOp3 = VectorInstructions::nop;
         vInst1.vOp4 = VectorInstructions::nop;
         vInst1.vDest = VectorInstructions::nop;
-        vectorInstructionConfig.inst[1] = static_cast<int>(vInst1);
+        vectorInstructionConfig.inst[1] = vInst1;
         vectorInstructionConfig.instCount[1] = X * Y;
 
         VectorInstructions vInst2;
@@ -849,12 +849,12 @@ void Harness::sendParams() {
         vInst2.vOp3 = VectorInstructions::nop;
         vInst2.vOp4 = VectorInstructions::nop;
         vInst2.vDest = VectorInstructions::vWriteOut;
-        vectorInstructionConfig.inst[2] = static_cast<int>(vInst2);
+        vectorInstructionConfig.inst[2] = vInst2;
         vectorInstructionConfig.instCount[2] = 1;
 
         vectorInstructionConfig.instLen = 3;
         vectorInstructionConfig.instLoopCount = K / DIMENSION;
-      } else {
+      }  else {
         VectorInstructions vInst0;
         memset(&vInst0, 0, sizeof(vInst0));
         vInst0.instType = VectorInstructions::vector;
@@ -864,6 +864,12 @@ void Harness::sendParams() {
         if (params.RESIDUAL) {
           vInst0.vOp0Src1 = VectorInstructions::readInterface;
           vInst0.vOp0 = VectorInstructions::vadd;
+        } else if(params.ATTENTION_SCALING) {          
+          vInst0.vOp0Src1 = VectorInstructions::op0immediate0;
+          float fpscale = (1.0/sqrt(32));
+          Posit<8,1> scale = static_cast<Posit<8,1> >(fpscale);
+          vInst0.immediate0 = scale.bits;
+          vInst0.vOp0 = VectorInstructions::vmult;
         } else {
           vInst0.vOp0Src1 = VectorInstructions::nop;
           vInst0.vOp0 = VectorInstructions::nop;
@@ -888,7 +894,7 @@ void Harness::sendParams() {
         }
 
         vInst0.vDest = VectorInstructions::vWriteOut;
-        vectorInstructionConfig.inst[0] = static_cast<int>(vInst0);
+        vectorInstructionConfig.inst[0] = vInst0;
 
         // total output count
         vectorInstructionConfig.instCount[0] =

@@ -216,8 +216,10 @@ struct VectorInstructions {
   // src0 refers to lhs and src1 refers to rhs
 
   // Stage 0: add, mult
-  ac_int<1, false> vOp0Src1;
+  ac_int<2, false> vOp0Src1;
   static const unsigned int readInterface = 1;
+  static const unsigned int op0immediate0 = 2;
+  static const unsigned int op0immediate1 = 3;
   ac_int<2, false> vOp0;  // add, sub, mult
   static const unsigned int nop = 0;
   static const unsigned int vadd = 1;
@@ -234,10 +236,12 @@ struct VectorInstructions {
 
   // Stage 3: add, div
   ac_int<1, false> vOp3Src0;  // use existing or read from reduce interface
-  ac_int<2, false> vOp3Src1;  // don't read, read from reduce interface 2, or
+  ac_int<3, false> vOp3Src1;  // don't read, read from reduce interface 2, or
                               // normal interface
   static const unsigned int readReduceInterface = 1;
   static const unsigned int readNormalInterface = 2;
+  static const unsigned int op3immediate0 = 3;
+  static const unsigned int op3immediate1 = 4;
   ac_int<2, false> vOp3;  // add, div
   // static const unsigned int vadd = 1;
   static const unsigned int vdiv = 2;
@@ -262,10 +266,13 @@ struct VectorInstructions {
   static const unsigned int toVectorSrc1 = 2;
   static const unsigned int sWriteOut = 3;
 
-  static const unsigned int width = 32;
+  ac_int<8, false> immediate0;
+  ac_int<8, false> immediate1;
+
+  static const unsigned int width = 50;
   VectorInstructions() {}
   VectorInstructions(const int a) {
-    ac_int<32, false> val = a;
+    ac_int<width, false> val = a;
     sc_lv<width> valLV;
     type_to_vector(val, width, valLV);
     *this = BitsToType<VectorInstructions>(valLV);
@@ -297,6 +304,8 @@ struct VectorInstructions {
     m& rOp;
     m& rDuplicate;
     m& rDest;
+    m& immediate0;
+    m& immediate1;
   }
 
   inline friend void sc_trace(sc_trace_file* tf,
@@ -445,7 +454,7 @@ struct VectorParams {
 };
 
 struct VectorInstructionConfig {
-  int inst[8];
+  VectorInstructions inst[8];
   int instCount[8];
   int instLen;
   int instLoopCount;

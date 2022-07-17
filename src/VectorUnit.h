@@ -123,6 +123,18 @@ SC_MODULE(VectorOpUnit) {
         for (int i = 0; i < WIDTH; i++) {
           op0Src1[i] = tmp[i];
         }
+      } else if (inst.vOp0Src1 == VectorInstructions::op0immediate0 || inst.vOp0Src1 == VectorInstructions::op0immediate1 ){
+        IDTYPE immediate;
+        if(inst.vOp0Src1 == VectorInstructions::op0immediate0){
+          immediate.bits = inst.immediate0;
+        } else {
+          immediate.bits = inst.immediate1;
+        }
+
+        #pragma hls_unroll yes
+        for (int i = 0; i < WIDTH; i++) {
+          op0Src1[i] = immediate;
+        }
       }
 
       // DLOG("vector unit input: " << op0Src0);
@@ -192,6 +204,18 @@ SC_MODULE(VectorOpUnit) {
 #pragma hls_unroll yes
         for (int i = 0; i < WIDTH; i++) {
           op3Src1[i] = tmp[i];
+        }
+      } else if (inst.vOp3Src1 == VectorInstructions::op3immediate0 || inst.vOp3Src1 == VectorInstructions::op3immediate1 ){
+        IDTYPE immediate;
+        if(inst.vOp3Src1 == VectorInstructions::op3immediate0){
+          immediate.bits = inst.immediate0;
+        } else {
+          immediate.bits = inst.immediate1;
+        }
+
+        #pragma hls_unroll yes
+        for (int i = 0; i < WIDTH; i++) {
+          op3Src1[i] = immediate;
         }
       }
 
