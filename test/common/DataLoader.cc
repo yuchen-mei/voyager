@@ -14,6 +14,14 @@ void save_bias(ACCUM_DATATYPE* array, double val) {
   *array = ACCUM_DATATYPE(fval);
 }
 
+void save_bias_as_double_precision(INPUT_DATATYPE* array, double val) {
+  float fval = (float)val;
+  ACCUM_DATATYPE positVal = ACCUM_DATATYPE(fval);
+  for (int i = 0; i < 2; i++) {
+    array[i].bits = positVal.bits.slc<8>(i * 8);
+  }
+}
+
 #ifndef NO_UNIVERSAL
 void save_double(UniversalPosit* array, double val) {
   float fval = (float)val;
@@ -230,9 +238,8 @@ void load_bias(const SimplifiedParams& params, const std::string& filename,
 
   for (int k = 0; k < size; k++) {
     double val = *(tmpValuePtr++);
-    save_bias(reinterpret_cast<ACCUM_DATATYPE*>(
-                  &acceleratorMemory[params.BIAS_OFFSET + k]),
-              val);
+    save_bias_as_double_precision(
+        &acceleratorMemory[params.BIAS_OFFSET + k * 2], val);
     save_bias(reinterpret_cast<ACCUM_DATATYPE*>(&goldMemory[k]), val);
     save_bias(reinterpret_cast<UniversalPositAccum*>(&universalGoldMemory[k]),
               val);
