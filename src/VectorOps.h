@@ -92,7 +92,6 @@ void vdiv(Pack1D<ACC_DTYPE, WIDTH>& op0, Pack1D<ACC_DTYPE, WIDTH>& op1,
 }
 
 #pragma hls_design ccore
-#pragma ccore_type combinational
 template <typename ACC_DTYPE>
 ACC_DTYPE treeadd16(Pack1D<ACC_DTYPE, 16>& op) {
   Pack1D<ACC_DTYPE, 8> lvl0;
@@ -117,7 +116,6 @@ ACC_DTYPE treeadd16(Pack1D<ACC_DTYPE, 16>& op) {
 }
 
 #pragma hls_design ccore
-#pragma ccore_type combinational
 template <typename ACC_DTYPE>
 ACC_DTYPE treemax16(Pack1D<ACC_DTYPE, 16>& op) {
   Pack1D<ACC_DTYPE, 8> lvl0;
