@@ -216,13 +216,13 @@ int runOperation(const SimplifiedParams params,
             << std::endl;
 #endif
 
-  bool hlsposit =
-      std::find(groups.begin(), groups.end(), "hlsposit") != groups.end();
+  bool customposit =
+      std::find(groups.begin(), groups.end(), "customposit") != groups.end();
   bool universal =
       std::find(groups.begin(), groups.end(), "universal") != groups.end();
   bool fp32 = std::find(groups.begin(), groups.end(), "fp32") != groups.end();
 
-  if (hlsposit) {
+  if (customposit) {
     run_custom_posit_gold_model(
         params, hls_sram_memory + params.INPUT_OFFSET,
         (params.WEIGHT ? hls_rram_memory : hls_sram_memory) +
@@ -266,7 +266,7 @@ int runOperation(const SimplifiedParams params,
 
   std::string diffFile;
   int errors;
-  if (hlsposit) {
+  if (customposit) {
     std::cout << "HLS Posit Gold Model vs. Pytorch" << std::endl;
     std::cout << "(reveals bugs in mapping operations to accelerator)"
               << std::endl;
@@ -283,7 +283,7 @@ int runOperation(const SimplifiedParams params,
                             uniDataFileOutput, outputSize, diffFile);
   }
 
-  if (hlsposit && universal) {
+  if (customposit && universal) {
     std::cout << "HLS Posit Gold Model vs. Universal Posit Gold Model"
               << std::endl;
     std::cout

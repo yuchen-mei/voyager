@@ -108,7 +108,7 @@ std::map<std::string, SimplifiedParams> backpropParams{
          0,                                           // WEIGHT_OFFSET
          131072,                                      // OUTPUT_OFFSET
          false,                                       // TRANSPOSE
-         {{4, 1, 1, 1, 1, 1}, {8, 32, 1, 1, 1, 32}},  // LOOPS
+         {{1, 1, 1, 1, 1, 1}, {1, 1, 1, 1, 1, 16}},  // LOOPS
          {0, 5},                                      // INPUTX
          {1, 4},                                      // INPUTY
          {3, 0},                                      // REDUCTION
@@ -1101,7 +1101,7 @@ std::map<std::string, Files> backpropTestFiles{
     {"classifier",
      {
          "mobilebert_logits",  // activation
-         "classifier_labels", "",
+         "mobilebert_labels", "",
          "mobilebert_logits",  // error
      }},
     {"output_bottleneck_LayerNorm",

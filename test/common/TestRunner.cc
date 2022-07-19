@@ -388,7 +388,8 @@ extern "C" int sc_main(int argc, char* argv[]) {
     }
 
     if (!env_datapath) {
-      env_datapath = "/sim/jeffreyy/accelerator/data/mobilebert/datafile/";
+      env_datapath =
+          "/sim/jeffreyy/accelerator/data/mobilebert_train/datafile/";
     }
 
     std::string task(env_task);
@@ -411,7 +412,7 @@ extern "C" int sc_main(int argc, char* argv[]) {
       loadWeights(weightDataDir);
 
       // For debug purpose
-      std::string activationDataDir = datapath + "activations/";
+      std::string activationDataDir = datapath + "activations1/";
       loadActivation(activationDataDir);
 
       // errors += runInference(datapath, compList);

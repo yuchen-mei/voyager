@@ -39,7 +39,7 @@ mobilebert_layers = [
 def run_test(results_folder, test):
     env_vars = os.environ.copy()
     env_vars['GROUP'] = "mobilebert"
-    env_vars['SIMS'] = "fp32,hlsposit,accelerator"
+    env_vars['SIMS'] = "fp32,customposit,accelerator"
     env_vars['TASK'] = "inference"
     env_vars['TESTS'] = test
 

@@ -65,7 +65,12 @@ int runOperation(const SimplifiedParams params, const Files files,
     C = 1;
   }
 
-  int outputSize = params.NO_NORM_GRAD ? C : X * Y * K;
+  int outputSize = X * Y * K;
+  if (params.NO_NORM_GRAD) {
+    outputSize = C;
+  } else if (params.CROSS_ENTROPY_LOSS_GRAD) {
+    outputSize = X;
+  }
 
   std::cout << "Performing the following operation:" << std::endl;
   std::cout << "(" << X << "x" << Y << "x" << C << ")"
@@ -124,8 +129,8 @@ int runOperation(const SimplifiedParams params, const Files files,
 
   bool accelerator =
       std::find(groups.begin(), groups.end(), "accelerator") != groups.end();
-  bool hlsposit =
-      std::find(groups.begin(), groups.end(), "hlsposit") != groups.end();
+  bool customposit =
+      std::find(groups.begin(), groups.end(), "customposit") != groups.end();
   bool universal =
       std::find(groups.begin(), groups.end(), "universal") != groups.end();
   bool fp32 = std::find(groups.begin(), groups.end(), "fp32") != groups.end();
@@ -134,7 +139,7 @@ int runOperation(const SimplifiedParams params, const Files files,
     run_op({params}, sramMemory, rramMemory, memoryMap);
   }
 
-  if (hlsposit) {
+  if (customposit) {
     run_custom_posit_gold_model(params, matrixA, matrixB, matrixC, biasMatrix,
                                 residualMatrix, inputScaling, weightScaling);
   }
@@ -163,7 +168,7 @@ int runOperation(const SimplifiedParams params, const Files files,
                    diffFile);
   }
 
-  if (hlsposit) {
+  if (customposit) {
     std::cout << "HLS Posit Gold Model vs. Pytorch" << std::endl;
     std::cout << "(reveals bugs in mapping operations to accelerator)"
               << std::endl;
@@ -180,7 +185,7 @@ int runOperation(const SimplifiedParams params, const Files files,
                              outputSize, diffFile);
   }
 
-  if (accelerator && hlsposit) {
+  if (accelerator && customposit) {
     std::cout << "Accelerator vs. HLS Posit Gold Model" << std::endl;
     std::cout << "(reveals bugs in accelerator or memory placement)"
               << std::endl;
@@ -189,7 +194,7 @@ int runOperation(const SimplifiedParams params, const Files files,
                              outputSize, diffFile);
   }
 
-  if (hlsposit && universal) {
+  if (customposit && universal) {
     std::cout << "HLS Posit Gold Model vs. Universal Posit Gold Model"
               << std::endl;
     std::cout
@@ -319,6 +324,10 @@ int runMobileBertUnitTest(std::string task, std::string test,
       return runOperation(params, files, memoryMap, errorDataDir, weightDataDir,
                           errorDataDir, activationDataDir, layerName,
                           outfilePrefix, compList, false, false);
+    } else if (params.CROSS_ENTROPY_LOSS_GRAD) {
+      return runOperation(params, files, memoryMap, activationDataDir,
+                          activationDataDir, errorDataDir, activationDataDir,
+                          layerName, outfilePrefix, compList, false, false);
     }
     return runOperation(params, files, memoryMap, errorDataDir, weightDataDir,
                         errorDataDir, errorDataDir, layerName, outfilePrefix,

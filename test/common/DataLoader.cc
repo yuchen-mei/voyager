@@ -183,6 +183,16 @@ void load_weights(const SimplifiedParams& params, const std::string& filename,
   double* tmpValues = read_file_as_double(filename, size, useDataFile);
   double* tmpValuePtr = tmpValues;
 
+  if (params.CROSS_ENTROPY_LOSS_GRAD) {
+    for (int i = 0; i < X; i++) {
+      double val = *(tmpValuePtr++);
+      save_double(&acceleratorMemory[params.INPUT_OFFSET + i], val);
+      save_double(&goldMemory[i], val);
+      save_double(&universalGoldMemory[i], val);
+      save_double(&floatGoldMemory[i], val);
+    }
+  }
+
   for (int fy = 0; fy < FY; fy++) {
     for (int fx = 0; fx < FX; fx++) {
       for (int c = 0; c < C; c++) {

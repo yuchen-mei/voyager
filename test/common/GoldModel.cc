@@ -247,7 +247,7 @@ void run_gold_op(const SimplifiedParams params, T *matrixA, T *matrixB,
     for (int c = 0; c < C; c++) {
       matrixC[c] = accumMatrix[c];
     }
-  // Cross Entropy Loss
+    // Cross Entropy Loss
   } else if (params.CROSS_ENTROPY_LOSS_GRAD) {
     // matrix A: logits
     // matrix B: one-hot encoded targets
@@ -307,15 +307,17 @@ void run_gold_op(const SimplifiedParams params, T *matrixA, T *matrixB,
     ACC_T acc = 0;
     for (int i = 0; i < X; i++) {
       for (int j = 0; j < Y; j++) {
-        acc = gold_fma(matrixA[i][j], matrixA[i][j], acc);
+        acc = gold_fma(matrixA[i * Y + j], matrixA[i * Y + j], acc);
       }
     }
 
-    // FIXME: square root
+    // TODO: square root
+    acc = std::sqrt(static_cast<float>(acc));
     if (acc > 1) {
       for (int i = 0; i < X; i++) {
         for (int j = 0; j < Y; j++) {
-          matrixC[i][j] = static_cast<float>(matrixC[i][j]) / static_cast<float>(acc);
+          matrixC[i * Y + j] =
+              static_cast<float>(matrixC[i * Y + j]) / static_cast<float>(acc);
         }
       }
     }
