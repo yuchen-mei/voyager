@@ -21,7 +21,7 @@ SC_MODULE(VectorOpUnit) {
   Connections::In<VectorInstructions> CCS_INIT_S1(reductionOpUnitInstructions);
 
   Connections::In<Pack1D<ACC_DTYPE, WIDTH> > CCS_INIT_S1(systolicArrayOutput);
-  Connections::In<Pack1D<IDTYPE, WIDTH> > CCS_INIT_S1(vectorFetch0Output);
+  Connections::In<Pack1D<ACC_DTYPE, WIDTH> > CCS_INIT_S1(vectorFetch0Output);
   Connections::In<Pack1D<IDTYPE, WIDTH> > CCS_INIT_S1(vectorFetch1Output);
   Connections::In<Pack1D<ACC_DTYPE, WIDTH> > CCS_INIT_S1(vectorFetch2Output);
 
@@ -103,7 +103,7 @@ SC_MODULE(VectorOpUnit) {
           op0Src0[i] = tmp[i];
         }
       } else if (inst.vInput == VectorInstructions::readFromVectorFetch) {
-        Pack1D<IDTYPE, WIDTH> tmp = vectorFetch0Output.Pop();
+        Pack1D<ACC_DTYPE, WIDTH> tmp = vectorFetch0Output.Pop();
 #pragma hls_unroll yes
         for (int i = 0; i < WIDTH; i++) {
           op0Src0[i] = tmp[i];
@@ -173,11 +173,8 @@ SC_MODULE(VectorOpUnit) {
       /*
        * Stage 2: reduction
        */
-      if (inst.vOp2 == VectorInstructions::toReduce) {
-        reductionOpInput.Push(res1);
-      } else {
-        res2 = res1;
-      }
+      // FIXME: delete this stage (moved reduction moved to end of pipeline)
+      res2 = res1;
 
       // DLOG("res2: " << res2);
 
@@ -224,6 +221,11 @@ SC_MODULE(VectorOpUnit) {
                      << op3Src1 << std::endl
                      << " = " << std::endl
                      << res3);
+      } else if (inst.vOp3 == VectorInstructions::vmult) {
+        // FIXME: combine this with div
+        vmult<typename ACC_DTYPE::DecomposedPosit, WIDTH>(op3Src0, op3Src1,
+                                                         res3);
+
       } else if (inst.vOp3 == VectorInstructions::vdiv) {
         // vdiv<typename ACC_DTYPE::DecomposedPosit, WIDTH>(op3Src0, op3Src1,
         //                                                  res3);
@@ -245,6 +247,9 @@ SC_MODULE(VectorOpUnit) {
 
       if (inst.vAccumulatePush) {
         accumulationOpInput.Push(res4);
+      }
+      if (inst.vOp2 == VectorInstructions::toReduce) {
+        reductionOpInput.Push(res4);
       }
 
       // DLOG("res4: " << res4);
@@ -394,6 +399,7 @@ SC_MODULE(VectorUnit) {
 
   Connections::Out<MemoryRequest> CCS_INIT_S1(vectorFetch0AddressRequest);
   Connections::In<Pack1D<ODTYPE, WIDTH> > CCS_INIT_S1(vectorFetch0DataResponse);
+  Connections::Combinational<Pack1D<ACC_DTYPE, WIDTH> > CCS_INIT_S1(vectorFetch0DataResponseBroadcasted);
 
   Connections::Out<MemoryRequest> CCS_INIT_S1(vectorFetch1AddressRequest);
   Connections::In<Pack1D<ODTYPE, WIDTH> > CCS_INIT_S1(vectorFetch1DataResponse);
@@ -448,6 +454,8 @@ SC_MODULE(VectorUnit) {
     vectorFetch.rstn(rstn);
     vectorFetch.paramsIn(vectorFetchParams);
     vectorFetch.vectorFetch0AddressRequest(vectorFetch0AddressRequest);
+    vectorFetch.vectorFetch0DataResponse(vectorFetch0DataResponse);
+    vectorFetch.vectorFetch0DataResponseBroadcasted(vectorFetch0DataResponseBroadcasted);
     vectorFetch.vectorFetch1AddressRequest(vectorFetch1AddressRequest);
     vectorFetch.vectorFetch2AddressRequest(vectorFetch2AddressRequest);
     vectorFetch.vectorFetch2DataResponse(vectorFetch2DataResponse);
@@ -460,7 +468,7 @@ SC_MODULE(VectorUnit) {
     vectorOpUnit.accumulationOpUnitInstructions(accumulationOpInstructions);
     vectorOpUnit.reductionOpUnitInstructions(reduceOpInstructions);
     vectorOpUnit.systolicArrayOutput(systolicArrayOutput);
-    vectorOpUnit.vectorFetch0Output(vectorFetch0DataResponse);
+    vectorOpUnit.vectorFetch0Output(vectorFetch0DataResponseBroadcasted);
     vectorOpUnit.vectorFetch1Output(vectorFetch1DataResponse);
     vectorOpUnit.vectorFetch2Output(vectorFetch2DataResponseReplicated);
     vectorOpUnit.vectorOpUnitOutput(vectorOpUnitOutput);

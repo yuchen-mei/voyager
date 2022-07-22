@@ -242,7 +242,8 @@ struct VectorInstructions {
   static const unsigned int op3immediate1 = 4;
   ac_int<2, false> vOp3;  // add, div
   // static const unsigned int vadd = 1;
-  static const unsigned int vdiv = 2;
+  // static const unsigned int vmult = 2;
+  static const unsigned int vdiv = 3;
 
   // Stage 4: relu
   ac_int<2, false> vOp4;
@@ -372,12 +373,15 @@ struct VectorParams {
   bool SPLIT_HEAD;
 
   bool addressGen0Enable;
+  bool addressGen0Broadcast;
+  int addressGen0BroadcastCount;
+  bool SOFTMAX_GRAD_NEGATE;
   ac_int<2, false> addressGen1Mode;  // 1- residual, 2- 2dtensor
   ac_int<2, false> addressGen2Mode;  // 1- bias, 2- 2dtensor
   bool MAXPOOL;
   bool AVGPOOL;
 
-  static const unsigned int width = 13 * 32 + 1 + 1 + 2 + 2 + 1 + 1 + 32 * 36;
+  static const unsigned int width = 13 * 32 + 1 + 1 + 2 + 2 + 1 + 1 + 37 * 32 + 2;
 
   template <unsigned int Size>
   void Marshall(Marshaller<Size>& m) {
@@ -437,6 +441,9 @@ struct VectorParams {
     m& FULL_HEAD_SIZE;
     m& SPLIT_HEAD;
     m& addressGen0Enable;
+    m& addressGen0Broadcast;
+    m& addressGen0BroadcastCount;
+    m& SOFTMAX_GRAD_NEGATE;
     m& addressGen1Mode;
     m& addressGen2Mode;
     m& MAXPOOL;
