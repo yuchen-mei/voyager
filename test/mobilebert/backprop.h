@@ -1100,9 +1100,9 @@ std::map<std::string, MemoryOffsets> backpropMemOffsets{
 std::map<std::string, Files> backpropTestFiles{
     {"classifier",
      {
-         "mobilebert_logits",  // activation
+         "mobilebert_logits",
          "mobilebert_labels", "",
-         "mobilebert_logits",  // error
+         "mobilebert_logits",
      }},
     {"output_bottleneck_LayerNorm",
      {
@@ -1292,7 +1292,6 @@ std::map<std::string, Files> backpropTestFiles{
          "attention_self_value_layer_2",
          "",
          "attention_self_attention_probs_2",
-
      }},
     {"attention_self_attention_probs_3",
      {

@@ -281,6 +281,7 @@ void run_gold_op(const SimplifiedParams params, T *matrixA, T *matrixB,
     for (int i = 0; i < X; i++) {
       accumMatrix[i] /= sum;
       accumMatrix[i] -= matrixB[i];
+      matrixC[i] = accumMatrix[i];
     }
   } else if (params.MSE_LOSS_GRAD) {
     int X = params.loops[0][params.inputXLoopIndex[0]] *
@@ -297,29 +298,6 @@ void run_gold_op(const SimplifiedParams params, T *matrixA, T *matrixB,
     ACC_T divisor = 1 / X;
     for (int i = 0; i < X; i++) {
       matrixC[i] = static_cast<ACC_T>(matrixA[i] - matrixB[i]) * divisor;
-    }
-  } else if (params.GRAD_NORM_CLIP) {
-    int X = params.loops[0][params.inputXLoopIndex[0]] *
-            params.loops[1][params.inputXLoopIndex[1]];
-    int Y = params.loops[0][params.inputYLoopIndex[0]] *
-            params.loops[1][params.inputYLoopIndex[1]];
-
-    ACC_T acc = 0;
-    for (int i = 0; i < X; i++) {
-      for (int j = 0; j < Y; j++) {
-        acc = gold_fma(matrixA[i * Y + j], matrixA[i * Y + j], acc);
-      }
-    }
-
-    // TODO: square root
-    acc = std::sqrt(static_cast<float>(acc));
-    if (acc > 1) {
-      for (int i = 0; i < X; i++) {
-        for (int j = 0; j < Y; j++) {
-          matrixC[i * Y + j] =
-              static_cast<float>(matrixC[i * Y + j]) / static_cast<float>(acc);
-        }
-      }
     }
   } else {  // normal operation
     int X = params.loops[0][params.inputXLoopIndex[0]] *
@@ -456,13 +434,35 @@ void run_gold_op(const SimplifiedParams params, T *matrixA, T *matrixB,
           }
 
           if (params.ATTENTION_SCALING) {
-            ACC_T scale = static_cast<ACC_T>(static_cast<T>( 1.0 / sqrt(32) ));
+            ACC_T scale = static_cast<ACC_T>(static_cast<T>(1.0 / sqrt(32)));
             acc *= scale;
           }
 
           accumMatrix[y * X * K + x * K + k] = acc;
           if (inputScaling) {
             accumMatrix[Y * X * K + X * K + k] += abs(static_cast<float>(acc));
+          }
+        }
+      }
+    }
+
+    if (params.GRADIENT_CLIPPING) {
+      ACC_T acc = 0;
+      for (int i = 0; i < X; i++) {
+        for (int j = 0; j < K; j++) {
+          acc = gold_fma(accumMatrix[i * K + j], accumMatrix[i * K + j], acc);
+        }
+      }
+
+      // TODO: implement posit square root
+      acc = std::sqrt(static_cast<float>(acc));
+
+      if (acc > 1) {
+        for (int i = 0; i < X; i++) {
+          for (int j = 0; j < K; j++) {
+            accumMatrix[i * K + j] =
+                static_cast<float>(accumMatrix[i * K + j]) /
+                static_cast<float>(acc);
           }
         }
       }

@@ -78,12 +78,13 @@ struct SimplifiedParams {
   bool WEIGHT_PERMUTE;
 
   bool WEIGHT_ADDITION;
+  bool BIAS_GRAD;
 
   // Special vector operations
   bool CROSS_ENTROPY_LOSS_GRAD;
   bool MSE_LOSS_GRAD;
   bool BCE_LOGITS_LOSS_GRAD;
-  bool GRAD_NORM_CLIP;
+  bool GRADIENT_CLIPPING;
 };
 
 struct MemoryOffsets {
