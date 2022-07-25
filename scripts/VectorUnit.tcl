@@ -11,6 +11,6 @@ directive set -CLOCKS $clocks
 
 go assembly
 
-directive set /VectorUnit<P8,P16,16>/MaxpoolUnit<P8,16>/run/while:maxpool_comparator.value.bits:rsc -MAP_TO_MODULE {[Register]}
+directive set /VectorUnit<P8,P16,16>/MaxpoolUnit<P16,P8,16>/run/while:maxpool_comparator.value.bits:rsc -MAP_TO_MODULE {[Register]}
 
 go extract

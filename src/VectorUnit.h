@@ -25,7 +25,8 @@ SC_MODULE(VectorOpUnit) {
   Connections::In<Pack1D<IDTYPE, WIDTH> > CCS_INIT_S1(vectorFetch1Output);
   Connections::In<Pack1D<ACC_DTYPE, WIDTH> > CCS_INIT_S1(vectorFetch2Output);
 
-  Connections::Out<Pack1D<typename ACC_DTYPE::DecomposedPosit, WIDTH> > CCS_INIT_S1(vectorOpUnitOutput);
+  Connections::Out<Pack1D<typename ACC_DTYPE::DecomposedPosit, WIDTH> >
+      CCS_INIT_S1(vectorOpUnitOutput);
   Connections::Out<Pack1D<IDTYPE, WIDTH> > CCS_INIT_S1(scalarOpUnitOutput);
 
   Connections::Combinational<
@@ -119,15 +120,16 @@ SC_MODULE(VectorOpUnit) {
         for (int i = 0; i < WIDTH; i++) {
           op0Src1[i] = tmp[i];
         }
-      } else if (inst.vOp0Src1 == VectorInstructions::op0immediate0 || inst.vOp0Src1 == VectorInstructions::op0immediate1 ){
+      } else if (inst.vOp0Src1 == VectorInstructions::op0immediate0 ||
+                 inst.vOp0Src1 == VectorInstructions::op0immediate1) {
         IDTYPE immediate;
-        if(inst.vOp0Src1 == VectorInstructions::op0immediate0){
+        if (inst.vOp0Src1 == VectorInstructions::op0immediate0) {
           immediate.bits = inst.immediate0;
         } else {
           immediate.bits = inst.immediate1;
         }
 
-        #pragma hls_unroll yes
+#pragma hls_unroll yes
         for (int i = 0; i < WIDTH; i++) {
           op0Src1[i] = immediate;
         }
@@ -198,15 +200,16 @@ SC_MODULE(VectorOpUnit) {
         for (int i = 0; i < WIDTH; i++) {
           op3Src1[i] = tmp[i];
         }
-      } else if (inst.vOp3Src1 == VectorInstructions::op3immediate0 || inst.vOp3Src1 == VectorInstructions::op3immediate1 ){
+      } else if (inst.vOp3Src1 == VectorInstructions::op3immediate0 ||
+                 inst.vOp3Src1 == VectorInstructions::op3immediate1) {
         IDTYPE immediate;
-        if(inst.vOp3Src1 == VectorInstructions::op3immediate0){
+        if (inst.vOp3Src1 == VectorInstructions::op3immediate0) {
           immediate.bits = inst.immediate0;
         } else {
           immediate.bits = inst.immediate1;
         }
 
-        #pragma hls_unroll yes
+#pragma hls_unroll yes
         for (int i = 0; i < WIDTH; i++) {
           op3Src1[i] = immediate;
         }
@@ -224,7 +227,7 @@ SC_MODULE(VectorOpUnit) {
       } else if (inst.vOp3 == VectorInstructions::vmult) {
         // FIXME: combine this with div
         vmult<typename ACC_DTYPE::DecomposedPosit, WIDTH>(op3Src0, op3Src1,
-                                                         res3);
+                                                          res3);
 
       } else if (inst.vOp3 == VectorInstructions::vdiv) {
         // vdiv<typename ACC_DTYPE::DecomposedPosit, WIDTH>(op3Src0, op3Src1,
@@ -238,9 +241,11 @@ SC_MODULE(VectorOpUnit) {
       /*
        * Stage 4: relu
        */
-      if (inst.vOp4 == VectorInstructions::vrelu || inst.vOp4 == VectorInstructions::vrelumask ) {
+      if (inst.vOp4 == VectorInstructions::vrelu ||
+          inst.vOp4 == VectorInstructions::vrelumask) {
         bool useMask = inst.vOp4 == VectorInstructions::vrelumask;
-        vrelu<typename ACC_DTYPE::DecomposedPosit, WIDTH>(res3, op3Src1, useMask, res4);
+        vrelu<typename ACC_DTYPE::DecomposedPosit, WIDTH>(res3, op3Src1,
+                                                          useMask, res4);
       } else {
         res4 = res3;
       }
@@ -305,8 +310,6 @@ SC_MODULE(VectorOpUnit) {
 
     wait();
 
-#pragma hls_pipeline_init_interval 1
-#pragma hls_pipeline_stall_mode flush
     while (true) {
       VectorInstructions inst = reductionOpUnitInstructions.Pop();
 
@@ -314,6 +317,10 @@ SC_MODULE(VectorOpUnit) {
 
       int iterationCount = inst.rDuplicate ? 1 : WIDTH;
 
+      typename ACC_DTYPE::DecomposedPosit scalarResult;
+
+#pragma hls_pipeline_init_interval 1
+#pragma hls_pipeline_stall_mode flush
       for (int index = 0; index < iterationCount; index++) {
         typename ACC_DTYPE::DecomposedPosit prevResult;
 
@@ -348,21 +355,26 @@ SC_MODULE(VectorOpUnit) {
           }
         }
 
-        if (inst.rInvSqrt) {
-          prevResult = prevResult.inv_sqrt();
-        }
-
-        if (inst.rDuplicate) {  // Duplicate the scalar result into a vector
-#pragma hls_unroll yes
-          for (int i = 0; i < WIDTH; i++) {
-            res[i] = prevResult;
-          }
-        } else {
+        if (!inst.rDuplicate) {
           res[index] = prevResult;
+        } else {
+          scalarResult = prevResult;
         }
         DLOG("Reduction " << index << "/" << iterationCount << " : "
                           << prevResult << std::endl
                           << res);
+      }
+
+      if (inst.rInvSqrt) {
+        scalarResult = scalarResult.inv_sqrt();
+      }
+
+      if (inst.rDuplicate) {
+        // Duplicate the scalar result into a vector
+#pragma hls_unroll yes
+        for (int i = 0; i < WIDTH; i++) {
+          res[i] = scalarResult;
+        }
       }
 
       if (inst.rDest != 0) {
@@ -395,7 +407,8 @@ SC_MODULE(VectorUnit) {
 
   Connections::Out<MemoryRequest> CCS_INIT_S1(vectorFetch0AddressRequest);
   Connections::In<Pack1D<ODTYPE, WIDTH> > CCS_INIT_S1(vectorFetch0DataResponse);
-  Connections::Combinational<Pack1D<ACC_DTYPE, WIDTH> > CCS_INIT_S1(vectorFetch0DataResponseBroadcasted);
+  Connections::Combinational<Pack1D<ACC_DTYPE, WIDTH> > CCS_INIT_S1(
+      vectorFetch0DataResponseBroadcasted);
 
   Connections::Out<MemoryRequest> CCS_INIT_S1(vectorFetch1AddressRequest);
   Connections::In<Pack1D<ODTYPE, WIDTH> > CCS_INIT_S1(vectorFetch1DataResponse);
@@ -410,8 +423,9 @@ SC_MODULE(VectorUnit) {
 
   Connections::Out<int> CCS_INIT_S1(vectorOutputAddress);
   Connections::Out<Pack1D<ODTYPE, WIDTH> > CCS_INIT_S1(finalVectorOutput);
-  Connections::Combinational<Pack1D<typename ACC_DTYPE::DecomposedPosit, WIDTH> > CCS_INIT_S1(
-      vectorOpUnitOutput);
+  Connections::Combinational<
+      Pack1D<typename ACC_DTYPE::DecomposedPosit, WIDTH> >
+      CCS_INIT_S1(vectorOpUnitOutput);
 
   Connections::SyncOut CCS_INIT_S1(start);
   Connections::SyncOut CCS_INIT_S1(done);
@@ -451,7 +465,8 @@ SC_MODULE(VectorUnit) {
     vectorFetch.paramsIn(vectorFetchParams);
     vectorFetch.vectorFetch0AddressRequest(vectorFetch0AddressRequest);
     vectorFetch.vectorFetch0DataResponse(vectorFetch0DataResponse);
-    vectorFetch.vectorFetch0DataResponseBroadcasted(vectorFetch0DataResponseBroadcasted);
+    vectorFetch.vectorFetch0DataResponseBroadcasted(
+        vectorFetch0DataResponseBroadcasted);
     vectorFetch.vectorFetch1AddressRequest(vectorFetch1AddressRequest);
     vectorFetch.vectorFetch2AddressRequest(vectorFetch2AddressRequest);
     vectorFetch.vectorFetch2DataResponse(vectorFetch2DataResponse);
