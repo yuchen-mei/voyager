@@ -215,13 +215,13 @@ struct VectorInstructions {
   static const unsigned int readFromVectorFetch = 2;
   static const unsigned int readFromAccumulation = 3;
 
-  ac_int<1, false> vAccumulatePush;
-
   // src0 refers to lhs and src1 refers to rhs
 
   // Stage 0: add, mult
-  ac_int<1, false> vOp0Src1;
+  ac_int<2, false> vOp0Src1;
   static const unsigned int readInterface = 1;
+  static const unsigned int op0immediate0 = 2;
+  static const unsigned int op0immediate1 = 3;
   ac_int<2, false> vOp0;  // add, sub, mult
   static const unsigned int nop = 0;
   static const unsigned int vadd = 1;
@@ -238,17 +238,23 @@ struct VectorInstructions {
 
   // Stage 3: add, div
   ac_int<1, false> vOp3Src0;  // use existing or read from reduce interface
-  ac_int<2, false> vOp3Src1;  // don't read, read from reduce interface 2, or
+  ac_int<3, false> vOp3Src1;  // don't read, read from reduce interface 2, or
                               // normal interface
   static const unsigned int readReduceInterface = 1;
   static const unsigned int readNormalInterface = 2;
+  static const unsigned int op3immediate0 = 3;
+  static const unsigned int op3immediate1 = 4;
   ac_int<2, false> vOp3;  // add, div
   // static const unsigned int vadd = 1;
-  static const unsigned int vdiv = 2;
+  // static const unsigned int vmult = 2;
+  static const unsigned int vdiv = 3;
 
   // Stage 4: relu
-  ac_int<1, false> vOp4;
+  ac_int<2, false> vOp4;
   static const unsigned int vrelu = 1;
+  static const unsigned int vrelumask = 2;
+
+  ac_int<1, false> vAccumulatePush;
 
   // Vector Unit write out
   ac_int<1, false> vDest;
@@ -259,6 +265,7 @@ struct VectorInstructions {
   static const unsigned int radd = 1;
   static const unsigned int rmax = 2;
 
+  ac_int<1, false> rInvSqrt;
   ac_int<1, false> rDuplicate;
 
   ac_int<2, false> rDest;
@@ -266,10 +273,13 @@ struct VectorInstructions {
   static const unsigned int toVectorSrc1 = 2;
   static const unsigned int sWriteOut = 3;
 
-  static const unsigned int width = 32;
+  ac_int<8, false> immediate0;
+  ac_int<8, false> immediate1;
+
+  static const unsigned int width = 52;
   VectorInstructions() {}
   VectorInstructions(const int a) {
-    ac_int<32, false> val = a;
+    ac_int<width, false> val = a;
     sc_lv<width> valLV;
     type_to_vector(val, width, valLV);
     *this = BitsToType<VectorInstructions>(valLV);
@@ -287,7 +297,6 @@ struct VectorInstructions {
   void Marshall(Marshaller<Size>& m) {
     m& instType;
     m& vInput;
-    m& vAccumulatePush;
     m& vOp0Src1;
     m& vOp0;
     m& vOp1;
@@ -296,11 +305,15 @@ struct VectorInstructions {
     m& vOp3Src1;
     m& vOp3;
     m& vOp4;
+    m& vAccumulatePush;
     m& vDest;
     m& rCount;
     m& rOp;
+    m& rInvSqrt;
     m& rDuplicate;
     m& rDest;
+    m& immediate0;
+    m& immediate1;
   }
 
   inline friend void sc_trace(sc_trace_file* tf,
@@ -337,7 +350,8 @@ struct VectorParams {
 
   // Address Gen 0 (vector input)
   int VECTOR_OFFSET;
-  int addressGen0Loop[3];  // 2d tensor
+  int addressGen0Loop[2][3];  // tiled 2d tensor
+  bool DP_VEC0;
 
   // Address Gen 1 (residual/op0src1)
   int ADDRESS_GEN1_OFFSET;
@@ -365,20 +379,27 @@ struct VectorParams {
   int FULL_HEAD_SIZE;
   bool SPLIT_HEAD;
 
+  bool DP_OUTPUT;
+
   bool addressGen0Enable;
+  bool addressGen0Broadcast;
+  int addressGen0BroadcastCount;
+  bool SOFTMAX_GRAD_NEGATE;
   ac_int<2, false> addressGen1Mode;  // 1- residual, 2- 2dtensor
   ac_int<2, false> addressGen2Mode;  // 1- bias, 2- 2dtensor
   bool MAXPOOL;
   bool AVGPOOL;
 
-  static const unsigned int width = 10 * 32 + 1 + 1 + 2 + 2 + 1 + 1 + 32 * 36;
+  static const unsigned int width = 13 * 32 + 1 + 1 + 2 + 2 + 1 + 1 + 37 * 32 + 2 + 1 + 1;
 
   template <unsigned int Size>
   void Marshall(Marshaller<Size>& m) {
     m& VECTOR_OFFSET;
-    for (int i = 0; i < 3; i++) {
-      m& addressGen0Loop[i];
-    }
+    for(int i = 0; i < 2; i++){
+    for (int j = 0; j < 3; j++) {
+      m& addressGen0Loop[i][j];
+    }}
+    m& DP_VEC0;
     m& ADDRESS_GEN1_OFFSET;
     for (int i = 0; i < 2; i++) {
       for (int j = 0; j < 3; j++) {
@@ -429,7 +450,11 @@ struct VectorParams {
     }
     m& FULL_HEAD_SIZE;
     m& SPLIT_HEAD;
+    m& DP_OUTPUT;
     m& addressGen0Enable;
+    m& addressGen0Broadcast;
+    m& addressGen0BroadcastCount;
+    m& SOFTMAX_GRAD_NEGATE;
     m& addressGen1Mode;
     m& addressGen2Mode;
     m& MAXPOOL;
@@ -449,7 +474,7 @@ struct VectorParams {
 };
 
 struct VectorInstructionConfig {
-  int inst[8];
+  VectorInstructions inst[8];
   int instCount[8];
   int instLen;
   int instLoopCount;
@@ -459,9 +484,27 @@ struct VectorInstructionConfig {
 
   template <unsigned int Size>
   void Marshall(Marshaller<Size>& m) {
-    for (int j = 0; j < 8; j++) {
-      m& inst[j];
-    }
+    
+      for (int j = 0; j < 8; j++) {m& inst[j].instType;}
+      for (int j = 0; j < 8; j++) {m& inst[j].vInput;}
+      for (int j = 0; j < 8; j++) {m& inst[j].vOp0Src1;}
+      for (int j = 0; j < 8; j++) {m& inst[j].vOp0;}
+      for (int j = 0; j < 8; j++) {m& inst[j].vOp1;}
+      for (int j = 0; j < 8; j++) {m& inst[j].vOp2;}
+      for (int j = 0; j < 8; j++) {m& inst[j].vOp3Src0;}
+      for (int j = 0; j < 8; j++) {m& inst[j].vOp3Src1;}
+      for (int j = 0; j < 8; j++) {m& inst[j].vOp3;}
+      for (int j = 0; j < 8; j++) {m& inst[j].vOp4;}
+      for (int j = 0; j < 8; j++) {m& inst[j].vAccumulatePush;}
+      for (int j = 0; j < 8; j++) {m& inst[j].vDest;}
+      for (int j = 0; j < 8; j++) {m& inst[j].rCount;}
+      for (int j = 0; j < 8; j++) {m& inst[j].rOp;}
+      for (int j = 0; j < 8; j++) {m& inst[j].rInvSqrt;}
+      for (int j = 0; j < 8; j++) {m& inst[j].rDuplicate;}
+      for (int j = 0; j < 8; j++) {m& inst[j].rDest;}
+      for (int j = 0; j < 8; j++) {m& inst[j].immediate0;}
+      for (int j = 0; j < 8; j++) {m& inst[j].immediate1;}
+    
     for (int i = 0; i < 8; i++) {
       m& instCount[i];
     }

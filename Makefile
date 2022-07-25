@@ -30,7 +30,7 @@ VectorUnit: build/Catapult_VectorUnit/VectorUnit.v1/concat_rtl.v
 
 build/Catapult_Accelerator/Accelerator.v1/concat_rtl.v: InputController WeightController MatrixProcessor VectorUnit
 	catapult -shell -file scripts/Accelerator.tcl
-	sed '/module CGHpart/,/endmodule/d;/module TSDN/,/endmodule/d;/module TS1N/,/endmodule/d;/^`include/d;s/module Accelerator_rtl/module Accelerator/g;s/VectorUnit_rtl/VectorUnit/g' build/Catapult_Accelerator/Accelerator.v1/concat_rtl.v > release/concat_rtl.v
+	sed '/module CGHpart/,/endmodule/d;/module TSDN/,/endmodule/d;/module TS1N40LPB1024X128M4FWBA /,/endmodule/d;/^`include/d;s/module Accelerator_rtl/module Accelerator/g;s/VectorUnit_rtl/VectorUnit/g' build/Catapult_Accelerator/Accelerator.v1/concat_rtl.v > release/concat_rtl.v
 
 build/Catapult_InputController/InputController.v1/concat_rtl.v:
 	catapult -shell -file scripts/InputController.tcl
@@ -141,7 +141,7 @@ build/Utils.o: test/common/Utils.cc test/common/Utils.h src/ArchitectureParams.h
 build/DataLoader.o: test/common/DataLoader.cc test/common/DataLoader.h src/ArchitectureParams.h
 	$(CC) $(C17FLAGS) -c -o $@ $<
 
-build/TestRunner.o: test/common/TestRunner.cc test/simple/params.h test/resnet/params.h
+build/TestRunner.o: test/common/TestRunner.cc test/simple/params.h test/resnet/params.h test/mobilebert/*.h
 	$(CC) $(C17FLAGS) -c -o $@ $<
 
 build/PositTest.o: test/common/PositTest.cc src/PositTypes.h
@@ -153,7 +153,8 @@ build/verification.o: test/mobilebert/verification.cc test/mobilebert/params.h
 datafile:
 	mkdir -p data/$(model)/datafile
 	rm -rf data/$(model)/datafile/*
-	python3 tools/pkl_parser.py -t posit8 -i data/$(model)/mobilebert_activations.pkl -o data/$(model)/datafile/activations
+	python3 tools/pkl_parser.py -t posit8 -i data/$(model)/mobilebert_activations1.pkl -o data/$(model)/datafile/activations
+	python3 tools/pkl_parser.py -t posit8 -i data/$(model)/mobilebert_activations2.pkl -o data/$(model)/datafile/activations2
 	python3 tools/pkl_parser.py -t posit8 -i data/$(model)/mobilebert_weights.pkl -o data/$(model)/datafile/weights
 	python3 tools/pkl_parser.py -t posit8 -i data/$(model)/mobilebert_errors.pkl -o data/$(model)/datafile/errors
 	python3 tools/pkl_parser.py -t posit8 -i data/$(model)/mobilebert_gradients.pkl -o data/$(model)/datafile/gradients

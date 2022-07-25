@@ -290,16 +290,23 @@ void Harness::sendParams() {
       VectorParams vectorParams;
       vectorParams.VECTOR_OFFSET = params.INPUT_OFFSET;
       vectorParams.addressGen0Enable = true;
-      vectorParams.addressGen0Loop[0] = 1;
-      vectorParams.addressGen0Loop[1] = Y;
-      vectorParams.addressGen0Loop[2] = C / DIMENSION;
+      vectorParams.addressGen0Broadcast = false;
+      for(int i = 0; i < 3; i++){
+      vectorParams.addressGen0Loop[0][i] = 1;
+      }
+      vectorParams.addressGen0Loop[1][0] = 1;
+      vectorParams.addressGen0Loop[1][1] = Y;
+      vectorParams.addressGen0Loop[1][2] = C / DIMENSION;
 
       // address gen 1 (weights)
       vectorParams.ADDRESS_GEN1_OFFSET = params.WEIGHT_OFFSET;
       vectorParams.addressGen1Mode = 2;  // 2d tensor
-      vectorParams.addressGen1Loops[0][0] = Y;
-      vectorParams.addressGen1Loops[0][1] = 1;
-      vectorParams.addressGen1Loops[0][2] = C / DIMENSION;
+      for(int i = 0; i < 3; i++){
+      vectorParams.addressGen1Loops[0][i] = 1;
+      }
+      vectorParams.addressGen1Loops[1][0] = Y;
+      vectorParams.addressGen1Loops[1][1] = 1;
+      vectorParams.addressGen1Loops[1][2] = C / DIMENSION;
 
       vectorParams.ADDRESS_GEN2_OFFSET = params.BIAS_OFFSET;
       vectorParams.addressGen2Mode = 2;  // 2d tensor
@@ -350,7 +357,7 @@ void Harness::sendParams() {
       vInst0.vOp4 = params.RELU;
       vInst0.vDest = VectorInstructions::vWriteOut;
 
-      vectorInstructionConfig.inst[0] = static_cast<int>(vInst0);
+      vectorInstructionConfig.inst[0] = vInst0;
       // C/DIMENSION to do the complete reduction
       // DIMENSION to fill up the entire vector
       vectorInstructionConfig.instCount[0] = Y * C / DIMENSION;
@@ -369,17 +376,139 @@ void Harness::sendParams() {
       CCS_LOG("Accelerator Layer Started.");
       vectorUnitDoneSignal.SyncPop();
       CCS_LOG("Accelerator Layer Finished.");
+    } else if (params.SOFTMAX_GRAD) {
+      VectorParams vectorParams;
+      vectorParams.VECTOR_OFFSET = params.RESIDUAL_OFFSET;
+      vectorParams.addressGen0Enable = true;
+      for (int i = 0; i < 3; i++) {
+        vectorParams.addressGen0Loop[0][i] = 1;
+      }
+      vectorParams.addressGen0Loop[1][0] = 1;
+      vectorParams.addressGen0Loop[1][1] = X;
+      vectorParams.addressGen0Loop[1][2] = Y;
+      vectorParams.addressGen0Broadcast = true;
+      vectorParams.addressGen0BroadcastCount = Y;
+      vectorParams.SOFTMAX_GRAD_NEGATE = true;
+
+      vectorParams.ADDRESS_GEN1_OFFSET = params.RESIDUAL_OFFSET;
+      vectorParams.addressGen1Mode = 2;  // 2d tensor
+      vectorParams.addressGen1Loops[0][0] = 1;
+      vectorParams.addressGen1Loops[0][1] = X;
+      vectorParams.addressGen1Loops[0][2] = 1;
+      vectorParams.addressGen1Loops[1][0] = Y;  // repeat
+      vectorParams.addressGen1Loops[1][1] = 1;
+      vectorParams.addressGen1Loops[1][2] = Y;
+
+      vectorParams.ADDRESS_GEN2_OFFSET = params.INPUT_OFFSET;
+      vectorParams.addressGen2Mode = 2;  // 2d tensor
+      vectorParams.addressGen2Loops[0][0] = 1;
+      vectorParams.addressGen2Loops[0][1] = X;
+      vectorParams.addressGen2Loops[0][2] = 1;
+      vectorParams.addressGen2Loops[1][0] = Y;  // repeat
+      vectorParams.addressGen2Loops[1][1] = 1;
+      vectorParams.addressGen2Loops[1][2] = Y;
+
+      vectorParams.VECTOR_OUTPUT_OFFSET = params.OUTPUT_OFFSET;
+      vectorParams.SCALAR_OUTPUT_OFFSET = params.OUTPUT_OFFSET;
+
+      vectorParams.scalarOutputCount = 0;
+      vectorParams.MAXPOOL = params.MAXPOOL;
+      vectorParams.AVGPOOL = params.AVGPOOL;
+
+      // output
+      for (int i = 0; i < 3; i++) {
+        vectorParams.outputLoops[0][i] = params.loops[0][i];
+      }
+      vectorParams.outputXLoopIndex[0] = params.inputXLoopIndex[0];
+      vectorParams.outputYLoopIndex[0] = params.inputYLoopIndex[0];
+      vectorParams.outputWeightLoopIndex[0] = params.weightLoopIndex[0];
+
+      vectorParams.outputLoops[1][0] = 1;
+      vectorParams.outputLoops[1][1] = X;
+      vectorParams.outputLoops[1][2] = Y;
+      vectorParams.outputWeightLoopIndex[1] = 2;
+      vectorParams.outputYLoopIndex[1] = 1;
+      vectorParams.outputXLoopIndex[1] = 0;
+
+      sendSerializedParams<VectorParams, 32>(vectorParams, &serialVectorParamsIn);
+
+      // create instruction stream
+      VectorInstructionConfig vectorInstructionConfig;
+
+      // inst0- start reduction engine
+      VectorInstructions vInst0;
+      vInst0.instType = VectorInstructions::reduction;
+      vInst0.rCount = Y;
+      vInst0.rOp = VectorInstructions::radd;
+      vInst0.rDuplicate = 0;
+      vInst0.rDest = VectorInstructions::toVectorSrc0;
+      vectorInstructionConfig.inst[0] = vInst0;
+      vectorInstructionConfig.instCount[0] = 1;
+
+      // perform multiplication (-a_i * a_j) or (a_i * (1-a_i))
+      VectorInstructions vInst1;
+      vInst1.instType = VectorInstructions::vector;
+      vInst1.vInput = VectorInstructions::readFromVectorFetch;
+      vInst1.vAccumulatePush = VectorInstructions::nop;
+      vInst1.vOp0Src1 = VectorInstructions::readInterface;
+      vInst1.vOp0 = VectorInstructions::vmult;
+      vInst1.vOp1 = VectorInstructions::nop;
+      vInst1.vOp2 = VectorInstructions::toReduce;
+      vInst1.vOp3Src0 = VectorInstructions::nop;
+      vInst1.vOp3Src1 = VectorInstructions::readNormalInterface;
+      vInst1.vOp3 = VectorInstructions::vmult;
+      vInst1.vOp4 = VectorInstructions::nop;
+      vInst1.vDest = VectorInstructions::nop;
+      vectorInstructionConfig.inst[1] = vInst1;
+      vectorInstructionConfig.instCount[1] = Y * DIMENSION;
+
+      // pull out from reduce and multiply by 1/sqrt(32)
+      VectorInstructions vInst2;
+      vInst2.instType = VectorInstructions::vector;
+      vInst2.vInput = VectorInstructions::nop;
+      vInst2.vAccumulatePush = VectorInstructions::nop;
+      vInst2.vOp0Src1 = VectorInstructions::nop;
+      vInst2.vOp0 = VectorInstructions::vmult;
+      vInst2.vOp1 = VectorInstructions::nop;
+      vInst2.vOp2 = VectorInstructions::toReduce;
+      vInst2.vOp3Src0 = VectorInstructions::readReduceInterface;
+      vInst2.vOp3Src1 = VectorInstructions::op3immediate0;
+
+      vInst2.vOp3 = VectorInstructions::vmult;
+      vInst2.vOp4 = VectorInstructions::nop;
+      vInst2.vDest = VectorInstructions::vWriteOut;
+      vectorInstructionConfig.inst[2] = vInst2;
+      vectorInstructionConfig.instCount[2] = 1;
+      Posit<16, 1> scale = (1.0 / sqrt(32));
+      vInst2.immediate0 = scale.bits;
+
+      vectorInstructionConfig.instLen = 3;
+      vectorInstructionConfig.instLoopCount = X * Y / DIMENSION;
+
+      sendSerializedParams<VectorInstructionConfig, 32>(vectorInstructionConfig, &serialVectorParamsIn);
+
+      vectorUnitStartSignal.SyncPop();
+      CCS_LOG("Accelerator Layer Started.");
+      vectorUnitDoneSignal.SyncPop();
+      CCS_LOG("Accelerator Layer Finished.");
     } else if (params.FC) {
       VectorParams vectorParams;
       vectorParams.VECTOR_OFFSET = params.INPUT_OFFSET;
       vectorParams.addressGen0Enable = true;
-      vectorParams.addressGen0Loop[0] = K;
-      vectorParams.addressGen0Loop[1] = 1;
-      vectorParams.addressGen0Loop[2] = C / DIMENSION;
+      for(int i = 0; i < 3; i++){
+      vectorParams.addressGen0Loop[0][i] = 1;
+      }
+      vectorParams.addressGen0Loop[1][0] = K;
+      vectorParams.addressGen0Loop[1][1] = 1;
+      vectorParams.addressGen0Loop[1][2] = C / DIMENSION;
+      vectorParams.addressGen0Broadcast = false;
 
       // address gen 1 (weights)
       vectorParams.ADDRESS_GEN1_OFFSET = params.WEIGHT_OFFSET;
       vectorParams.addressGen1Mode = 2;  // 2d tensor
+      for(int i = 0; i < 3; i++){
+      vectorParams.addressGen1Loops[0][i] = 1;
+      }
       vectorParams.addressGen1Loops[0][0] = 1;
       vectorParams.addressGen1Loops[0][1] = K;
       vectorParams.addressGen1Loops[0][2] = C / DIMENSION;
@@ -436,7 +565,7 @@ void Harness::sendParams() {
       vInst0.rOp = VectorInstructions::radd;
       vInst0.rDuplicate = 0;
       vInst0.rDest = VectorInstructions::toVectorSrc0;
-      vectorInstructionConfig.inst[0] = static_cast<int>(vInst0);
+      vectorInstructionConfig.inst[0] = vInst0;
       vectorInstructionConfig.instCount[0] = 1;
 
       // inst 1- inputs x weights, send to reduce
@@ -453,7 +582,7 @@ void Harness::sendParams() {
       vInst1.vOp3 = VectorInstructions::nop;
       vInst1.vOp4 = VectorInstructions::nop;
       vInst1.vDest = VectorInstructions::nop;
-      vectorInstructionConfig.inst[1] = static_cast<int>(vInst1);
+      vectorInstructionConfig.inst[1] = vInst1;
 
       // C/DIMENSION to do the complete reduction
       // DIMENSION to fill up the entire vector
@@ -474,7 +603,7 @@ void Harness::sendParams() {
       vInst2.vOp3 = VectorInstructions::nop;
       vInst2.vOp4 = params.RELU;
       vInst2.vDest = VectorInstructions::vWriteOut;
-      vectorInstructionConfig.inst[2] = static_cast<int>(vInst2);
+      vectorInstructionConfig.inst[2] = vInst2;
       vectorInstructionConfig.instCount[2] = 1;
 
       vectorInstructionConfig.instLen = 3;
@@ -491,22 +620,36 @@ void Harness::sendParams() {
       VectorParams vectorParams;
       vectorParams.VECTOR_OFFSET = params.INPUT_OFFSET;
       vectorParams.addressGen0Enable = true;
-      vectorParams.addressGen0Loop[0] = 1;
-      vectorParams.addressGen0Loop[1] = X;
-      vectorParams.addressGen0Loop[2] = C / DIMENSION;
+      vectorParams.addressGen0Broadcast = false;
+      for(int i = 0; i < 3; i++){
+      vectorParams.addressGen0Loop[0][i] = 1;
+      }
+      vectorParams.addressGen0Loop[1][0] = 1;
+      vectorParams.addressGen0Loop[1][1] = X;
+      vectorParams.addressGen0Loop[1][2] = C / DIMENSION;
 
       // address gen 1 (weights)
       vectorParams.ADDRESS_GEN1_OFFSET = params.WEIGHT_OFFSET;
       vectorParams.addressGen1Mode = 2;  // 2d tensor
-      vectorParams.addressGen1Loops[0][0] = X;
-      vectorParams.addressGen1Loops[0][1] = 1;
-      vectorParams.addressGen1Loops[0][2] = C / DIMENSION;
+      for(int i = 0; i < 3; i++){
+      vectorParams.addressGen1Loops[0][i] = 1;
+      }
+      vectorParams.addressGen1Loops[1][0] = X;
+      vectorParams.addressGen1Loops[1][1] = 1;
+      vectorParams.addressGen1Loops[1][2] = C / DIMENSION;
 
       vectorParams.ADDRESS_GEN2_OFFSET = params.BIAS_OFFSET;
-      vectorParams.addressGen2Mode = 2;  // 2d tensor
+      vectorParams.addressGen2Mode = 1;  // use bias mode
       vectorParams.addressGen2Loops[0][0] = X;
       vectorParams.addressGen2Loops[0][1] = 1;
-      vectorParams.addressGen2Loops[0][2] = C / DIMENSION;
+      vectorParams.addressGen2Loops[0][2] = 1;
+      vectorParams.addressGen2Loops[1][0] = C / DIMENSION;
+      vectorParams.addressGen2Loops[1][1] = 1;
+      vectorParams.addressGen2Loops[1][2] = 1;
+      vectorParams.addressGen2InputXLoopIndex[1] = 2;
+      vectorParams.addressGen2InputYLoopIndex[1] = 1;
+      vectorParams.addressGen2WeightLoopIndex[1] = 0;
+      vectorParams.addressGen2WeightLoopIndex[0] = 2;
 
       vectorParams.VECTOR_OUTPUT_OFFSET = params.OUTPUT_OFFSET;
       vectorParams.SCALAR_OUTPUT_OFFSET = params.OUTPUT_OFFSET;
@@ -551,7 +694,7 @@ void Harness::sendParams() {
       vInst0.vOp3 = VectorInstructions::vadd;
       vInst0.vOp4 = params.RELU;
       vInst0.vDest = VectorInstructions::vWriteOut;
-      vectorInstructionConfig.inst[0] = static_cast<int>(vInst0);
+      vectorInstructionConfig.inst[0] = vInst0;
 
       // C/DIMENSION to do the complete reduction
       // DIMENSION to fill up the entire vector
@@ -559,6 +702,117 @@ void Harness::sendParams() {
 
       vectorInstructionConfig.instLen = 1;
       vectorInstructionConfig.instLoopCount = 1;
+
+      sendSerializedParams<VectorInstructionConfig, 32>(vectorInstructionConfig,
+                                                        &serialVectorParamsIn);
+
+      vectorUnitStartSignal.SyncPop();
+      CCS_LOG("Accelerator Layer Started.");
+      vectorUnitDoneSignal.SyncPop();
+      CCS_LOG("Accelerator Layer Finished.");
+    } else if (params.NO_NORM_GRAD) {
+      VectorParams vectorParams;
+      vectorParams.VECTOR_OFFSET = params.INPUT_OFFSET;
+      vectorParams.addressGen0Enable = true;
+      vectorParams.addressGen0Broadcast = false;
+
+      vectorParams.addressGen0Loop[0][0] = 1;
+      vectorParams.addressGen0Loop[0][1] = 1;
+      vectorParams.addressGen0Loop[0][2] = C / DIMENSION;
+      vectorParams.addressGen0Loop[1][0] = 1;
+      vectorParams.addressGen0Loop[1][1] = X;
+      vectorParams.addressGen0Loop[1][2] = 1;
+
+      // address gen 1 (weights)
+      vectorParams.ADDRESS_GEN1_OFFSET = params.WEIGHT_OFFSET;
+      vectorParams.addressGen1Mode = 2;  // 2d tensor
+      vectorParams.addressGen1Loops[0][0] = 1;
+      vectorParams.addressGen1Loops[0][1] = 1;
+      vectorParams.addressGen1Loops[0][2] = C / DIMENSION;
+      vectorParams.addressGen1Loops[1][0] = 1;
+      vectorParams.addressGen1Loops[1][1] = X;
+      vectorParams.addressGen1Loops[1][2] = 1;
+
+      vectorParams.ADDRESS_GEN2_OFFSET = params.BIAS_OFFSET;
+      vectorParams.addressGen2Mode = 0;  // no bias
+      vectorParams.addressGen2Loops[0][0] = X;
+      vectorParams.addressGen2Loops[0][1] = 1;
+      vectorParams.addressGen2Loops[0][2] = C / DIMENSION;
+
+      vectorParams.VECTOR_OUTPUT_OFFSET = params.OUTPUT_OFFSET;
+      vectorParams.SCALAR_OUTPUT_OFFSET = params.OUTPUT_OFFSET;
+
+      vectorParams.scalarOutputCount = 0;
+      vectorParams.MAXPOOL = params.MAXPOOL;
+      vectorParams.AVGPOOL = params.AVGPOOL;
+      vectorParams.SPLIT_HEAD = params.SPLIT_HEAD;
+
+      // output
+      for (int i = 0; i < 3; i++) {
+        vectorParams.outputLoops[0][i] = params.loops[0][i];
+      }
+      vectorParams.outputXLoopIndex[0] = params.inputXLoopIndex[0];
+      vectorParams.outputYLoopIndex[0] = params.inputYLoopIndex[0];
+      vectorParams.outputWeightLoopIndex[0] = params.weightLoopIndex[0];
+
+      vectorParams.outputLoops[1][0] = 1;
+      vectorParams.outputLoops[1][1] = X;
+      vectorParams.outputLoops[1][2] = C / DIMENSION;
+      vectorParams.outputWeightLoopIndex[1] = 2;
+      vectorParams.outputYLoopIndex[1] = 0;
+      vectorParams.outputXLoopIndex[1] = 1;
+
+      sendSerializedParams<VectorParams, 32>(vectorParams,
+                                             &serialVectorParamsIn);
+
+      // create instruction stream
+      VectorInstructionConfig vectorInstructionConfig;
+
+      // inst 0- accumulate 
+      VectorInstructions vInst0;
+      vInst0.instType = VectorInstructions::accumulation;
+      vInst0.rCount = X;
+      vectorInstructionConfig.instCount[0] = 1;
+      vectorInstructionConfig.inst[0] = vInst0;
+
+      // inst 1- (inputs x weights), send to accumulator
+      VectorInstructions vInst1;
+      vInst1.instType = VectorInstructions::vector;
+      vInst1.vInput = VectorInstructions::readFromVectorFetch;
+      vInst1.vOp0Src1 = VectorInstructions::readInterface;
+      vInst1.vOp0 = VectorInstructions::vmult;
+      vInst1.vOp1 = VectorInstructions::nop;
+      vInst1.vOp2 = VectorInstructions::nop;
+      vInst1.vOp3Src0 = VectorInstructions::nop;
+      vInst1.vOp3Src1 = VectorInstructions::nop;
+      vInst1.vOp3 = VectorInstructions::nop;
+      vInst1.vOp4 = VectorInstructions::nop;
+      vInst1.vAccumulatePush = 1;
+      vInst1.vDest = VectorInstructions::nop;
+      vectorInstructionConfig.inst[1] = vInst1;
+
+      // C/DIMENSION to do the complete reduction
+      // DIMENSION to fill up the entire vector
+      vectorInstructionConfig.instCount[0] = X;
+
+      // inst 2- pull from accumulator 
+      VectorInstructions vInst2;
+      vInst2.instType = VectorInstructions::vector;
+      vInst2.vInput = VectorInstructions::readFromAccumulation;
+      vInst2.vOp0Src1 = VectorInstructions::nop;
+      vInst2.vOp0 = VectorInstructions::nop;
+      vInst2.vOp1 = VectorInstructions::nop;
+      vInst2.vOp2 = VectorInstructions::nop;
+      vInst2.vOp3Src0 = VectorInstructions::nop;
+      vInst2.vOp3Src1 = VectorInstructions::nop;
+      vInst2.vOp3 = VectorInstructions::nop;
+      vInst2.vOp4 = VectorInstructions::nop;
+      vInst2.vAccumulatePush = 0;
+      vInst2.vDest = VectorInstructions::vWriteOut;
+      vectorInstructionConfig.inst[2] = vInst2;
+
+      vectorInstructionConfig.instLen = 3;
+      vectorInstructionConfig.instLoopCount = C/DIMENSION;
 
       sendSerializedParams<VectorInstructionConfig, 32>(vectorInstructionConfig,
                                                         &serialVectorParamsIn);
@@ -623,7 +877,7 @@ void Harness::sendParams() {
         matrixParams.weightAddressGenFyIndex = 2;
         matrixParams.weightAddressGenLoops[1][1] =
             params.loops[1][params.weightLoopIndex[1]];
-        matrixParams.weightAddressGenWeightLoopIndex[1] = 2;
+        matrixParams.weightAddressGenWeightLoopIndex[1] = 1;
         matrixParams.weightAddressGenLoops[1][0] =
             params.loops[1][params.reductionLoopIndex[1]];
         matrixParams.weightAddressGenReductionLoopIndex[0] = 0;
@@ -820,7 +1074,7 @@ void Harness::sendParams() {
         vInst0.instType = VectorInstructions::accumulation;
         vInst0.rCount = X * Y;
         vectorInstructionConfig.instCount[0] = 1;
-        vectorInstructionConfig.inst[0] = static_cast<int>(vInst0);
+        vectorInstructionConfig.inst[0] = vInst0;
 
         VectorInstructions vInst1;
         vInst1.instType = VectorInstructions::vector;
@@ -835,7 +1089,7 @@ void Harness::sendParams() {
         vInst1.vOp3 = VectorInstructions::nop;
         vInst1.vOp4 = VectorInstructions::nop;
         vInst1.vDest = VectorInstructions::nop;
-        vectorInstructionConfig.inst[1] = static_cast<int>(vInst1);
+        vectorInstructionConfig.inst[1] = vInst1;
         vectorInstructionConfig.instCount[1] = X * Y;
 
         VectorInstructions vInst2;
@@ -851,12 +1105,12 @@ void Harness::sendParams() {
         vInst2.vOp3 = VectorInstructions::nop;
         vInst2.vOp4 = VectorInstructions::nop;
         vInst2.vDest = VectorInstructions::vWriteOut;
-        vectorInstructionConfig.inst[2] = static_cast<int>(vInst2);
+        vectorInstructionConfig.inst[2] = vInst2;
         vectorInstructionConfig.instCount[2] = 1;
 
         vectorInstructionConfig.instLen = 3;
         vectorInstructionConfig.instLoopCount = K / DIMENSION;
-      } else {
+      }  else {
         VectorInstructions vInst0;
         memset(&vInst0, 0, sizeof(vInst0));
         vInst0.instType = VectorInstructions::vector;
@@ -866,6 +1120,12 @@ void Harness::sendParams() {
         if (params.RESIDUAL) {
           vInst0.vOp0Src1 = VectorInstructions::readInterface;
           vInst0.vOp0 = VectorInstructions::vadd;
+        } else if(params.ATTENTION_SCALING) {          
+          vInst0.vOp0Src1 = VectorInstructions::op0immediate0;
+          float fpscale = (1.0/sqrt(32));
+          Posit<8,1> scale = static_cast<Posit<8,1> >(fpscale);
+          vInst0.immediate0 = scale.bits;
+          vInst0.vOp0 = VectorInstructions::vmult;
         } else {
           vInst0.vOp0Src1 = VectorInstructions::nop;
           vInst0.vOp0 = VectorInstructions::nop;
@@ -890,7 +1150,7 @@ void Harness::sendParams() {
         }
 
         vInst0.vDest = VectorInstructions::vWriteOut;
-        vectorInstructionConfig.inst[0] = static_cast<int>(vInst0);
+        vectorInstructionConfig.inst[0] = vInst0;
 
         // total output count
         vectorInstructionConfig.instCount[0] =

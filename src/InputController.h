@@ -98,8 +98,6 @@ SC_MODULE(InputController) {
       loop_bounds[1][params.fxIndex] = 1;
       loop_bounds[1][params.fyIndex] = 1;
 
-#pragma hls_pipeline_init_interval 1
-#pragma hls_pipeline_stall_mode flush
       for (loop_counters[0][0] = 0; loop_counters[0][0] < loop_bounds[0][0];
            loop_counters[0][0]++) {
         for (loop_counters[0][1] = 0; loop_counters[0][1] < loop_bounds[0][1];
@@ -151,7 +149,9 @@ SC_MODULE(InputController) {
               loop_bounds[1][params.inputYLoopIndex[1]] += (FY - 1) / 2;
             }
 
-            // inner memory
+// inner memory
+#pragma hls_pipeline_init_interval 1
+#pragma hls_pipeline_stall_mode flush
             for (loop_counters[1][0] = 0;
                  loop_counters[1][0] < loop_bounds[1][0];
                  loop_counters[1][0]++) {
