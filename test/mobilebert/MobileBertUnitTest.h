@@ -255,7 +255,7 @@ int runMobileBertUnitTest(std::string task, std::string test,
   std::string weightDataDir = datapath + "weights/";
   std::string errorDataDir = datapath + "errors/";
   std::string gradientDataDir = datapath + "gradients/";
-  std::string outfilePrefix = "test_outputs/";
+  std::string outfilePrefix = "test_outputs/" + test + ".";
 
   std::map<std::string, std::string> paramsMapping;
   std::map<std::string, SimplifiedParams> mobileBertParams;
