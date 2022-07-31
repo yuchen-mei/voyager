@@ -66,7 +66,7 @@ SC_MODULE(InputController) {
     async_reset_signal_is(rstn, false);
   }
 
-  void fetcher() {
+    void fetcher() {
     addressRequest.Reset();
     fetcherParams.ResetRead();
 
@@ -75,16 +75,17 @@ SC_MODULE(InputController) {
     while (true) {
       const MatrixParams params = fetcherParams.Pop();
 
-      int FX = params.loops[1][params.fxIndex];
+      ac_int<4,false> FX = params.loops[1][params.fxIndex];
       if (params.REPLICATION) {
         FX = 7;
       }
-      int FY = params.loops[1][params.fyIndex];
+      ac_int<4,false> FY = params.loops[1][params.fyIndex];
+      ac_int<2,false> STRIDE = params.STRIDE;
 
       bool isDownsample = FX == 1 && FY == 1;
 
-      int loop_counters[2][6];
-      int loop_bounds[2][6];
+      ac_int<8,false> loop_counters[2][6];
+      ac_int<8,false> loop_bounds[2][6];
 
 #pragma hls_unroll yes
       for (int i = 0; i < 2; i++) {
@@ -117,15 +118,15 @@ SC_MODULE(InputController) {
                   params.loops[1][params.inputYLoopIndex[1]];
             } else {
               loop_bounds[1][params.inputXLoopIndex[1]] =
-                  params.loops[1][params.inputXLoopIndex[1]] * params.STRIDE;
+                  params.loops[1][params.inputXLoopIndex[1]] * STRIDE;
               loop_bounds[1][params.inputYLoopIndex[1]] =
-                  params.loops[1][params.inputYLoopIndex[1]] * params.STRIDE;
+                  params.loops[1][params.inputYLoopIndex[1]] * STRIDE;
             }
 
-            int x_min_offset = 0;
-            int x_max_offset = 0;
-            int y_min_offset = 0;
-            int y_max_offset = 0;
+            ac_int<4,false> x_min_offset = 0;
+            ac_int<4,false> x_max_offset = 0;
+            ac_int<4,false> y_min_offset = 0;
+            ac_int<4,false> y_max_offset = 0;
 
             if (loop_counters[0][params.inputXLoopIndex[0]] != 0) {
               x_min_offset = (FX - 1) / 2;
@@ -171,52 +172,54 @@ SC_MODULE(InputController) {
                            loop_counters[1][5] < loop_bounds[1][5];
                            params.REPLICATION ? loop_counters[1][5] += 4
                                               : loop_counters[1][5]++) {
-                        int x0 = loop_counters[1][params.inputXLoopIndex[1]];
-                        int x1 = loop_counters[0][params.inputXLoopIndex[0]];
-                        int X0 = params.STRIDE *
+                        ac_int<8,false> x0 = loop_counters[1][params.inputXLoopIndex[1]];
+                        ac_int<8,false> x1 = loop_counters[0][params.inputXLoopIndex[0]];
+                        ac_int<16,false> X0 = STRIDE *
                                  params.loops[1][params.inputXLoopIndex[1]];
-                        int X1 = params.loops[0][params.inputXLoopIndex[0]];
-                        int y0 = loop_counters[1][params.inputYLoopIndex[1]];
-                        int y1 = loop_counters[0][params.inputYLoopIndex[0]];
-                        int Y0 = params.STRIDE *
+                        ac_int<8,false> X1 = params.loops[0][params.inputXLoopIndex[0]];
+                        ac_int<8,false> y0 = loop_counters[1][params.inputYLoopIndex[1]];
+                        ac_int<8,false> y1 = loop_counters[0][params.inputYLoopIndex[0]];
+                        ac_int<16,false> Y0 = STRIDE *
                                  params.loops[1][params.inputYLoopIndex[1]];
-                        int Y1 = params.loops[0][params.inputYLoopIndex[0]];
-                        int c1 = loop_counters[1][params.reductionLoopIndex[1]];
-                        int C1 = params.loops[1][params.reductionLoopIndex[1]];
+                        ac_int<8,false> Y1 = params.loops[0][params.inputYLoopIndex[0]];
+                        ac_int<8,false> c1 = loop_counters[1][params.reductionLoopIndex[1]];
+                        ac_int<8,false> C1 = params.loops[1][params.reductionLoopIndex[1]];
 
-                        int c = c1 * NROWS;
-                        int C = C1 * NROWS;
+                        ac_int<16,false> c = c1 * NROWS;
+                        ac_int<16,false> C = C1 * NROWS;
 
                         if (isDownsample) {
                           // adjust address for stride
-                          x0 = x0 * params.STRIDE;
-                          y0 = y0 * params.STRIDE;
+                          x0 = x0 * STRIDE;
+                          y0 = y0 * STRIDE;
                         }
 
-                        int x = (x0 - x_min_offset) + x1 * X0;
-                        int X = X0 * X1;
+                        ac_int<16,false> x = (x0 - x_min_offset) + x1 * X0;
+                        ac_int<16,false> X = X0 * X1;
 
-                        int y = (y0 - y_min_offset) + y1 * Y0;
-                        int Y = Y0 * Y1;
+                        ac_int<16,false> y = (y0 - y_min_offset) + y1 * Y0;
+                        ac_int<16,false> Y = Y0 * Y1;
 
                         int baseAddress = y * X * C + x * C + c;
                         int burstSize = NROWS;
 
                         if (params.REPLICATION) {
-                          baseAddress = y * (X / 4) * 16 + (x / 4) * 16 + c;
+                          baseAddress = static_cast<ac_int<32,false> >(y * (X / 4) * 16) + static_cast<ac_int<32,false> >((x / 4) * 16) + c;
                         }
                         if (params.CONCAT_HEAD && params.TRANPOSE_INPUTS) {
-                          baseAddress = (c + (x % 16)) * 32 +
-                                        (((x / 16) * DIMENSION) / 32 * C * 32) +
-                                        (((x / 16) * DIMENSION) % 32);
+                          baseAddress = static_cast<ac_int<32,false> >((c + (x % 16)) * 32) +
+                                        static_cast<ac_int<32,false> >((((x / 16) * DIMENSION) / 32 * C * 32) ) +
+                                        static_cast<ac_int<32,false> >((((x / 16) * DIMENSION) % 32));
                         } else {
                           if (params.CONCAT_HEAD) {
                             baseAddress =
-                                ((c / 32) * X * 32) + (x * 32) + (c % 32);
+                                static_cast<ac_int<32,false> >(((c / 32) * X * 32)) + 
+                                static_cast<ac_int<32,false> >((x * 32)) + 
+                                static_cast<ac_int<32,false> >((c % 32));
                           }
                           if (params.TRANPOSE_INPUTS) {
                             baseAddress =
-                                (c + (x % 16)) * X + (x / 16) * DIMENSION;
+                                static_cast<ac_int<32,false> >((c + (x % 16)) * X) + static_cast<ac_int<32,false> >((x / 16) * DIMENSION);
                           }
                         }
                         MemoryRequest memRequest;
@@ -285,19 +288,20 @@ SC_MODULE(InputController) {
 
       bool bankSel = 0;
 
-      int FX = params.loops[1][params.fxIndex];
+      ac_int<4,false> FX = params.loops[1][params.fxIndex];
       if (params.REPLICATION) {
         FX = 7;
       }
-      int FY = params.loops[1][params.fyIndex];
+      ac_int<4,false> FY = params.loops[1][params.fyIndex];
+      ac_int<2,false> STRIDE = params.STRIDE;
 
       bool isDownsample = FX == 1 && FY == 1;
 
-      int fx_bound = (FX - 1) / 2;
-      int fy_bound = (FY - 1) / 2;
+      ac_int<4,false> fx_bound = (FX - 1) / 2;
+      ac_int<4,false> fy_bound = (FY - 1) / 2;
 
-      int loop_counters[2][6];
-      int loop_bounds[2][6];
+      ac_int<8,false> loop_counters[2][6];
+      ac_int<8,false> loop_bounds[2][6];
 
 #pragma hls_unroll yes
       for (int i = 0; i < 2; i++) {
@@ -311,11 +315,11 @@ SC_MODULE(InputController) {
       loop_bounds[1][params.fxIndex] = 1;
       loop_bounds[1][params.fyIndex] = 1;
 
-      int X1 = params.loops[0][params.inputXLoopIndex[0]];
-      int X0 = params.loops[1][params.inputXLoopIndex[1]];
+      ac_int<8,false> X1 = params.loops[0][params.inputXLoopIndex[0]];
+      ac_int<8,false> X0 = params.loops[1][params.inputXLoopIndex[1]];
 
-      int Y0 = params.loops[1][params.inputYLoopIndex[1]];
-      int Y1 = params.loops[0][params.inputYLoopIndex[0]];
+      ac_int<8,false> Y0 = params.loops[1][params.inputYLoopIndex[1]];
+      ac_int<8,false> Y1 = params.loops[0][params.inputYLoopIndex[0]];
 
       if (params.REPLICATION) {
         for (loop_counters[0][0] = 0; loop_counters[0][0] < loop_bounds[0][0];
@@ -327,12 +331,12 @@ SC_MODULE(InputController) {
                  loop_counters[0][2]++) {
               // reset loop bounds
               loop_bounds[1][params.inputXLoopIndex[1]] =
-                  params.loops[1][params.inputXLoopIndex[1]] * params.STRIDE;
+                  params.loops[1][params.inputXLoopIndex[1]] * STRIDE;
               loop_bounds[1][params.inputYLoopIndex[1]] =
-                  params.loops[1][params.inputYLoopIndex[1]] * params.STRIDE;
+                  params.loops[1][params.inputYLoopIndex[1]] * STRIDE;
 
-              int x_min_offset = fx_bound;
-              int y_min_offset = fy_bound;
+              ac_int<4,false> x_min_offset = fx_bound;
+              ac_int<4,false> y_min_offset = fy_bound;
               loop_bounds[1][params.inputXLoopIndex[1]] += FX - 1;
               loop_bounds[1][params.inputYLoopIndex[1]] += FY - 1;
 
@@ -341,9 +345,9 @@ SC_MODULE(InputController) {
                    loop_counters[1][0] < loop_bounds[1][0];
                    loop_counters[1][0]++) {
                 // TODO: make this dynamic
-                int total_writes = (loop_bounds[1][1] * loop_bounds[1][2] *
+                int total_writes = static_cast<ac_int<32,false> >(loop_bounds[1][1] * loop_bounds[1][2] *
                                     loop_bounds[1][3] * loop_bounds[1][4]) *
-                                   ((params.STRIDE * X0) / 4 + 2);
+                                   static_cast<ac_int<32,false> >(((STRIDE * X0) / 4 + 2));
 
                 writeControl[bankSel].Push(total_writes);
                 for (loop_counters[1][1] = 0;
@@ -365,20 +369,20 @@ SC_MODULE(InputController) {
                          * Start with left boundary
                          * First 3 words of the packed word need to be written
                          */
-                        int x1 = loop_counters[0][params.inputXLoopIndex[0]];
+                        ac_int<8,true> x1 = loop_counters[0][params.inputXLoopIndex[0]];
 
-                        int y0 = loop_counters[1][params.inputYLoopIndex[1]];
-                        int y1 = loop_counters[0][params.inputYLoopIndex[0]];
+                        ac_int<8,true> y0 = loop_counters[1][params.inputYLoopIndex[1]];
+                        ac_int<8,true> y1 = loop_counters[0][params.inputYLoopIndex[0]];
 
-                        int full_y =
-                            (y0 - y_min_offset) + y1 * params.STRIDE * Y0;
+                        ac_int<16,true> full_y =
+                            static_cast<ac_int<8,true> >(y0 - y_min_offset) + y1 * STRIDE * Y0;
 
-                        int starting_x = -fx_bound + x1 * params.STRIDE * X0;
+                        ac_int<16,true> starting_x = static_cast<ac_int<8,true> >(-fx_bound) + x1 * STRIDE * X0;
 
                         // if outside boundary, write 0s
                         if ((starting_x < 0) || (full_y < 0) ||
-                            (starting_x >= params.STRIDE * X0 * X1) ||
-                            (full_y >= params.STRIDE * Y0 * Y1)) {
+                            (starting_x >= STRIDE * X0 * X1) ||
+                            (full_y >= STRIDE * Y0 * Y1)) {
 #pragma hls_unroll yes
                           for (int dims = 0; dims < 3 * 3; dims++) {
                             data[dims].setZero();
@@ -406,14 +410,14 @@ SC_MODULE(InputController) {
                         /*
                          * Now go through the entire tile
                          */
-                        for (int x = 0; x < params.STRIDE * X0; x += 4) {
-                          int full_x = x + x1 * params.STRIDE * X0;
+                        for (ac_int<16,false> x = 0; x < STRIDE * X0; x += 4) {
+                          ac_int<16,true> full_x = x + x1 * STRIDE * X0;
                           // padding
                           if ((full_y < 0) ||
-                              (full_y >= params.STRIDE * Y0 * Y1)) {
+                              (full_y >= STRIDE * Y0 * Y1)) {
 #pragma hls_unroll yes
                             for (int dims = 0; dims < 3; dims++) {
-                              int index = 3 * ((x + fx_bound) % 4) + dims;
+                              ac_int<8,false> index = 3 * ((x + fx_bound) % 4) + dims;
                               data.value[index].setZero();
                             }
                           } else {
@@ -421,14 +425,14 @@ SC_MODULE(InputController) {
 
 #pragma hls_unroll yes
                             for (int i = 0; i < 3; i++) {
-                              int index = 3 * (full_x % 4) + i;
+                              ac_int<8,false> index = 3 * (full_x % 4) + i;
                               data.value[3 * ((x + fx_bound) % 4) + i] =
                                   temp.value[index];
                             }
                           }
 
                           int address =
-                              (y0) * (((params.STRIDE * X0) >> 2) + 2) +
+                              (y0) * (((STRIDE * X0) >> 2) + 2) +
                               (x >> 2);
 
                           // writeControl[bankSel].Push(1);
@@ -438,12 +442,12 @@ SC_MODULE(InputController) {
                           writeRequest[bankSel].Push(req);
 
                           if ((full_y < 0) ||
-                              (full_y >= (params.STRIDE * Y0 * Y1))) {
+                              (full_y >= (STRIDE * Y0 * Y1))) {
 #pragma hls_unroll yes
                             for (int next_x = x + 1; next_x < x + 4; next_x++) {
 #pragma hls_unroll yes
                               for (int dims = 0; dims < 3; dims++) {
-                                int index =
+                                ac_int<8,false> index =
                                     3 * ((next_x + fx_bound) % 4) + dims;
                                 data.value[index].setZero();
                               }
@@ -451,17 +455,18 @@ SC_MODULE(InputController) {
                           } else {
 #pragma hls_unroll yes
                             for (int next_x = x + 1; next_x < x + 4; next_x++) {
-                              full_x = next_x + x1 * params.STRIDE * X0;
+                              full_x = next_x + x1 * STRIDE * X0;
 #pragma hls_unroll yes
                               for (int i = 0; i < 3; i++) {
-                                int index = 3 * (full_x % 4) + i;
-                                data.value[3 * ((next_x + fx_bound) % 4) + i] =
+                                ac_int<8,false> index = 3 * (full_x % 4) + i;
+                                ac_int<8,false> writeIndex = 3 * ((next_x + fx_bound) % 4) + i;
+                                data.value[writeIndex] =
                                     temp.value[index];
                               }
                             }
                           }
 
-                          if (x >= params.STRIDE * X0 - 4) {
+                          if (x >= STRIDE * X0 - 4) {
                             break;
                           }
                         }
@@ -469,15 +474,15 @@ SC_MODULE(InputController) {
                         /*
                          * Now handle the right boundary
                          */
-                        int x = params.STRIDE * X0;
-                        int full_x = x + x1 * params.STRIDE * X0;
+                        ac_int<16,false> x = STRIDE * X0;
+                        ac_int<16,true> full_x = x + x1 * STRIDE * X0;
 
                         if ((full_x < 0) || (full_y < 0) ||
-                            (full_x >= (X1 * params.STRIDE * X0)) ||
-                            (full_y >= (Y1 * params.STRIDE * Y0))) {
+                            (full_x >= (X1 * STRIDE * X0)) ||
+                            (full_y >= (Y1 * STRIDE * Y0))) {
 #pragma hls_unroll yes
                           for (int dims = 0; dims < 3; dims++) {
-                            int index = 3 * ((x + fx_bound) % 4) + dims;
+                            ac_int<8,false> index = 3 * ((x + fx_bound) % 4) + dims;
                             data.value[index].setZero();
                           }
                         } else {
@@ -485,14 +490,15 @@ SC_MODULE(InputController) {
 
 #pragma hls_unroll yes
                           for (int i = 0; i < 3; i++) {
-                            int index = 3 * (full_x % 4) + i;
-                            data.value[3 * ((x + fx_bound) % 4) + i] =
+                            ac_int<8,false> index = 3 * (full_x % 4) + i;
+                            ac_int<8,false> writeIndex = 3 * ((x + fx_bound) % 4) + i;
+                            data.value[writeIndex] =
                                 temp.value[index];
                           }
                         }
 
                         int address =
-                            (y0) * (((params.STRIDE * X0) >> 2) + 2) + (x >> 2);
+                            (y0) * (((STRIDE * X0) >> 2) + 2) + (x >> 2);
 
                         // writeControl[bankSel].Push(1);
                         BufferWriteRequest<DTYPE, NROWS> req;
@@ -501,31 +507,32 @@ SC_MODULE(InputController) {
                         writeRequest[bankSel].Push(req);
 
                         if ((full_x < 0) || (full_y < 0) ||
-                            (full_x >= (X1 * params.STRIDE * X0)) ||
-                            (full_y >= (Y1 * params.STRIDE * Y0))) {
+                            (full_x >= (X1 * STRIDE * X0)) ||
+                            (full_y >= (Y1 * STRIDE * Y0))) {
 #pragma hls_unroll yes
                           for (int next_x = x + 1; next_x < x + 3; next_x++) {
 #pragma hls_unroll yes
                             for (int dims = 0; dims < 3; dims++) {
-                              int index = 3 * ((next_x + fx_bound) % 4) + dims;
+                              ac_int<8,false> index = 3 * ((next_x + fx_bound) % 4) + dims;
                               data.value[index].setZero();
                             }
                           }
                         } else {
 #pragma hls_unroll yes
                           for (int next_x = x + 1; next_x < x + 3; next_x++) {
-                            int next_full_x = next_x + x1 * params.STRIDE * X0;
+                            int next_full_x = next_x + x1 * STRIDE * X0;
 #pragma hls_unroll yes
                             for (int i = 0; i < 3; i++) {
-                              int index = 3 * (next_full_x % 4) + i;
-                              data.value[3 * ((next_x + fx_bound) % 4) + i] =
+                              ac_int<8,false> index = 3 * (next_full_x % 4) + i;
+                              ac_int<8,false> writeIndex = 3 * ((next_x + fx_bound) % 4) + i;
+                              data.value[writeIndex] =
                                   temp.value[index];
                             }
                           }
                         }
 
                         int next_address =
-                            (y0) * (((params.STRIDE * X0) >> 2) + 2) +
+                            (y0) * (((STRIDE * X0) >> 2) + 2) +
                             (x >> 2) + 1;
                         int swapBank =
                             (loop_counters[1][1] == loop_bounds[1][1] - 1) &&
@@ -580,7 +587,6 @@ SC_MODULE(InputController) {
             for (loop_counters[0][2] = 0;
                  loop_counters[0][2] < loop_bounds[0][2];
                  loop_counters[0][2]++) {
-              int STRIDE = params.STRIDE;
               if (isDownsample) {
                 // don't include STRIDE for downsample
                 STRIDE = 1;
@@ -592,8 +598,8 @@ SC_MODULE(InputController) {
               loop_bounds[1][params.inputYLoopIndex[1]] =
                   params.loops[1][params.inputYLoopIndex[1]] * STRIDE;
 
-              int x_min_offset = fx_bound;
-              int y_min_offset = fy_bound;
+              ac_int<4,false> x_min_offset = fx_bound;
+              ac_int<4,false> y_min_offset = fy_bound;
               loop_bounds[1][params.inputXLoopIndex[1]] += FX - 1;
               loop_bounds[1][params.inputYLoopIndex[1]] += FY - 1;
 
@@ -624,30 +630,30 @@ SC_MODULE(InputController) {
                         for (loop_counters[1][5] = 0;
                              loop_counters[1][5] < loop_bounds[1][5];
                              loop_counters[1][5]++) {
-                          int x0 = loop_counters[1][params.inputXLoopIndex[1]];
-                          int x1 = loop_counters[0][params.inputXLoopIndex[0]];
+                          ac_int<8,true> x0 = loop_counters[1][params.inputXLoopIndex[1]];
+                          ac_int<8,true> x1 = loop_counters[0][params.inputXLoopIndex[0]];
 
-                          int y0 = loop_counters[1][params.inputYLoopIndex[1]];
-                          int y1 = loop_counters[0][params.inputYLoopIndex[0]];
+                          ac_int<8,true> y0 = loop_counters[1][params.inputYLoopIndex[1]];
+                          ac_int<8,true> y1 = loop_counters[0][params.inputYLoopIndex[0]];
 
-                          int full_x, full_y;
+                          ac_int<16,true> full_x, full_y;
                           if (isDownsample) {
-                            full_x = (x0 * params.STRIDE - x_min_offset) +
-                                     x1 * params.STRIDE * X0;
-                            full_y = (y0 * params.STRIDE - y_min_offset) +
-                                     y1 * params.STRIDE * Y0;
+                            full_x = (x0 * STRIDE - x_min_offset) +
+                                     x1 * STRIDE * X0;
+                            full_y = (y0 * STRIDE - y_min_offset) +
+                                     y1 * STRIDE * Y0;
                           } else {
                             full_x =
-                                (x0 - x_min_offset) + x1 * params.STRIDE * X0;
+                                (x0 - x_min_offset) + x1 * STRIDE * X0;
                             full_y =
-                                (y0 - y_min_offset) + y1 * params.STRIDE * Y0;
+                                (y0 - y_min_offset) + y1 * STRIDE * Y0;
                           }
 
                           Pack1D<DTYPE, NROWS> data;
 
                           if ((full_x < 0) || (full_y < 0) ||
-                              (full_x >= params.STRIDE * X0 * X1) ||
-                              (full_y >= params.STRIDE * Y0 * Y1)) {
+                              (full_x >= STRIDE * X0 * X1) ||
+                              (full_y >= STRIDE * Y0 * Y1)) {
 #pragma hls_unroll yes
                             for (int dims = 0; dims < NROWS; dims++) {
                               data[dims].setZero();
@@ -656,7 +662,7 @@ SC_MODULE(InputController) {
                             data = transposeOut.Pop();
                           }
 
-                          int address = (y0) * (STRIDE * X0 + FX - 1) + (x0);
+                          int address = static_cast<ac_int<16,false> >((y0) * (STRIDE * X0 + FX - 1)) + (x0);
 
                           int swapBank =
                               (loop_counters[1][1] == loop_bounds[1][1] - 1) &&
@@ -724,14 +730,16 @@ SC_MODULE(InputController) {
     while (true) {
       const MatrixParams params = readerParams.Pop();
 
-      int FX = params.loops[1][params.fxIndex];
-      int FY = params.loops[1][params.fyIndex];
+      ac_int<4,false> FX = params.loops[1][params.fxIndex];
+      ac_int<4,false> FY = params.loops[1][params.fyIndex];
       bool isDownsample = FX == 1 && FY == 1;
 
       bool bankSel = 0;
 
-      int loop_counters[2][6];
-      int loop_bounds[2][6];
+      ac_int<8,false> loop_counters[2][6];
+      ac_int<8,false> loop_bounds[2][6];
+      ac_int<2,false> STRIDE = params.STRIDE;
+
 
 #pragma hls_unroll yes
       for (int i = 0; i < 2; i++) {
@@ -775,24 +783,24 @@ SC_MODULE(InputController) {
                       for (loop_counters[1][5] = 0;
                            loop_counters[1][5] < loop_bounds[1][5];
                            loop_counters[1][5]++) {
-                        int x0 = loop_counters[1][params.inputXLoopIndex[1]];
-                        int X0 = params.loops[1][params.inputXLoopIndex[1]];
-                        int y0 = loop_counters[1][params.inputYLoopIndex[1]];
-                        int Y0 = params.loops[1][params.inputYLoopIndex[1]];
-                        int fx = loop_counters[1][params.fxIndex];
-                        int fy = loop_counters[1][params.fyIndex];
+                        ac_int<8,false> x0 = loop_counters[1][params.inputXLoopIndex[1]];
+                        ac_int<8,false> X0 = params.loops[1][params.inputXLoopIndex[1]];
+                        ac_int<8,false> y0 = loop_counters[1][params.inputYLoopIndex[1]];
+                        ac_int<8,false> Y0 = params.loops[1][params.inputYLoopIndex[1]];
+                        ac_int<8,false> fx = loop_counters[1][params.fxIndex];
+                        ac_int<8,false> fy = loop_counters[1][params.fyIndex];
 
-                        int x = params.STRIDE * x0 + fx;
-                        int y = params.STRIDE * y0 + fy;
+                        ac_int<16,false> x = STRIDE * x0 + fx;
+                        ac_int<16,false> y = STRIDE * y0 + fy;
                         int address;
                         if (params.REPLICATION) {
                           address =
-                              y * (((params.STRIDE * X0) >> 2) + 2) + x0 + fx;
+                              y * (((STRIDE * X0) >> 2) + 2) + x0 + fx;
                         } else {
                           if (isDownsample) {
                             address = y0 * X0 + x0;
                           } else {
-                            address = y * (params.STRIDE * X0 + FX - 1) + x;
+                            address = y * (STRIDE * X0 + FX - 1) + x;
                           }
                         }
                         // int swapBank =
@@ -861,8 +869,8 @@ SC_MODULE(InputController) {
 
     while (true) {
       const MatrixParams params = windowBufferParams.Pop();
-      int loop_counters[2][6];
-      int loop_bounds[2][6];
+      ac_int<8,false> loop_counters[2][6];
+      ac_int<8,false> loop_bounds[2][6];
 
 #pragma hls_unroll yes
       for (int i = 0; i < 2; i++) {
@@ -939,7 +947,7 @@ SC_MODULE(InputController) {
         }
       } else {  // bypass
 
-        int total_count =
+        ac_int<32,false> total_count =
             loop_bounds[0][0] * loop_bounds[0][1] * loop_bounds[0][2] *
             loop_bounds[1][0] * loop_bounds[1][1] * loop_bounds[1][2] *
             loop_bounds[1][3] * loop_bounds[1][4] * loop_bounds[1][5];
@@ -962,16 +970,16 @@ SC_MODULE(InputController) {
     while (true) {
       const MatrixParams params = transposerParams.Pop();
 
-      int FX = params.loops[1][params.fxIndex];
+      ac_int<4,false> FX = params.loops[1][params.fxIndex];
       if (params.REPLICATION) {
         FX = 7;
       }
-      int FY = params.loops[1][params.fyIndex];
+      ac_int<4,false> FY = params.loops[1][params.fyIndex];
 
       bool isDownsample = FX == 1 && FY == 1;
 
-      int loop_counters[2][6];
-      int loop_bounds[2][6];
+      ac_int<8,false> loop_counters[2][6];
+      ac_int<8,false> loop_bounds[2][6];
 
 #pragma hls_unroll yes
       for (int i = 0; i < 2; i++) {
@@ -1072,10 +1080,10 @@ SC_MODULE(InputController) {
                     params.loops[1][params.inputYLoopIndex[1]] * params.STRIDE;
               }
 
-              int x_min_offset = 0;
-              int x_max_offset = 0;
-              int y_min_offset = 0;
-              int y_max_offset = 0;
+              ac_int<4,false> x_min_offset = 0;
+              ac_int<4,false> x_max_offset = 0;
+              ac_int<4,false> y_min_offset = 0;
+              ac_int<4,false> y_max_offset = 0;
 
               if (loop_counters[0][params.inputXLoopIndex[0]] != 0) {
                 x_min_offset = (FX - 1) / 2;
