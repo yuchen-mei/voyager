@@ -206,12 +206,12 @@ SC_MODULE(InputController) {
                         if (params.REPLICATION) {
                           baseAddress = static_cast<ac_int<32,false> >(y * (X / 4) * 16) + static_cast<ac_int<32,false> >((x / 4) * 16) + c;
                         }
-                        if (params.CONCAT_HEAD && params.TRANPOSE_INPUTS) {
+                        if (params.CONCAT_INPUT && params.TRANPOSE_INPUTS) {
                           baseAddress = static_cast<ac_int<32,false> >((c + (x % 16)) * 32) +
                                         static_cast<ac_int<32,false> >((((x / 16) * DIMENSION) / 32 * C * 32) ) +
                                         static_cast<ac_int<32,false> >((((x / 16) * DIMENSION) % 32));
                         } else {
-                          if (params.CONCAT_HEAD) {
+                          if (params.CONCAT_INPUT) {
                             baseAddress =
                                 static_cast<ac_int<32,false> >(((c / 32) * X * 32)) + 
                                 static_cast<ac_int<32,false> >((x * 32)) + 
