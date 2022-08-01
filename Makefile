@@ -26,7 +26,12 @@ rtl: build/Catapult_Accelerator/Accelerator.v1/concat_rtl.v
 InputController: build/Catapult_InputController/InputController.v1/concat_rtl.v
 WeightController: build/Catapult_WeightController/WeightController.v1/concat_rtl.v
 MatrixProcessor: build/Catapult_MatrixProcessor/MatrixProcessor.v1/concat_rtl.v
+ProcessingElement: build/Catapult_ProcessingElement/ProcessingElement.v1/concat_rtl.v
 VectorUnit: build/Catapult_VectorUnit/VectorUnit.v1/concat_rtl.v
+MaxpoolUnit: build/Catapult_MaxpoolUnit/MaxpoolUnit.v1/concat_rtl.v
+OutputAddressGenerator: build/Catapult_OutputAddressGenerator/OutputAddressGenerator.v1/concat_rtl.v
+VectorFetchUnit: build/Catapult_VectorFetchUnit/VectorFetchUnit.v1/concat_rtl.v
+VectorOpUnit: build/Catapult_VectorOpUnit/VectorOpUnit.v1/concat_rtl.v
 
 build/Catapult_Accelerator/Accelerator.v1/concat_rtl.v: InputController WeightController MatrixProcessor VectorUnit
 	catapult -shell -file scripts/Accelerator.tcl
@@ -36,13 +41,23 @@ build/Catapult_InputController/InputController.v1/concat_rtl.v:
 	catapult -shell -file scripts/InputController.tcl
 build/Catapult_WeightController/WeightController.v1/concat_rtl.v:
 	catapult -shell -file scripts/WeightController.tcl
-build/Catapult_MatrixProcessor/MatrixProcessor.v1/concat_rtl.v:
+build/Catapult_MatrixProcessor/MatrixProcessor.v1/concat_rtl.v: ProcessingElement
 	catapult -shell -file scripts/MatrixProcessor.tcl
-build/Catapult_VectorUnit/VectorUnit.v1/concat_rtl.v: src/VectorUnit.h
+build/Catapult_ProcessingElement/ProcessingElement.v1/concat_rtl.v:
+	catapult -shell -file scripts/ProcessingElement.tcl
+build/Catapult_VectorUnit/VectorUnit.v1/concat_rtl.v: MaxpoolUnit OutputAddressGenerator VectorFetchUnit VectorOpUnit
 	catapult -shell -file scripts/VectorUnit.tcl
+build/Catapult_MaxpoolUnit/MaxpoolUnit.v1/concat_rtl.v:
+	catapult -shell -file scripts/MaxpoolUnit.tcl
+build/Catapult_OutputAddressGenerator/OutputAddressGenerator.v1/concat_rtl.v:
+	catapult -shell -file scripts/OutputAddressGenerator.tcl
+build/Catapult_VectorFetchUnit/VectorFetchUnit.v1/concat_rtl.v:
+	catapult -shell -file scripts/VectorFetchUnit.tcl
+build/Catapult_VectorOpUnit/VectorOpUnit.v1/concat_rtl.v:
+	catapult -shell -file scripts/VectorOpUnit.tcl
 
 
-.PHONY: rtl InputController WeightController MatrixProcessor VectorUnit 
+.PHONY: rtl InputController WeightController MatrixProcessor ProcessingElement VectorUnit MaxpoolUnit OutputAddressGenerator VectorFetchUnit VectorOpUnit
 # rtl: build/Catapult/Accelerator.v1/concat_rtl.v
 
 # build/Catapult/Accelerator.v1/concat_rtl.v: src/Accelerator.cc $(wildcard src/*.h) scripts/hls.tcl
