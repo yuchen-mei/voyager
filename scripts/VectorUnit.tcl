@@ -12,7 +12,7 @@ solution library add {[Block] VectorOpUnit.v1}
 
 go libraries
 
-directive set /VectorUnit<P8,P16,16>/MaxpoolUnit<P8,P16,16> -MAP_TO_MODULE {[Block] MaxpoolUnit.v1}
+directive set /VectorUnit<P8,P16,16>/MaxpoolUnit<P16,P8,16> -MAP_TO_MODULE {[Block] MaxpoolUnit.v1}
 directive set /VectorUnit<P8,P16,16>/VectorFetchUnit<P8,P16,16> -MAP_TO_MODULE {[Block] VectorFetchUnit.v1}
 directive set /VectorUnit<P8,P16,16>/OutputAddressGenerator<16> -MAP_TO_MODULE {[Block] OutputAddressGenerator.v1}
 directive set /VectorUnit<P8,P16,16>/VectorOpUnit<P8,P16,16> -MAP_TO_MODULE {[Block] VectorOpUnit.v1}
