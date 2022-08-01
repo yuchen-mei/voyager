@@ -1,8 +1,7 @@
 source scripts/architecture.tcl
 
-set block "WeightController"
-set full_block_name "WeightController<$IO_DATATYPE, $DIMENSION, $DIMENSION>"
-set weight_controller_stripped [string map {" " ""} $full_block_name]
+set block "ProcessingElement"
+set full_block_name "ProcessingElement<P8D, P8, P16D>"
 
 source scripts/common.tcl
 
@@ -13,7 +12,5 @@ set clocks {clk {-CLOCK_PERIOD 10 -CLOCK_EDGE rising -CLOCK_HIGH_TIME 5 -CLOCK_O
 directive set -CLOCKS $clocks
 
 go assembly
-
-directive set /$weight_controller_stripped/$weight_controller_stripped:transposer/transposer/while:if:transposeBuffer.bits:rsc -MAP_TO_MODULE {[Register]}
 
 go extract

@@ -720,7 +720,7 @@ void Harness::sendParams() {
 
       vectorParams.addressGen0Loop[0][0] = 1;
       vectorParams.addressGen0Loop[0][1] = 1;
-      vectorParams.addressGen0Loop[0][2] = C / DIMENSION;
+      vectorParams.addressGen0Loop[0][2] = K / DIMENSION;
       vectorParams.addressGen0Loop[1][0] = 1;
       vectorParams.addressGen0Loop[1][1] = X;
       vectorParams.addressGen0Loop[1][2] = 1;
@@ -730,36 +730,33 @@ void Harness::sendParams() {
       vectorParams.addressGen1Mode = 2;  // 2d tensor
       vectorParams.addressGen1Loops[0][0] = 1;
       vectorParams.addressGen1Loops[0][1] = 1;
-      vectorParams.addressGen1Loops[0][2] = C / DIMENSION;
+      vectorParams.addressGen1Loops[0][2] = K / DIMENSION;
       vectorParams.addressGen1Loops[1][0] = 1;
       vectorParams.addressGen1Loops[1][1] = X;
       vectorParams.addressGen1Loops[1][2] = 1;
 
       vectorParams.ADDRESS_GEN2_OFFSET = params.BIAS_OFFSET;
       vectorParams.addressGen2Mode = 0;  // no bias
-      vectorParams.addressGen2Loops[0][0] = X;
-      vectorParams.addressGen2Loops[0][1] = 1;
-      vectorParams.addressGen2Loops[0][2] = C / DIMENSION;
 
       vectorParams.VECTOR_OUTPUT_OFFSET = params.OUTPUT_OFFSET;
       vectorParams.SCALAR_OUTPUT_OFFSET = params.OUTPUT_OFFSET;
 
       vectorParams.scalarOutputCount = 0;
-      vectorParams.MAXPOOL = params.MAXPOOL;
-      vectorParams.AVGPOOL = params.AVGPOOL;
-      vectorParams.SPLIT_OUTPUT = params.SPLIT_OUTPUT;
+      vectorParams.MAXPOOL = false;
+      vectorParams.AVGPOOL = false;
+      vectorParams.SPLIT_OUTPUT = false;
 
       // output
       for (int i = 0; i < 3; i++) {
-        vectorParams.outputLoops[0][i] = params.loops[0][i];
+        vectorParams.outputLoops[0][i] = 1;
       }
       vectorParams.outputXLoopIndex[0] = params.inputXLoopIndex[0];
       vectorParams.outputYLoopIndex[0] = params.inputYLoopIndex[0];
       vectorParams.outputWeightLoopIndex[0] = params.weightLoopIndex[0];
 
       vectorParams.outputLoops[1][0] = 1;
-      vectorParams.outputLoops[1][1] = X;
-      vectorParams.outputLoops[1][2] = C / DIMENSION;
+      vectorParams.outputLoops[1][1] = 1;
+      vectorParams.outputLoops[1][2] = K / DIMENSION;
       vectorParams.outputWeightLoopIndex[1] = 2;
       vectorParams.outputYLoopIndex[1] = 0;
       vectorParams.outputXLoopIndex[1] = 1;
@@ -795,7 +792,7 @@ void Harness::sendParams() {
 
       // C/DIMENSION to do the complete reduction
       // DIMENSION to fill up the entire vector
-      vectorInstructionConfig.instCount[0] = X;
+      vectorInstructionConfig.instCount[1] = X;
 
       // inst 2- pull from accumulator
       VectorInstructions vInst2;
@@ -812,6 +809,7 @@ void Harness::sendParams() {
       vInst2.vAccumulatePush = 0;
       vInst2.vDest = VectorInstructions::vWriteOut;
       vectorInstructionConfig.inst[2] = vInst2;
+      vectorInstructionConfig.instCount[2] = 1;
 
       vectorInstructionConfig.instLen = 3;
       vectorInstructionConfig.instLoopCount = C / DIMENSION;
@@ -1010,6 +1008,8 @@ void Harness::sendParams() {
       }
 
       vectorParams.FULL_HEAD_SIZE = 0;
+      vectorParams.SPLIT_OUTPUT = params.SPLIT_OUTPUT;
+      vectorParams.DP_OUTPUT = false;
       vectorParams.VECTOR_OUTPUT_OFFSET = params.OUTPUT_OFFSET;
       vectorParams.SCALAR_OUTPUT_OFFSET = params.OUTPUT_OFFSET;
       vectorParams.scalarOutputCount = 0;
@@ -1053,12 +1053,14 @@ void Harness::sendParams() {
       memset(&vectorInstructionConfig, 0, sizeof(vectorInstructionConfig));
 
       if (params.AVGPOOL) {
+        // accumulate over X*Y
         VectorInstructions vInst0;
         vInst0.instType = VectorInstructions::accumulation;
         vInst0.rCount = X * Y;
         vectorInstructionConfig.instCount[0] = 1;
         vectorInstructionConfig.inst[0] = vInst0;
-
+        
+        // send to accumulator
         VectorInstructions vInst1;
         vInst1.instType = VectorInstructions::vector;
         vInst1.vInput = VectorInstructions::readFromSystolicArray;
@@ -1075,6 +1077,7 @@ void Harness::sendParams() {
         vectorInstructionConfig.inst[1] = vInst1;
         vectorInstructionConfig.instCount[1] = X * Y;
 
+        // pull from accumulator and divide by X*Y
         VectorInstructions vInst2;
         vInst2.instType = VectorInstructions::vector;
         vInst2.vInput = VectorInstructions::readFromAccumulation;
@@ -1084,10 +1087,13 @@ void Harness::sendParams() {
         vInst2.vOp1 = VectorInstructions::nop;
         vInst2.vOp1 = VectorInstructions::nop;
         vInst2.vOp3Src0 = VectorInstructions::nop;  // use existing
-        vInst2.vOp3Src1 = VectorInstructions::nop;
-        vInst2.vOp3 = VectorInstructions::nop;
+        vInst2.vOp3Src1 = VectorInstructions::op3immediate0;
+        vInst2.vOp3 = VectorInstructions::vmult;
         vInst2.vOp4 = VectorInstructions::nop;
         vInst2.vDest = VectorInstructions::vWriteOut;
+        float fpscale = (1.0/(X*Y));
+        Posit<8,1> scale = static_cast<Posit<8,1> >(fpscale);
+        vInst2.immediate0 = scale.bits;
         vectorInstructionConfig.inst[2] = vInst2;
         vectorInstructionConfig.instCount[2] = 1;
 
@@ -1115,7 +1121,7 @@ void Harness::sendParams() {
         }
 
         vInst0.vOp1 = VectorInstructions::nop;
-        vInst0.vOp1 = VectorInstructions::nop;
+        vInst0.vOp2 = VectorInstructions::nop;
         vInst0.vOp3Src0 = VectorInstructions::nop;  // use existing
 
         if (params.BIAS) {
