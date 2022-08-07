@@ -78,8 +78,10 @@ SC_MODULE(ProcessingElement) {
 #pragma hls_pipeline_stall_mode flush
     while (true) {
       IDTYPE input = inputIn.Pop();
-      ODTYPE psum = psumIn.Pop();
       ac_int<1, false> weightSwap = weightSwapIn.Pop();
+      inputOut.Push(input);
+      weightSwapOut.Push(weightSwap);
+      ODTYPE psum = psumIn.Pop();
 
       if (weightSwap) {
         typename WDTYPE::DecomposedPosit decodedWeight(updatedWeight.read());
@@ -88,9 +90,7 @@ SC_MODULE(ProcessingElement) {
 
       ODTYPE output = pe_fma(input, weight_reg, psum);
 
-      inputOut.Push(input);
       psumOut.Push(output);
-      weightSwapOut.Push(weightSwap);
     }
   }
 
