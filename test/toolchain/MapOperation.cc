@@ -237,6 +237,7 @@ void map_operation(const SimplifiedParams &params, MatrixParams &matrixParams,
     matrixParamsValid = false;
     vectorParamsValid = true;
 
+    // input is a vector of size C
     vectorParams.VECTOR_OFFSET = params.INPUT_OFFSET;
     vectorParams.addressGen0Enable = true;
     for (int i = 0; i < 3; i++) {
@@ -246,21 +247,34 @@ void map_operation(const SimplifiedParams &params, MatrixParams &matrixParams,
     vectorParams.addressGen0Loop[1][1] = 1;
     vectorParams.addressGen0Loop[1][2] = C / DIMENSION;
     vectorParams.addressGen0Broadcast = false;
+    vectorParams.DP_VEC0 = false;
 
-    // address gen 1 (weights)
+    // weights is a matrix of K x C
     vectorParams.ADDRESS_GEN1_OFFSET = params.WEIGHT_OFFSET;
     vectorParams.addressGen1Mode = 2;  // 2d tensor
     for (int i = 0; i < 3; i++) {
       vectorParams.addressGen1Loops[0][i] = 1;
     }
-    vectorParams.addressGen1Loops[0][0] = 1;
-    vectorParams.addressGen1Loops[0][1] = K;
-    vectorParams.addressGen1Loops[0][2] = C / DIMENSION;
+    vectorParams.addressGen1Loops[1][0] = 1;
+    vectorParams.addressGen1Loops[1][1] = K;
+    vectorParams.addressGen1Loops[1][2] = C / DIMENSION;
 
-    // TODO: deal with bias
     // bias
     vectorParams.ADDRESS_GEN2_OFFSET = params.BIAS_OFFSET;
-    vectorParams.addressGen2Mode = 0;
+    vectorParams.addressGen2Mode = 1;  // 2d tensor
+    for (int i = 0; i < 3; i++) {
+      vectorParams.addressGen2Loops[0][i] = 1;
+    }
+    vectorParams.addressGen2InputXLoopIndex[0] = 0;
+    vectorParams.addressGen2InputYLoopIndex[0] = 1;
+    vectorParams.addressGen2WeightLoopIndex[0] = 2;
+
+    vectorParams.addressGen2Loops[1][0] = K / DIMENSION;
+    vectorParams.addressGen2Loops[1][1] = 1;
+    vectorParams.addressGen2Loops[1][2] = 1;
+    vectorParams.addressGen2WeightLoopIndex[1] = 0;
+    vectorParams.addressGen2InputYLoopIndex[1] = 1;
+    vectorParams.addressGen2InputXLoopIndex[1] = 2;
 
     vectorParams.VECTOR_OUTPUT_OFFSET = params.OUTPUT_OFFSET;
     vectorParams.SCALAR_OUTPUT_OFFSET = params.OUTPUT_OFFSET;
@@ -271,30 +285,20 @@ void map_operation(const SimplifiedParams &params, MatrixParams &matrixParams,
 
     // output
     for (int i = 0; i < 3; i++) {
-      vectorParams.outputLoops[0][i] = params.loops[0][i];
+      vectorParams.outputLoops[0][i] = 1;
     }
-    vectorParams.outputXLoopIndex[0] = params.inputXLoopIndex[0];
-    vectorParams.outputYLoopIndex[0] = params.inputYLoopIndex[0];
-    vectorParams.outputWeightLoopIndex[0] = params.weightLoopIndex[0];
+    vectorParams.outputXLoopIndex[0] = 0;
+    vectorParams.outputYLoopIndex[0] = 1;
+    vectorParams.outputWeightLoopIndex[0] = 2;
 
-    int outputLoopIndex = 0;
-    for (int i = 0; i < 6; i++) {
-      // ignore the loops not present in outputs (reduction, fx, fy)
-      if (i == params.weightLoopIndex[1] || i == params.inputXLoopIndex[1] ||
-          i == params.inputYLoopIndex[1]) {
-        vectorParams.outputLoops[1][outputLoopIndex] = params.loops[1][i];
-        if (i == params.inputXLoopIndex[1]) {
-          vectorParams.outputXLoopIndex[1] = outputLoopIndex;
-        }
-        if (i == params.inputYLoopIndex[1]) {
-          vectorParams.outputYLoopIndex[1] = outputLoopIndex;
-        }
-        if (i == params.weightLoopIndex[1]) {
-          vectorParams.outputWeightLoopIndex[1] = outputLoopIndex;
-        }
-        outputLoopIndex++;
-      }
-    }
+    vectorParams.outputLoops[1][0] = 1;
+    vectorParams.outputLoops[1][1] = 1;
+    vectorParams.outputLoops[1][2] = K / DIMENSION;
+    vectorParams.outputXLoopIndex[1] = 0;
+    vectorParams.outputYLoopIndex[1] = 1;
+    vectorParams.outputWeightLoopIndex[1] = 2;
+    vectorParams.SPLIT_OUTPUT = false;
+    vectorParams.DP_OUTPUT = false;
 
     // sendSerializedParams<VectorParams, 32>(vectorParams,
     // &serialVectorParamsIn);
@@ -329,7 +333,7 @@ void map_operation(const SimplifiedParams &params, MatrixParams &matrixParams,
     vectorInstructionConfig.inst[1] = vInst1;
 
     // C/DIMENSION to do the complete reduction
-    // DIMENSION to fill up the entire vector
+    // DIMENSION to fill up the entire vector (this is now K dimension)
     vectorInstructionConfig.instCount[1] = DIMENSION * C / DIMENSION;
 
     // inst2- add bias, write out
@@ -338,13 +342,13 @@ void map_operation(const SimplifiedParams &params, MatrixParams &matrixParams,
     vInst2.vInput = VectorInstructions::nop;
     vInst2.vAccumulatePush = VectorInstructions::nop;
     vInst2.vOp0Src1 = VectorInstructions::nop;
-    vInst2.vOp0 = VectorInstructions::vmult;
+    vInst2.vOp0 = VectorInstructions::nop;
     vInst2.vOp1 = VectorInstructions::nop;
     vInst2.vOp2 = VectorInstructions::nop;
     vInst2.vOp3Src0 = VectorInstructions::readReduceInterface;
-    vInst2.vOp3Src1 = VectorInstructions::nop;  // TODO: change to add for bias
-    vInst2.vOp3 = VectorInstructions::nop;
-    vInst2.vOp4 = params.RELU;
+    vInst2.vOp3Src1 = VectorInstructions::readNormalInterface;
+    vInst2.vOp3 = VectorInstructions::vadd;
+    vInst2.vOp4 = VectorInstructions::nop;
     vInst2.vDest = VectorInstructions::vWriteOut;
     vectorInstructionConfig.inst[2] = vInst2;
     vectorInstructionConfig.instCount[2] = 1;
