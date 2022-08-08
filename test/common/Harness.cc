@@ -300,7 +300,7 @@ void Harness::sendParams() {
     if (matrixParamsValid) {
       matrixUnitDoneSignal.SyncPop();
     }
-    if (matrixParamsValid) {
+    if (vectorParamsValid) {
       vectorUnitDoneSignal.SyncPop();
     }
     CCS_LOG("Accelerator Layer Finshed.");
