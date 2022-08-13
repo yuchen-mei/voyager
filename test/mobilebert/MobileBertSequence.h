@@ -20,6 +20,7 @@
 #endif
 
 #define VERBOSE 1
+#define ACC_T_ERROR 1
 
 // Data memory
 INPUT_DATATYPE* acc_sram_memory;
@@ -183,6 +184,7 @@ void loadActivation(std::string dataDir) {
   std::string datafile = dataDir + layerName + files.inputs_file;
   bool useDataFile = true;
 
+  params.INPUT_OFFSET += ACTIVATION_OFFSET;
   load_inputs(params, datafile, useDataFile, acc_sram_memory,
               hls_sram_memory + params.INPUT_OFFSET,
               uni_sram_memory + params.INPUT_OFFSET,
@@ -194,7 +196,8 @@ void loadActivation(std::string dataDir) {
       params = paramsLookup(operation, "inference");
       files = inferenceTestFiles.at(operation);
 
-      params.OUTPUT_OFFSET += layer * ENCODER_ACTIVATION_SIZE;
+      params.OUTPUT_OFFSET +=
+          ACTIVATION_OFFSET + layer * ENCODER_ACTIVATION_SIZE;
 
       if (operation == "classifier") {
         if (layer != 23) continue;
@@ -251,7 +254,7 @@ int verifyGradients(std::string dataDir, std::string outfilePrefix) {
         errors = compare_arrays(float_sram_memory + params.WEIGHT_OFFSET,
                                 floatMatrixB, weightSize, diffFile);
         if (errors) {
-          std::cerr << "ERROR: " << errors << " errors found" << std::endl;
+          std::cerr << "ERROR: " << errors << " mismatches found" << std::endl;
         }
       }
 
@@ -264,7 +267,7 @@ int verifyGradients(std::string dataDir, std::string outfilePrefix) {
         errors = compare_arrays(float_sram_memory + params.BIAS_OFFSET,
                                 floatBias, K, diffFile);
         if (errors) {
-          std::cerr << "ERROR: " << errors << " errors found" << std::endl;
+          std::cerr << "ERROR: " << errors << " mismatches found" << std::endl;
         }
       }
     }
@@ -295,10 +298,10 @@ int runOperation(const SimplifiedParams params,
   }
 
   int outputSize = X * Y * K;
-  if (params.CROSS_ENTROPY_GRAD) {
+  if (params.NO_NORM_GRAD) {
+    outputSize = K;
+  } else if (params.CROSS_ENTROPY_GRAD) {
     outputSize = X;
-  } else if (params.NO_NORM_GRAD) {
-    outputSize = C;
   }
 
 #ifdef VERBOSE
@@ -324,7 +327,7 @@ int runOperation(const SimplifiedParams params,
         hls_rram_memory + params.BIAS_OFFSET,
         hls_sram_memory + params.RESIDUAL_OFFSET,
         hls_sram_memory + params.WEIGHT_GRADIENT_OFFSET,
-        hls_sram_memory + params.BIAS_GRADIENT_OFFSET, false, false);
+        hls_sram_memory + params.BIAS_GRADIENT_OFFSET);
   }
 
   if (universal) {
@@ -336,7 +339,7 @@ int runOperation(const SimplifiedParams params,
         uni_rram_memory + params.BIAS_OFFSET,
         uni_sram_memory + params.RESIDUAL_OFFSET,
         uni_sram_memory + params.WEIGHT_GRADIENT_OFFSET,
-        uni_sram_memory + params.BIAS_GRADIENT_OFFSET, false, false);
+        uni_sram_memory + params.BIAS_GRADIENT_OFFSET);
   }
 
   if (fp32) {
@@ -347,15 +350,14 @@ int runOperation(const SimplifiedParams params,
                       float_rram_memory + params.BIAS_OFFSET,
                       float_sram_memory + params.RESIDUAL_OFFSET,
                       float_sram_memory + params.WEIGHT_GRADIENT_OFFSET,
-                      float_sram_memory + params.BIAS_GRADIENT_OFFSET, false,
-                      false);
+                      float_sram_memory + params.BIAS_GRADIENT_OFFSET);
   }
 
   int errors = 0;
 
 #ifdef VERBOSE
-  INPUT_DATATYPE hlsDataFileOutput[outputSize];
-  UniversalPosit uniDataFileOutput[outputSize];
+  INPUT_DATATYPE hlsDataFileOutput[2 * outputSize];
+  UniversalPosit uniDataFileOutput[2 * outputSize];
   float dataFileOutput[outputSize];
 
   load_datafile_outputs(params, outputDataFile, hlsDataFileOutput,
@@ -367,16 +369,18 @@ int runOperation(const SimplifiedParams params,
     std::cout << "(reveals bugs in mapping operations to accelerator)"
               << std::endl;
     diffFile = outfilePrefix + "hlsgold_vs_pytorch.txt";
-    errors = compare_arrays(hls_sram_memory + params.OUTPUT_OFFSET,
-                            hlsDataFileOutput, outputSize, diffFile);
+    errors =
+        compare_arrays(hls_sram_memory + params.OUTPUT_OFFSET, dataFileOutput,
+                       outputSize, diffFile, params.ACC_T_OUTPUT);
   }
 
   if (universal) {
     std::cout << "Universal Posit Gold Model vs. Pytorch" << std::endl;
     std::cout << "(reveals issues in representing float as Posit)" << std::endl;
     diffFile = outfilePrefix + "universalgold_vs_pytorch.txt";
-    errors = compare_arrays(uni_sram_memory + params.OUTPUT_OFFSET,
-                            uniDataFileOutput, outputSize, diffFile);
+    errors =
+        compare_arrays(uni_sram_memory + params.OUTPUT_OFFSET, dataFileOutput,
+                       outputSize, diffFile, params.ACC_T_OUTPUT);
   }
 
   if (customposit && universal) {
@@ -388,7 +392,7 @@ int runOperation(const SimplifiedParams params,
     diffFile = outfilePrefix + "hlsgold_vs_universalgold.txt";
     errors = compare_arrays(hls_sram_memory + params.OUTPUT_OFFSET,
                             uni_sram_memory + params.OUTPUT_OFFSET, outputSize,
-                            diffFile);
+                            diffFile, params.ACC_T_OUTPUT);
   }
 
   if (fp32) {
@@ -415,18 +419,20 @@ int runForward(std::string datapath, std::vector<std::string> groups) {
   std::string datafile = inputDataDir + layerName + files.inputs_file;
   bool useDataFile = true;
 
+  params.INPUT_OFFSET += ACTIVATION_OFFSET;
   load_inputs(params, datafile, useDataFile, acc_sram_memory,
-              hls_sram_memory + params.INPUT_OFFSET + 128,
-              uni_sram_memory + params.INPUT_OFFSET + 128,
-              float_sram_memory + params.INPUT_OFFSET + 128);
+              hls_sram_memory + params.INPUT_OFFSET,
+              uni_sram_memory + params.INPUT_OFFSET,
+              float_sram_memory + params.INPUT_OFFSET);
 
   // Load attention mask
   params = paramsLookup("attention_self_attention_probs_0", "inference");
   datafile = inputDataDir + "mobilebert_attention_mask";
+  params.WEIGHT_OFFSET += STACK_SIZE;
   load_weights(params, datafile, useDataFile, acc_sram_memory,
-               hls_sram_memory + params.WEIGHT_OFFSET,
-               uni_sram_memory + params.WEIGHT_OFFSET,
-               float_sram_memory + params.WEIGHT_OFFSET);
+              hls_sram_memory + params.WEIGHT_OFFSET,
+              uni_sram_memory + params.WEIGHT_OFFSET,
+              float_sram_memory + params.WEIGHT_OFFSET);
 
   for (int layer = 0; layer < 24; layer++) {
     for (const auto& op : inferenceOrder) {
@@ -448,7 +454,7 @@ int runForward(std::string datapath, std::vector<std::string> groups) {
       params.WEIGHT_SPLITTING = false;
 
       if (params.ATTENTION_MASK) {
-        params.WEIGHT_OFFSET = 0;
+        params.WEIGHT_OFFSET = STACK_SIZE;
       }
 
       if (op == "classifier") {
@@ -463,7 +469,7 @@ int runForward(std::string datapath, std::vector<std::string> groups) {
 
 #ifdef VERBOSE
       if (errors) {
-        std::cerr << "ERROR: " << errors << " errors found" << std::endl;
+        std::cerr << "ERROR: " << errors << " mismatches found" << std::endl;
       }
 #endif
     }
@@ -504,6 +510,16 @@ int runBackward(std::string datapath, std::vector<std::string> groups) {
       MemoryOffsets offsets = backpropMemOffsets.at(backOp);
       layerName = "mobilebert_encoder_layer_" + std::to_string(layer) + "_";
 
+#ifdef ACC_T_ERROR
+      params.INPUT_OFFSET = 2 * offsets.INPUT_OFFSET;
+      params.OUTPUT_OFFSET = 2 * offsets.OUTPUT_OFFSET;
+      params.RESIDUAL_OFFSET = 2 * offsets.RESIDUAL_OFFSET;
+#else
+      params.ACC_T_INPUT = false;
+      params.ACC_T_WEIGHT = false;
+      params.ACC_T_OUTPUT = false;
+#endif
+
       const int actOffset = ACTIVATION_OFFSET + layer * ENCODER_ACTIVATION_SIZE;
       const int weightOffset = layer * ENCODER_WEIGHT_SIZE;
       const int gradOffset = GRADIENT_OFFSET + layer * ENCODER_WEIGHT_SIZE;
@@ -520,6 +536,9 @@ int runBackward(std::string datapath, std::vector<std::string> groups) {
       if (backOp.find("attention_self_value_layer") != std::string::npos) {
         params.INPUT_OFFSET = actOffset + offsets.INPUT_OFFSET;
         params.WEIGHT_OFFSET = ERROR_OFFSET + offsets.WEIGHT_OFFSET;
+#ifdef ACC_T_ERROR
+        params.WEIGHT_OFFSET += offsets.WEIGHT_OFFSET;
+#endif
       }
 
       if (params.RELU_GRAD || params.SOFTMAX_GRAD) {
@@ -546,21 +565,21 @@ int runBackward(std::string datapath, std::vector<std::string> groups) {
 
 #ifdef VERBOSE
       if (errors) {
-        std::cerr << "ERROR: " << errors << " errors found" << std::endl;
+        std::cerr << "ERROR: " << errors << " mismatches found" << std::endl;
       }
 #endif
 
       operation = backOp;
-      if (backOp == "attention_self_query_layer_0") {
+      if (backOp == "bottlenecked_hidden_states" && layer > 0) {
+        operation = "output_bottleneck_LayerNorm";
+      } else if (backOp == "attention_self_query_layer_0") {
         operation = "attention_self_query";
       } else if (backOp == "attention_self_key_layer_0") {
         operation = "attention_self_key";
       } else if (backOp == "attention_self_value_layer_0") {
         operation = "attention_self_value";
-      } else if (backOp == "bottleneck_attention_LayerNorm_1") {
+      } else if (backOp == "bottleneck_attention_LayerNorm_k") {
         operation = "bottleneck_attention_LayerNorm";
-      } else if (backOp == "hidden_states_2" && layer > 0) {
-        operation = "output_bottleneck_LayerNorm";
       }
 
       std::vector<std::string> gradOperations = {operation + "_weight",
@@ -591,8 +610,7 @@ int runBackward(std::string datapath, std::vector<std::string> groups) {
             layerName = "";
           }
 
-          if (operation == "output_bottleneck_LayerNorm" &&
-              backOp == "hidden_states_2") {
+          if (backOp == "bottlenecked_hidden_states") {
             params.INPUT_OFFSET =
                 actOffset - ENCODER_ACTIVATION_SIZE + gradOffsets.INPUT_OFFSET;
             params.OUTPUT_OFFSET =
@@ -608,7 +626,8 @@ int runBackward(std::string datapath, std::vector<std::string> groups) {
 
 #ifdef VERBOSE
           if (errors) {
-            std::cerr << "ERROR: " << errors << " errors found" << std::endl;
+            std::cerr << "ERROR: " << errors << " mismatches found"
+                      << std::endl;
           }
 #endif
         }

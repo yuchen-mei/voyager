@@ -18,6 +18,18 @@ std::map<std::string, std::string> gradientParamsMapping{
     {"output_dense_bias", "bottleneckReduction"},
     {"intermediate_dense_weight", "outputBottleneck"},
     {"intermediate_dense_bias", "hiddenReduction"},
+    {"ffn_2_output_LayerNorm_weight", "bottleneckLayerNorm"},
+    {"ffn_2_output_LayerNorm_bias", "bottleneckReduction"},
+    {"ffn_2_output_dense_weight", "ffn2"},
+    {"ffn_2_output_dense_bias", "bottleneckReduction"},
+    {"ffn_2_intermediate_dense_weight", "outputBottleneck"},
+    {"ffn_2_intermediate_dense_bias", "hiddenReduction"},
+    {"ffn_1_output_LayerNorm_weight", "bottleneckLayerNorm"},
+    {"ffn_1_output_LayerNorm_bias", "bottleneckReduction"},
+    {"ffn_1_output_dense_weight", "ffn2"},
+    {"ffn_1_output_dense_bias", "bottleneckReduction"},
+    {"ffn_1_intermediate_dense_weight", "outputBottleneck"},
+    {"ffn_1_intermediate_dense_bias", "hiddenReduction"},
     {"ffn_0_output_LayerNorm_weight", "bottleneckLayerNorm"},
     {"ffn_0_output_LayerNorm_bias", "bottleneckReduction"},
     {"ffn_0_output_dense_weight", "ffn2"},
@@ -245,34 +257,120 @@ std::map<std::string, SimplifiedParams> gradientParams{
 std::map<std::string, MemoryOffsets> gradientMemOffsets{
     {"classifier_weight",
      {
-         8 * WEIGHT_INTERMEDIATE_SIZE + 21 * BIAS_INTERMEDIATE_SIZE +
-             3 * WEIGHT_HIDDEN_SIZE + 18 * BIAS_HIDDEN_SIZE,
-         5 * INTERMEDIATE_SIZE + 22 * HIDDEN_SIZE,
-         8 * WEIGHT_INTERMEDIATE_SIZE + 5 * BIAS_INTERMEDIATE_SIZE +
-             3 * WEIGHT_HIDDEN_SIZE + 18 * BIAS_HIDDEN_SIZE,
+         12 * WEIGHT_INTERMEDIATE_SIZE + 23 * BIAS_INTERMEDIATE_SIZE +
+             3 * WEIGHT_HIDDEN_SIZE + 24 * BIAS_HIDDEN_SIZE,
+         6 * INTERMEDIATE_SIZE + 26 * HIDDEN_SIZE,
+         12 * WEIGHT_INTERMEDIATE_SIZE + 7 * BIAS_INTERMEDIATE_SIZE +
+             3 * WEIGHT_HIDDEN_SIZE + 24 * BIAS_HIDDEN_SIZE,
      }},
     {"output_bottleneck_LayerNorm_weight",
+     {
+         5 * INTERMEDIATE_SIZE + 26 * HIDDEN_SIZE,
+         0,
+         12 * WEIGHT_INTERMEDIATE_SIZE + 5 * BIAS_INTERMEDIATE_SIZE +
+             3 * WEIGHT_HIDDEN_SIZE + 24 * BIAS_HIDDEN_SIZE,
+     }},
+    {"output_bottleneck_LayerNorm_bias",
+     {
+         0,  // unused
+         0,
+         12 * WEIGHT_INTERMEDIATE_SIZE + 6 * BIAS_INTERMEDIATE_SIZE +
+             3 * WEIGHT_HIDDEN_SIZE + 24 * BIAS_HIDDEN_SIZE,
+     }},
+    {"output_bottleneck_dense_weight",
+     {
+         5 * INTERMEDIATE_SIZE + 25 * HIDDEN_SIZE,
+         0,
+         11 * WEIGHT_INTERMEDIATE_SIZE + 4 * BIAS_INTERMEDIATE_SIZE +
+             3 * WEIGHT_HIDDEN_SIZE + 24 * BIAS_HIDDEN_SIZE,
+     }},
+    {"output_bottleneck_dense_bias",
+     {
+         0,  // unused
+         0,
+         12 * WEIGHT_INTERMEDIATE_SIZE + 4 * BIAS_INTERMEDIATE_SIZE +
+             3 * WEIGHT_HIDDEN_SIZE + 24 * BIAS_HIDDEN_SIZE,
+     }},
+
+    {"output_LayerNorm_weight",
+     {
+         5 * INTERMEDIATE_SIZE + 24 * HIDDEN_SIZE,
+         0,
+         11 * WEIGHT_INTERMEDIATE_SIZE + 4 * BIAS_INTERMEDIATE_SIZE +
+             3 * WEIGHT_HIDDEN_SIZE + 22 * BIAS_HIDDEN_SIZE,
+     }},
+    {"output_LayerNorm_bias",
+     {
+         0,  // unused
+         0,
+         11 * WEIGHT_INTERMEDIATE_SIZE + 4 * BIAS_INTERMEDIATE_SIZE +
+             3 * WEIGHT_HIDDEN_SIZE + 23 * BIAS_HIDDEN_SIZE,
+     }},
+    {"output_dense_weight",
+     {
+         4 * INTERMEDIATE_SIZE + 24 * HIDDEN_SIZE,
+         0,
+         10 * WEIGHT_INTERMEDIATE_SIZE + 4 * BIAS_INTERMEDIATE_SIZE +
+             3 * WEIGHT_HIDDEN_SIZE + 21 * BIAS_HIDDEN_SIZE,
+     }},
+    {"output_dense_bias",
+     {
+         0,  // unused
+         0,
+         11 * WEIGHT_INTERMEDIATE_SIZE + 4 * BIAS_INTERMEDIATE_SIZE +
+             3 * WEIGHT_HIDDEN_SIZE + 21 * BIAS_HIDDEN_SIZE,
+     }},
+    {"intermediate_dense_weight",
+     {
+         4 * INTERMEDIATE_SIZE + 23 * HIDDEN_SIZE,
+         0,
+         9 * WEIGHT_INTERMEDIATE_SIZE + 3 * BIAS_INTERMEDIATE_SIZE +
+             3 * WEIGHT_HIDDEN_SIZE + 21 * BIAS_HIDDEN_SIZE,
+     }},
+    {"intermediate_dense_bias",
+     {
+         0,
+         0,
+         10 * WEIGHT_INTERMEDIATE_SIZE + 3 * BIAS_INTERMEDIATE_SIZE +
+             3 * WEIGHT_HIDDEN_SIZE + 21 * BIAS_HIDDEN_SIZE,
+     }},
+
+    {"ffn_2_output_LayerNorm_weight",
+     {
+         4 * INTERMEDIATE_SIZE + 22 * HIDDEN_SIZE,
+         0,
+         9 * WEIGHT_INTERMEDIATE_SIZE + 3 * BIAS_INTERMEDIATE_SIZE +
+             3 * WEIGHT_HIDDEN_SIZE + 19 * BIAS_HIDDEN_SIZE,
+     }},
+    {"ffn_2_output_LayerNorm_bias",
+     {
+         0,
+         0,
+         9 * WEIGHT_INTERMEDIATE_SIZE + 3 * BIAS_INTERMEDIATE_SIZE +
+             3 * WEIGHT_HIDDEN_SIZE + 20 * BIAS_HIDDEN_SIZE,
+     }},
+    {"ffn_2_output_dense_weight",
      {
          3 * INTERMEDIATE_SIZE + 22 * HIDDEN_SIZE,
          0,
          8 * WEIGHT_INTERMEDIATE_SIZE + 3 * BIAS_INTERMEDIATE_SIZE +
              3 * WEIGHT_HIDDEN_SIZE + 18 * BIAS_HIDDEN_SIZE,
      }},
-    {"output_bottleneck_LayerNorm_bias",
+    {"ffn_2_output_dense_bias",
      {
          0,
          0,
-         8 * WEIGHT_INTERMEDIATE_SIZE + 4 * BIAS_INTERMEDIATE_SIZE +
+         9 * WEIGHT_INTERMEDIATE_SIZE + 3 * BIAS_INTERMEDIATE_SIZE +
              3 * WEIGHT_HIDDEN_SIZE + 18 * BIAS_HIDDEN_SIZE,
      }},
-    {"output_bottleneck_dense_weight",
+    {"ffn_2_intermediate_dense_weight",
      {
          3 * INTERMEDIATE_SIZE + 21 * HIDDEN_SIZE,
          0,
          7 * WEIGHT_INTERMEDIATE_SIZE + 2 * BIAS_INTERMEDIATE_SIZE +
              3 * WEIGHT_HIDDEN_SIZE + 18 * BIAS_HIDDEN_SIZE,
      }},
-    {"output_bottleneck_dense_bias",
+    {"ffn_2_intermediate_dense_bias",
      {
          0,
          0,
@@ -280,44 +378,44 @@ std::map<std::string, MemoryOffsets> gradientMemOffsets{
              3 * WEIGHT_HIDDEN_SIZE + 18 * BIAS_HIDDEN_SIZE,
      }},
 
-    {"output_LayerNorm_weight",
+    {"ffn_1_output_LayerNorm_weight",
      {
          3 * INTERMEDIATE_SIZE + 20 * HIDDEN_SIZE,
          0,
          7 * WEIGHT_INTERMEDIATE_SIZE + 2 * BIAS_INTERMEDIATE_SIZE +
              3 * WEIGHT_HIDDEN_SIZE + 16 * BIAS_HIDDEN_SIZE,
      }},
-    {"output_LayerNorm_bias",
+    {"ffn_1_output_LayerNorm_bias",
      {
          0,
          0,
          7 * WEIGHT_INTERMEDIATE_SIZE + 2 * BIAS_INTERMEDIATE_SIZE +
              3 * WEIGHT_HIDDEN_SIZE + 17 * BIAS_HIDDEN_SIZE,
      }},
-    {"output_dense_weight",
+    {"ffn_1_output_dense_weight",
      {
          2 * INTERMEDIATE_SIZE + 20 * HIDDEN_SIZE,
          0,
          6 * WEIGHT_INTERMEDIATE_SIZE + 2 * BIAS_INTERMEDIATE_SIZE +
              3 * WEIGHT_HIDDEN_SIZE + 15 * BIAS_HIDDEN_SIZE,
      }},
-    {"output_dense_bias",
+    {"ffn_1_output_dense_bias",
      {
-         0,
+         0,  // unused
          0,
          7 * WEIGHT_INTERMEDIATE_SIZE + 2 * BIAS_INTERMEDIATE_SIZE +
              3 * WEIGHT_HIDDEN_SIZE + 15 * BIAS_HIDDEN_SIZE,
      }},
-    {"intermediate_dense_weight",
+    {"ffn_1_intermediate_dense_weight",
      {
          2 * INTERMEDIATE_SIZE + 19 * HIDDEN_SIZE,
          0,
          5 * WEIGHT_INTERMEDIATE_SIZE + BIAS_INTERMEDIATE_SIZE +
              3 * WEIGHT_HIDDEN_SIZE + 15 * BIAS_HIDDEN_SIZE,
      }},
-    {"intermediate_dense_bias",
+    {"ffn_1_intermediate_dense_bias",
      {
-         0,
+         0,  // unused
          0,
          6 * WEIGHT_INTERMEDIATE_SIZE + BIAS_INTERMEDIATE_SIZE +
              3 * WEIGHT_HIDDEN_SIZE + 15 * BIAS_HIDDEN_SIZE,
@@ -332,7 +430,7 @@ std::map<std::string, MemoryOffsets> gradientMemOffsets{
      }},
     {"ffn_0_output_LayerNorm_bias",
      {
-         0,
+         0,  // unused
          0,
          5 * WEIGHT_INTERMEDIATE_SIZE + BIAS_INTERMEDIATE_SIZE +
              3 * WEIGHT_HIDDEN_SIZE + 14 * BIAS_HIDDEN_SIZE,
@@ -346,7 +444,7 @@ std::map<std::string, MemoryOffsets> gradientMemOffsets{
      }},
     {"ffn_0_output_dense_bias",
      {
-         0,
+         0,  // unused
          0,
          5 * WEIGHT_INTERMEDIATE_SIZE + BIAS_INTERMEDIATE_SIZE +
              3 * WEIGHT_HIDDEN_SIZE + 12 * BIAS_HIDDEN_SIZE,
@@ -360,7 +458,7 @@ std::map<std::string, MemoryOffsets> gradientMemOffsets{
      }},
     {"ffn_0_intermediate_dense_bias",
      {
-         0,
+         0,  // unused
          0,
          4 * WEIGHT_INTERMEDIATE_SIZE + 3 * WEIGHT_HIDDEN_SIZE +
              12 * BIAS_HIDDEN_SIZE,
@@ -375,7 +473,7 @@ std::map<std::string, MemoryOffsets> gradientMemOffsets{
      }},
     {"attention_output_LayerNorm_bias",
      {
-         0,
+         0,  // unused
          0,
          3 * WEIGHT_INTERMEDIATE_SIZE + 3 * WEIGHT_HIDDEN_SIZE +
              11 * BIAS_HIDDEN_SIZE,
@@ -389,7 +487,7 @@ std::map<std::string, MemoryOffsets> gradientMemOffsets{
      }},
     {"attention_output_dense_bias",
      {
-         0,
+         0,  // unused
          0,
          3 * WEIGHT_INTERMEDIATE_SIZE + 3 * WEIGHT_HIDDEN_SIZE +
              9 * BIAS_HIDDEN_SIZE,
@@ -566,6 +664,92 @@ std::map<std::string, Files> gradientTestFiles{
          "intermediate_dense",
          "",
          "intermediate_dense_bias",
+     }},
+
+    {"ffn_2_output_LayerNorm_weight",
+     {
+         "ffn_2_output_residual",
+         "ffn_2_output_LayerNorm",
+         "",
+         "ffn_2_output_LayerNorm_weight",
+     }},
+    {"ffn_2_output_LayerNorm_bias",
+     {
+         "",
+         "ffn_2_output_LayerNorm",
+         "",
+         "ffn_2_output_LayerNorm_bias",
+     }},
+    {"ffn_2_output_dense_weight",
+     {
+         "ffn_2_intermediate_intermediate_act_fn",
+         "ffn_2_output_dense",
+         "",
+         "ffn_2_output_dense_weight",
+     }},
+    {"ffn_2_output_dense_bias",
+     {
+         "ffn_2_intermediate_intermediate_act_fn",
+         "ffn_2_output_dense",
+         "",
+         "ffn_2_output_dense_bias",
+     }},
+    {"ffn_2_intermediate_dense_weight",
+     {
+         "ffn_1_output_LayerNorm",
+         "ffn_2_intermediate_dense",
+         "",
+         "ffn_2_intermediate_dense_weight",
+     }},
+    {"ffn_2_intermediate_dense_bias",
+     {
+         "",
+         "ffn_2_intermediate_dense",
+         "",
+         "ffn_2_intermediate_dense_bias",
+     }},
+
+    {"ffn_1_output_LayerNorm_weight",
+     {
+         "ffn_1_output_residual",
+         "ffn_1_output_LayerNorm",
+         "",
+         "ffn_1_output_LayerNorm_weight",
+     }},
+    {"ffn_1_output_LayerNorm_bias",
+     {
+         "",
+         "ffn_1_output_LayerNorm",
+         "",
+         "ffn_1_output_LayerNorm_bias",
+     }},
+    {"ffn_1_output_dense_weight",
+     {
+         "ffn_1_intermediate_intermediate_act_fn",
+         "ffn_1_output_dense",
+         "",
+         "ffn_1_output_dense_weight",
+     }},
+    {"ffn_1_output_dense_bias",
+     {
+         "ffn_1_intermediate_intermediate_act_fn",
+         "ffn_1_output_dense",
+         "",
+         "ffn_1_output_dense_bias",
+     }},
+    {"ffn_1_intermediate_dense_weight",
+     {
+         "ffn_0_output_LayerNorm",
+         "ffn_1_intermediate_dense",
+         "",
+         "ffn_1_intermediate_dense_weight",
+     }},
+    {"ffn_1_intermediate_dense_bias",
+     {
+         "",
+         "ffn_1_intermediate_dense",
+         "",
+         "ffn_1_intermediate_dense_bias",
      }},
 
     {"ffn_0_output_LayerNorm_weight",

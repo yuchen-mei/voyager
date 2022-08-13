@@ -11,18 +11,15 @@ void run_custom_posit_gold_model(
     const SimplifiedParams params, INPUT_DATATYPE *matrixA,
     INPUT_DATATYPE *matrixB, INPUT_DATATYPE *matrixC,
     INPUT_DATATYPE *biasMatrix, INPUT_DATATYPE *residualMatrix,
-    INPUT_DATATYPE *residualWeightMatrix, INPUT_DATATYPE *residualBiasMatrix,
-    bool inputScaling, bool weightScaling);
+    INPUT_DATATYPE *residualWeightMatrix, INPUT_DATATYPE *residualBiasMatrix);
 
 void run_universal_posit_gold_model(
     const SimplifiedParams params, UniversalPosit *matrixA,
     UniversalPosit *matrixB, UniversalPosit *matrixC,
     UniversalPosit *biasMatrix, UniversalPosit *residualMatrix,
-    UniversalPosit *residualWeightMatrix, UniversalPosit *residualBiasMatrix,
-    bool inputScaling, bool weightScaling);
+    UniversalPosit *residualWeightMatrix, UniversalPosit *residualBiasMatrix);
 
 void run_fp_gold_model(const SimplifiedParams params, float *matrixA,
                        float *matrixB, float *matrixC, float *biasMatrix,
                        float *residualMatrix, float *residualWeightMatrix,
-                       float *residualBiasMatrix, bool inputScaling,
-                       bool weightScaling);
+                       float *residualBiasMatrix);

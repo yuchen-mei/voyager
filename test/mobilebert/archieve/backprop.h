@@ -13,6 +13,12 @@ std::vector<std::string> backpropOrder{
     "output_LayerNorm",
     "output_dense",
     "intermediate_dense",
+    // "ffn_2_output_LayerNorm",
+    // "ffn_2_output_dense",
+    // "ffn_2_intermediate_dense",
+    // "ffn_1_output_LayerNorm",
+    // "ffn_1_output_dense",
+    // "ffn_1_intermediate_dense",
     "ffn_0_output_LayerNorm",
     "ffn_0_output_dense",
     "ffn_0_intermediate_dense",
@@ -40,12 +46,12 @@ std::vector<std::string> backpropOrder{
     "attention_self_key_layer_2",
     "attention_self_key_layer_1",
     "attention_self_key_layer_0",
-    "bottleneck_attention_LayerNorm_q",
-    "bottleneck_attention_LayerNorm_k",
+    "bottleneck_attention_LayerNorm_0",
+    "bottleneck_attention_LayerNorm_1",
     "bottleneck_attention_dense",
-    "shared_attention_input_to_hidden_states",
-    "value_to_hidden_states",
-    "bottlenecked_hidden_states",
+    "hidden_states_0",
+    "hidden_states_1",
+    "hidden_states_2",
 };
 
 std::map<std::string, std::string> backpropParamsMapping{
@@ -55,6 +61,12 @@ std::map<std::string, std::string> backpropParamsMapping{
     {"output_LayerNorm", "outputBottleneck"},
     {"output_dense", "bottleneckLayerNorm"},
     {"intermediate_dense", "ffn2"},
+    {"ffn_2_output_LayerNorm", "ffn1"},
+    {"ffn_2_output_dense", "bottleneckLayerNorm"},
+    {"ffn_2_intermediate_dense", "ffn2"},
+    {"ffn_1_output_LayerNorm", "ffn1"},
+    {"ffn_1_output_dense", "bottleneckLayerNorm"},
+    {"ffn_1_intermediate_dense", "ffn2"},
     {"ffn_0_output_LayerNorm", "ffn1"},
     {"ffn_0_output_dense", "bottleneckLayerNorm"},
     {"ffn_0_intermediate_dense", "ffn2"},
@@ -82,12 +94,12 @@ std::map<std::string, std::string> backpropParamsMapping{
     {"attention_self_key_layer_1", "kAttention"},
     {"attention_self_key_layer_2", "kAttention"},
     {"attention_self_key_layer_3", "kAttention"},
-    {"bottleneck_attention_LayerNorm_q", "qProjection"},
-    {"bottleneck_attention_LayerNorm_k", "kProjection"},
+    {"bottleneck_attention_LayerNorm_0", "qProjection"},
+    {"bottleneck_attention_LayerNorm_1", "kProjection"},
     {"bottleneck_attention_dense", "bottleneckLayerNorm"},
-    {"shared_attention_input_to_hidden_states", "inputBottleneck"},
-    {"value_to_hidden_states", "vProjection"},
-    {"bottlenecked_hidden_states", "inputBottleneck"},
+    {"hidden_states_0", "inputBottleneck"},
+    {"hidden_states_1", "vProjection"},
+    {"hidden_states_2", "inputBottleneck"},
 };
 
 std::map<std::string, SimplifiedParams> backpropParams{
@@ -119,7 +131,6 @@ std::map<std::string, SimplifiedParams> backpropParams{
          .weightReuseIndex = {4, 5},
          .STRIDE = 1,
          .WEIGHT = true,
-         .ACC_T_OUTPUT = true,
      }},
 
     // (128 x 512) * 512
@@ -136,8 +147,6 @@ std::map<std::string, SimplifiedParams> backpropParams{
          .STRIDE = 1,
          .WEIGHT = true,
          .NO_NORM = true,
-         .ACC_T_INPUT = true,
-         .ACC_T_OUTPUT = true,
      }},
 
     // (128 x 512) x (512 x 128)
@@ -154,8 +163,6 @@ std::map<std::string, SimplifiedParams> backpropParams{
          .weightReuseIndex = {4, 5},
          .STRIDE = 1,
          .WEIGHT = true,
-         .ACC_T_INPUT = true,
-         .ACC_T_OUTPUT = true,
      }},
 
     // (128 x 128) x (128 x 512)
@@ -173,8 +180,6 @@ std::map<std::string, SimplifiedParams> backpropParams{
          .STRIDE = 1,
          .WEIGHT = true,
          .RELU_GRAD = true,
-         .ACC_T_INPUT = true,
-         .ACC_T_OUTPUT = true,
      }},
 
     // (128 x 512) x (512 x 128)
@@ -192,8 +197,6 @@ std::map<std::string, SimplifiedParams> backpropParams{
          .STRIDE = 1,
          .RESIDUAL = true,
          .WEIGHT = true,
-         .ACC_T_INPUT = true,
-         .ACC_T_OUTPUT = true,
      }},
 
     // (128 x 128) x (128 x 128)
@@ -211,8 +214,6 @@ std::map<std::string, SimplifiedParams> backpropParams{
          .STRIDE = 1,
          .WEIGHT = true,
          .SPLIT_OUTPUT = true,
-         .ACC_T_INPUT = true,
-         .ACC_T_OUTPUT = true,
      }},
 
     // (128 x 32) * (32 x 128)
@@ -228,9 +229,6 @@ std::map<std::string, SimplifiedParams> backpropParams{
          .fyIndex = 2,
          .weightReuseIndex = {4, 5},
          .STRIDE = 1,
-         .ACC_T_INPUT = true,
-         .ACC_T_WEIGHT = true,
-         .ACC_T_OUTPUT = true,
      }},
 
     // (128 x 128) x (128 x 32)
@@ -246,9 +244,6 @@ std::map<std::string, SimplifiedParams> backpropParams{
          .weightReuseIndex = {4, 5},
          .STRIDE = 1,
          .INPUT_TRANSPOSE = true,
-         .ACC_T_INPUT = true,
-         .ACC_T_WEIGHT = true,
-         .ACC_T_OUTPUT = true,
      }},
 
     // (128 x 128) x (128 x 512)
@@ -267,8 +262,6 @@ std::map<std::string, SimplifiedParams> backpropParams{
          .RESIDUAL = true,
          .WEIGHT = true,
          .CONCAT_INPUT = true,
-         .ACC_T_INPUT = true,
-         .ACC_T_OUTPUT = true,
      }},
 
     // (128 x 128)
@@ -284,8 +277,6 @@ std::map<std::string, SimplifiedParams> backpropParams{
          .weightReuseIndex = {4, 5},
          .STRIDE = 1,
          .SOFTMAX_GRAD = true,
-         .ACC_T_INPUT = true,
-         .ACC_T_OUTPUT = true,
      }},
 
     // (128 x 128) x (128 x 32)
@@ -300,9 +291,6 @@ std::map<std::string, SimplifiedParams> backpropParams{
          .fyIndex = 2,
          .weightReuseIndex = {5, 5},
          .STRIDE = 1,
-         .ACC_T_INPUT = true,
-         .ACC_T_WEIGHT = true,
-         .ACC_T_OUTPUT = true,
      }},
 
     // (128 x 128) x (128 x 128)
@@ -320,8 +308,6 @@ std::map<std::string, SimplifiedParams> backpropParams{
          .STRIDE = 1,
          .WEIGHT = true,
          .CONCAT_INPUT = true,
-         .ACC_T_INPUT = true,
-         .ACC_T_OUTPUT = true,
      }},
 
     // (128 x 128) * (128 x 32)
@@ -337,9 +323,6 @@ std::map<std::string, SimplifiedParams> backpropParams{
          .weightReuseIndex = {5, 5},
          .STRIDE = 1,
          .INPUT_TRANSPOSE = true,
-         .ACC_T_INPUT = true,
-         .ACC_T_WEIGHT = true,
-         .ACC_T_OUTPUT = true,
      }},
 
     // (128 x 128) x (128 x 128)
@@ -358,8 +341,6 @@ std::map<std::string, SimplifiedParams> backpropParams{
          .RESIDUAL = true,
          .WEIGHT = true,
          .CONCAT_INPUT = true,
-         .ACC_T_INPUT = true,
-         .ACC_T_OUTPUT = true,
      }},
 
     // (128 x 128) * 128
@@ -376,8 +357,6 @@ std::map<std::string, SimplifiedParams> backpropParams{
          .STRIDE = 1,
          .WEIGHT = true,
          .NO_NORM = true,
-         .ACC_T_INPUT = true,
-         .ACC_T_OUTPUT = true,
      }},
 
     // (128 x 128) x (128 x 512)
@@ -395,8 +374,6 @@ std::map<std::string, SimplifiedParams> backpropParams{
          .STRIDE = 1,
          .RESIDUAL = true,
          .WEIGHT = true,
-         .ACC_T_INPUT = true,
-         .ACC_T_OUTPUT = true,
      }},
 };
 
@@ -404,46 +381,115 @@ std::map<std::string, MemoryOffsets> backpropMemOffsets{
     {"classifier",
      {
          0,
-         5 * INTERMEDIATE_SIZE + 22 * HIDDEN_SIZE,
-         8 * WEIGHT_INTERMEDIATE_SIZE + 21 * BIAS_INTERMEDIATE_SIZE +
-             3 * WEIGHT_HIDDEN_SIZE + 18 * BIAS_HIDDEN_SIZE,
+         7 * INTERMEDIATE_SIZE + 26 * HIDDEN_SIZE,
+         12 * WEIGHT_INTERMEDIATE_SIZE + 23 * BIAS_INTERMEDIATE_SIZE +
+             3 * WEIGHT_HIDDEN_SIZE +
+             24 * BIAS_HIDDEN_SIZE,  // classfier bias gradient offset
+         0,
      }},
     {"output_bottleneck_LayerNorm",
      {
-         8 * WEIGHT_INTERMEDIATE_SIZE + 21 * BIAS_INTERMEDIATE_SIZE +
-             3 * WEIGHT_HIDDEN_SIZE + 18 * BIAS_HIDDEN_SIZE,
-         8 * WEIGHT_INTERMEDIATE_SIZE + 5 * BIAS_INTERMEDIATE_SIZE +
-             3 * WEIGHT_HIDDEN_SIZE + 18 * BIAS_HIDDEN_SIZE,
+         12 * WEIGHT_INTERMEDIATE_SIZE + 23 * BIAS_INTERMEDIATE_SIZE +
+             3 * WEIGHT_HIDDEN_SIZE + 24 * BIAS_HIDDEN_SIZE,
+         12 * WEIGHT_INTERMEDIATE_SIZE + 7 * BIAS_INTERMEDIATE_SIZE +
+             3 * WEIGHT_HIDDEN_SIZE + 24 * BIAS_HIDDEN_SIZE,
          INTERMEDIATE_SIZE,
+         12 * WEIGHT_INTERMEDIATE_SIZE + 23 * BIAS_INTERMEDIATE_SIZE +
+             3 * WEIGHT_HIDDEN_SIZE + 24 * BIAS_HIDDEN_SIZE,
      }},
     {"output_bottleneck_dense",
      {
          INTERMEDIATE_SIZE,
-         8 * WEIGHT_INTERMEDIATE_SIZE + 3 * BIAS_INTERMEDIATE_SIZE +
-             3 * WEIGHT_HIDDEN_SIZE + 18 * BIAS_HIDDEN_SIZE,
+         12 * WEIGHT_INTERMEDIATE_SIZE + 5 * BIAS_INTERMEDIATE_SIZE +
+             3 * WEIGHT_HIDDEN_SIZE + 24 * BIAS_HIDDEN_SIZE,
          0,
+         12 * WEIGHT_INTERMEDIATE_SIZE + 6 * BIAS_INTERMEDIATE_SIZE +
+             3 * WEIGHT_HIDDEN_SIZE + 24 * BIAS_HIDDEN_SIZE,
      }},
     {"output_LayerNorm",
      {
          0,
+         11 * WEIGHT_INTERMEDIATE_SIZE + 4 * BIAS_INTERMEDIATE_SIZE +
+             3 * WEIGHT_HIDDEN_SIZE + 24 * BIAS_HIDDEN_SIZE,
+         INTERMEDIATE_SIZE,
+         12 * WEIGHT_INTERMEDIATE_SIZE + 4 * BIAS_INTERMEDIATE_SIZE +
+             3 * WEIGHT_HIDDEN_SIZE + 24 * BIAS_HIDDEN_SIZE,
+     }},
+    {"output_dense",
+     {
+         INTERMEDIATE_SIZE,
+         11 * WEIGHT_INTERMEDIATE_SIZE + 4 * BIAS_INTERMEDIATE_SIZE +
+             3 * WEIGHT_HIDDEN_SIZE + 22 * BIAS_HIDDEN_SIZE,
+         INTERMEDIATE_SIZE + HIDDEN_SIZE,
+         11 * WEIGHT_INTERMEDIATE_SIZE + 4 * BIAS_INTERMEDIATE_SIZE +
+             3 * WEIGHT_HIDDEN_SIZE + 23 * BIAS_HIDDEN_SIZE,
+     }},
+    {"intermediate_dense",
+     {
+         INTERMEDIATE_SIZE + HIDDEN_SIZE,
+         10 * WEIGHT_INTERMEDIATE_SIZE + 4 * BIAS_INTERMEDIATE_SIZE +
+             3 * WEIGHT_HIDDEN_SIZE + 21 * BIAS_HIDDEN_SIZE,
+         INTERMEDIATE_SIZE + 2 * HIDDEN_SIZE,
+         11 * WEIGHT_INTERMEDIATE_SIZE + 4 * BIAS_INTERMEDIATE_SIZE +
+             3 * WEIGHT_HIDDEN_SIZE + 21 * BIAS_HIDDEN_SIZE,
+         4 * INTERMEDIATE_SIZE + 24 * HIDDEN_SIZE,
+     }},
+    {"ffn_2_output_LayerNorm",
+     {
+         INTERMEDIATE_SIZE + 2 * HIDDEN_SIZE,
+         9 * WEIGHT_INTERMEDIATE_SIZE + 3 * BIAS_INTERMEDIATE_SIZE +
+             3 * WEIGHT_HIDDEN_SIZE + 21 * BIAS_HIDDEN_SIZE,
+         INTERMEDIATE_SIZE,
+         10 * WEIGHT_INTERMEDIATE_SIZE + 3 * BIAS_INTERMEDIATE_SIZE +
+             3 * WEIGHT_HIDDEN_SIZE + 21 * BIAS_HIDDEN_SIZE,
+         INTERMEDIATE_SIZE + HIDDEN_SIZE,
+     }},
+    {"ffn_2_output_dense",
+     {
+         INTERMEDIATE_SIZE,
+         9 * WEIGHT_INTERMEDIATE_SIZE + 3 * BIAS_INTERMEDIATE_SIZE +
+             3 * WEIGHT_HIDDEN_SIZE + 19 * BIAS_HIDDEN_SIZE,
+         INTERMEDIATE_SIZE + HIDDEN_SIZE,
+         9 * WEIGHT_INTERMEDIATE_SIZE + 3 * BIAS_INTERMEDIATE_SIZE +
+             3 * WEIGHT_HIDDEN_SIZE + 20 * BIAS_HIDDEN_SIZE,
+     }},
+    {"ffn_2_intermediate_dense",
+     {
+         INTERMEDIATE_SIZE + HIDDEN_SIZE,
+         8 * WEIGHT_INTERMEDIATE_SIZE + 3 * BIAS_INTERMEDIATE_SIZE +
+             3 * WEIGHT_HIDDEN_SIZE + 18 * BIAS_HIDDEN_SIZE,
+         INTERMEDIATE_SIZE + 2 * HIDDEN_SIZE,
+         9 * WEIGHT_INTERMEDIATE_SIZE + 3 * BIAS_INTERMEDIATE_SIZE +
+             3 * WEIGHT_HIDDEN_SIZE + 18 * BIAS_HIDDEN_SIZE,
+         3 * INTERMEDIATE_SIZE + 22 * HIDDEN_SIZE,
+     }},
+    {"ffn_1_output_LayerNorm",
+     {
+         INTERMEDIATE_SIZE + 2 * HIDDEN_SIZE,
          7 * WEIGHT_INTERMEDIATE_SIZE + 2 * BIAS_INTERMEDIATE_SIZE +
              3 * WEIGHT_HIDDEN_SIZE + 18 * BIAS_HIDDEN_SIZE,
          INTERMEDIATE_SIZE,
+         8 * WEIGHT_INTERMEDIATE_SIZE + 2 * BIAS_INTERMEDIATE_SIZE +
+             3 * WEIGHT_HIDDEN_SIZE + 18 * BIAS_HIDDEN_SIZE,
+         INTERMEDIATE_SIZE + HIDDEN_SIZE,
      }},
-    {"output_dense",
+    {"ffn_1_output_dense",
      {
          INTERMEDIATE_SIZE,
          7 * WEIGHT_INTERMEDIATE_SIZE + 2 * BIAS_INTERMEDIATE_SIZE +
              3 * WEIGHT_HIDDEN_SIZE + 16 * BIAS_HIDDEN_SIZE,
          INTERMEDIATE_SIZE + HIDDEN_SIZE,
+         7 * WEIGHT_INTERMEDIATE_SIZE + 2 * BIAS_INTERMEDIATE_SIZE +
+             3 * WEIGHT_HIDDEN_SIZE + 17 * BIAS_HIDDEN_SIZE,
      }},
-    {"intermediate_dense",
+    {"ffn_1_intermediate_dense",
      {
          INTERMEDIATE_SIZE + HIDDEN_SIZE,
          6 * WEIGHT_INTERMEDIATE_SIZE + 2 * BIAS_INTERMEDIATE_SIZE +
              3 * WEIGHT_HIDDEN_SIZE + 15 * BIAS_HIDDEN_SIZE,
          INTERMEDIATE_SIZE + 2 * HIDDEN_SIZE,
-         0,
+         7 * WEIGHT_INTERMEDIATE_SIZE + 2 * BIAS_INTERMEDIATE_SIZE +
+             3 * WEIGHT_HIDDEN_SIZE + 15 * BIAS_HIDDEN_SIZE,
          2 * INTERMEDIATE_SIZE + 20 * HIDDEN_SIZE,
      }},
     {"ffn_0_output_LayerNorm",
@@ -452,7 +498,8 @@ std::map<std::string, MemoryOffsets> backpropMemOffsets{
          5 * WEIGHT_INTERMEDIATE_SIZE + BIAS_INTERMEDIATE_SIZE +
              3 * WEIGHT_HIDDEN_SIZE + 15 * BIAS_HIDDEN_SIZE,
          INTERMEDIATE_SIZE,
-         0,
+         6 * WEIGHT_INTERMEDIATE_SIZE + BIAS_INTERMEDIATE_SIZE +
+             3 * WEIGHT_HIDDEN_SIZE + 15 * BIAS_HIDDEN_SIZE,
          INTERMEDIATE_SIZE + HIDDEN_SIZE,
      }},
     {"ffn_0_output_dense",
@@ -461,6 +508,8 @@ std::map<std::string, MemoryOffsets> backpropMemOffsets{
          5 * WEIGHT_INTERMEDIATE_SIZE + BIAS_INTERMEDIATE_SIZE +
              3 * WEIGHT_HIDDEN_SIZE + 13 * BIAS_HIDDEN_SIZE,
          INTERMEDIATE_SIZE + HIDDEN_SIZE,
+         5 * WEIGHT_INTERMEDIATE_SIZE + BIAS_INTERMEDIATE_SIZE +
+             3 * WEIGHT_HIDDEN_SIZE + 14 * BIAS_HIDDEN_SIZE,
      }},
     {"ffn_0_intermediate_dense",
      {
@@ -468,7 +517,8 @@ std::map<std::string, MemoryOffsets> backpropMemOffsets{
          4 * WEIGHT_INTERMEDIATE_SIZE + BIAS_INTERMEDIATE_SIZE +
              3 * WEIGHT_HIDDEN_SIZE + 12 * BIAS_HIDDEN_SIZE,
          INTERMEDIATE_SIZE + 2 * HIDDEN_SIZE,
-         0,
+         5 * WEIGHT_INTERMEDIATE_SIZE + BIAS_INTERMEDIATE_SIZE +
+             3 * WEIGHT_HIDDEN_SIZE + 12 * BIAS_HIDDEN_SIZE,
          INTERMEDIATE_SIZE + 18 * HIDDEN_SIZE,
      }},
     {"attention_output_LayerNorm",
@@ -477,7 +527,8 @@ std::map<std::string, MemoryOffsets> backpropMemOffsets{
          3 * WEIGHT_INTERMEDIATE_SIZE + 3 * WEIGHT_HIDDEN_SIZE +
              12 * BIAS_HIDDEN_SIZE,
          INTERMEDIATE_SIZE,
-         0,
+         4 * WEIGHT_INTERMEDIATE_SIZE + 3 * WEIGHT_HIDDEN_SIZE +
+             12 * BIAS_HIDDEN_SIZE,
          INTERMEDIATE_SIZE + HIDDEN_SIZE,
      }},
     {"attention_output_dense",
@@ -486,6 +537,8 @@ std::map<std::string, MemoryOffsets> backpropMemOffsets{
          3 * WEIGHT_INTERMEDIATE_SIZE + 3 * WEIGHT_HIDDEN_SIZE +
              10 * BIAS_HIDDEN_SIZE,
          INTERMEDIATE_SIZE + HIDDEN_SIZE,
+         3 * WEIGHT_INTERMEDIATE_SIZE + 3 * WEIGHT_HIDDEN_SIZE +
+             11 * BIAS_HIDDEN_SIZE,
      }},
     {"bottleneck_input_dense",
      {
@@ -499,6 +552,8 @@ std::map<std::string, MemoryOffsets> backpropMemOffsets{
          3 * WEIGHT_INTERMEDIATE_SIZE + 2 * WEIGHT_HIDDEN_SIZE +
              9 * BIAS_HIDDEN_SIZE,
          INTERMEDIATE_SIZE + 2 * HIDDEN_SIZE,
+         3 * WEIGHT_INTERMEDIATE_SIZE + 3 * WEIGHT_HIDDEN_SIZE +
+             9 * BIAS_HIDDEN_SIZE,
      }},
     {"attention_self_value_layer_0",
      {
@@ -631,19 +686,22 @@ std::map<std::string, MemoryOffsets> backpropMemOffsets{
          INTERMEDIATE_SIZE + 7 * HIDDEN_SIZE + 3 * HEAD_SIZE,
      }},
 
-    {"bottleneck_attention_LayerNorm_q",
+    {"bottleneck_attention_LayerNorm_0",
      {
          INTERMEDIATE_SIZE + 6 * HIDDEN_SIZE,
          2 * WEIGHT_INTERMEDIATE_SIZE + 6 * BIAS_HIDDEN_SIZE,
          INTERMEDIATE_SIZE + 2 * HIDDEN_SIZE,
+         2 * WEIGHT_INTERMEDIATE_SIZE + WEIGHT_HIDDEN_SIZE +
+             6 * BIAS_HIDDEN_SIZE,
      }},
-    {"bottleneck_attention_LayerNorm_k",
+    {"bottleneck_attention_LayerNorm_1",
      {
          INTERMEDIATE_SIZE + 7 * HIDDEN_SIZE,
          2 * WEIGHT_INTERMEDIATE_SIZE + WEIGHT_HIDDEN_SIZE +
              7 * BIAS_HIDDEN_SIZE,
          INTERMEDIATE_SIZE + 3 * HIDDEN_SIZE,
-         0,
+         2 * WEIGHT_INTERMEDIATE_SIZE + 2 * WEIGHT_HIDDEN_SIZE +
+             7 * BIAS_HIDDEN_SIZE,
          INTERMEDIATE_SIZE + 2 * HIDDEN_SIZE,
      }},
     {"bottleneck_attention_dense",
@@ -651,30 +709,32 @@ std::map<std::string, MemoryOffsets> backpropMemOffsets{
          INTERMEDIATE_SIZE + 3 * HIDDEN_SIZE,
          2 * WEIGHT_INTERMEDIATE_SIZE + 4 * BIAS_HIDDEN_SIZE,
          INTERMEDIATE_SIZE + 2 * HIDDEN_SIZE,
+         2 * WEIGHT_INTERMEDIATE_SIZE + 5 * BIAS_HIDDEN_SIZE,
      }},
-    {"shared_attention_input_to_hidden_states",
+    {"hidden_states_0",
      {
          INTERMEDIATE_SIZE,
          0,
          0,
-         0,
+         WEIGHT_INTERMEDIATE_SIZE,
          0,
      }},
-    {"value_to_hidden_states",
+    {"hidden_states_1",
      {
          INTERMEDIATE_SIZE + HIDDEN_SIZE,
          2 * WEIGHT_INTERMEDIATE_SIZE + 2 * WEIGHT_HIDDEN_SIZE +
              8 * BIAS_HIDDEN_SIZE,
          0,
-         0,
+         3 * WEIGHT_INTERMEDIATE_SIZE + 2 * WEIGHT_HIDDEN_SIZE +
+             8 * BIAS_HIDDEN_SIZE,
          0,
      }},
-    {"bottlenecked_hidden_states",
+    {"hidden_states_2",
      {
          INTERMEDIATE_SIZE + 2 * HIDDEN_SIZE,
          WEIGHT_INTERMEDIATE_SIZE + 3 * BIAS_HIDDEN_SIZE,
          INTERMEDIATE_SIZE,
-         0,
+         2 * WEIGHT_INTERMEDIATE_SIZE + 3 * BIAS_HIDDEN_SIZE,
          0,
      }},
 };
@@ -722,6 +782,54 @@ std::map<std::string, Files> backpropTestFiles{
          "",
          "intermediate_dense",
          "intermediate_dense",
+     }},
+
+    {"ffn_2_output_LayerNorm",
+     {
+         "intermediate_dense",
+         "intermediate_dense_weight",
+         "",
+         "ffn_2_output_LayerNorm",
+         "output_dense",
+     }},
+    {"ffn_2_output_dense",
+     {
+         "ffn_2_output_LayerNorm",
+         "ffn_2_output_LayerNorm_weight",
+         "",
+         "ffn_2_output_dense",
+     }},
+    {"ffn_2_intermediate_dense",
+     {
+         "ffn_2_output_dense",
+         "ffn_2_output_dense_weight",
+         "",
+         "ffn_2_intermediate_dense",
+         "ffn_2_intermediate_dense",
+     }},
+
+    {"ffn_1_output_LayerNorm",
+     {
+         "ffn_2_intermediate_dense",
+         "ffn_2_intermediate_dense_weight",
+         "",
+         "ffn_1_output_LayerNorm",
+         "ffn_2_output_dense",
+     }},
+    {"ffn_1_output_dense",
+     {
+         "ffn_1_output_LayerNorm",
+         "ffn_1_output_LayerNorm_weight",
+         "",
+         "ffn_1_output_dense",
+     }},
+    {"ffn_1_intermediate_dense",
+     {
+         "ffn_1_output_dense",
+         "ffn_1_output_dense_weight",
+         "",
+         "ffn_1_intermediate_dense",
+         "ffn_1_intermediate_dense",
      }},
 
     {"ffn_0_output_LayerNorm",
@@ -927,14 +1035,14 @@ std::map<std::string, Files> backpropTestFiles{
          "attention_self_key_layer_3",
      }},
 
-    {"bottleneck_attention_LayerNorm_q",
+    {"bottleneck_attention_LayerNorm_0",
      {
          "attention_self_query_layer",
          "attention_self_query_weight",
          "",
          "bottleneck_attention_LayerNorm",
      }},
-    {"bottleneck_attention_LayerNorm_k",
+    {"bottleneck_attention_LayerNorm_1",
      {
          "attention_self_key_layer",
          "attention_self_key_weight",
@@ -949,21 +1057,21 @@ std::map<std::string, Files> backpropTestFiles{
          "bottleneck_attention_dense",
      }},
 
-    {"shared_attention_input_to_hidden_states",
+    {"hidden_states_0",
      {
          "bottleneck_input_dense",
          "bottleneck_input_dense_weight",
          "",
          "hidden_states",
      }},
-    {"value_to_hidden_states",
+    {"hidden_states_1",
      {
          "attention_self_mixed_value_layer",
          "attention_self_value_weight",
          "",
          "hidden_states",
      }},
-    {"bottlenecked_hidden_states",
+    {"hidden_states_2",
      {
          "bottleneck_attention_dense",
          "bottleneck_attention_dense_weight",

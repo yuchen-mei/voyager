@@ -4,40 +4,31 @@
 #include <iostream>
 #include <random>
 
-void save_double(INPUT_DATATYPE* array, double val) {
-  float fval = (float)val;
-  *array = INPUT_DATATYPE(fval);
-}
-
-void save_bias(ACCUM_DATATYPE* array, double val) {
-  float fval = (float)val;
-  *array = ACCUM_DATATYPE(fval);
-}
-
-void save_bias_as_double_precision(INPUT_DATATYPE* array, double val) {
-  float fval = (float)val;
-  ACCUM_DATATYPE positVal = ACCUM_DATATYPE(fval);
-  for (int i = 0; i < 2; i++) {
-    array[i].bits = positVal.bits.slc<8>(i * 8);
+void save_float(INPUT_DATATYPE* array, int index, float val, bool accType) {
+  if (!accType) {
+    array[index] = val;
+  } else {
+    ACCUM_DATATYPE p16 = val;
+    int bits = p16.bits;
+    array[2 * index].setbits((bits >> 8) & 0xFF);
+    array[2 * index + 1].setbits(bits & 0xFF);
   }
 }
 
 #ifndef NO_UNIVERSAL
-void save_double(UniversalPosit* array, double val) {
-  float fval = (float)val;
-  *array = fval;
-}
-
-void save_bias(UniversalPositAccum* array, double val) {
-  float fval = (float)val;
-  *array = UniversalPositAccum(fval);
+void save_float(UniversalPosit* array, int index, float val, bool accType) {
+  if (!accType) {
+    array[index] = val;
+  } else {
+    UniversalPositAccum p16 = val;
+    int bits = p16.encoding();
+    array[2 * index].setbits((bits >> 8) & 0xFF);
+    array[2 * index + 1].setbits(bits & 0xFF);
+  }
 }
 #endif
 
-void save_double(float* array, double val) {
-  float fval = (float)val;
-  *array = fval;
-}
+void save_float(float* array, int index, float val) { array[index] = val; }
 
 double* read_file_as_double(const std::string& filename, int size,
                             bool useDataFile) {
@@ -114,30 +105,25 @@ void load_inputs(const SimplifiedParams& params, const std::string& filename,
             double val = *(tmpValuePtr++);
 
             int address = y * ((STRIDE * X) / 4) * 16 + x_o * 16 + x_i * 3 + c;
-            save_double(&acceleratorMemory[params.INPUT_OFFSET + address], val);
+            save_float(&acceleratorMemory[params.INPUT_OFFSET], address, val,
+                       params.ACC_T_INPUT);
 
             address = y * (STRIDE * X) * C + x * C + c;
-            save_double(&goldMemory[address], val);
-            save_double(&universalGoldMemory[address], val);
-            save_double(&floatGoldMemory[address], val);
+            save_float(goldMemory, address, val, params.ACC_T_INPUT);
+            save_float(universalGoldMemory, address, val, params.ACC_T_INPUT);
+            save_float(floatGoldMemory, address, val);
           }
         }
       }
     }
   } else {
-    for (int y = 0; y < STRIDE * Y; y++) {
-      for (int x = 0; x < STRIDE * X; x++) {
-        for (int c = 0; c < C; c++) {
-          double val = *(tmpValuePtr++);
-
-          int address = y * (STRIDE * X) * C + x * C + c;
-
-          save_double(&acceleratorMemory[params.INPUT_OFFSET + address], val);
-          save_double(&goldMemory[address], val);
-          save_double(&universalGoldMemory[address], val);
-          save_double(&floatGoldMemory[address], val);
-        }
-      }
+    for (int i = 0; i < size; i++) {
+      double val = *(tmpValuePtr++);
+      save_float(&acceleratorMemory[params.INPUT_OFFSET], i, val,
+                 params.ACC_T_INPUT);
+      save_float(goldMemory, i, val, params.ACC_T_INPUT);
+      save_float(universalGoldMemory, i, val, params.ACC_T_INPUT);
+      save_float(floatGoldMemory, i, val);
     }
   }
 
@@ -176,32 +162,26 @@ void load_weights(const SimplifiedParams& params, const std::string& filename,
   }
 
   int size = FY * FX * C * K;
+#if PIPE_INPUT == 1
+  double* tmpValues;
+  if (params.ATTENTION_MASK) {
+    tmpValues = read_input_as_double(size);
+  } else {
+    tmpValues = read_file_as_double(filename, size, useDataFile);
+  }
+#else
   double* tmpValues = read_file_as_double(filename, size, useDataFile);
+#endif
   double* tmpValuePtr = tmpValues;
 
-  for (int fy = 0; fy < FY; fy++) {
-    for (int fx = 0; fx < FX; fx++) {
-      for (int c = 0; c < C; c++) {
-        for (int k = 0; k < K; k++) {
-          int address = fy * FX * C * K + fx * C * K + c * K + k;
-          double val = *(tmpValuePtr++);
-
-          save_double(&acceleratorMemory[params.WEIGHT_OFFSET + address], val);
-          save_double(&goldMemory[address], val);
-          save_double(&universalGoldMemory[address], val);
-          save_double(&floatGoldMemory[address], val);
-        }
-      }
-    }
+  for (int i = 0; i < size; i++) {
+    double val = *(tmpValuePtr++);
+    save_float(&acceleratorMemory[params.WEIGHT_OFFSET], i, val,
+               params.ACC_T_WEIGHT);
+    save_float(goldMemory, i, val, params.ACC_T_WEIGHT);
+    save_float(universalGoldMemory, i, val, params.ACC_T_WEIGHT);
+    save_float(floatGoldMemory, i, val);
   }
-
-#ifdef WEIGHT_SCALING
-  double val = *tmpValuePtr;
-  save_double(&acceleratorMemory[params.WEIGHT_OFFSET + size - 1], val);
-  save_double(&goldMemory[size - 1], val);
-  save_double(&universalGoldMemory[size - 1], val);
-  save_double(&floatGoldMemory[size - 1], val);
-#endif
 
   delete[] tmpValues;
 }
@@ -229,14 +209,12 @@ void load_bias(const SimplifiedParams& params, const std::string& filename,
   double* tmpValues = read_file_as_double(filename, size, useDataFile);
   double* tmpValuePtr = tmpValues;
 
-  for (int k = 0; k < size; k++) {
+  for (int i = 0; i < size; i++) {
     double val = *(tmpValuePtr++);
-    save_bias_as_double_precision(
-        &acceleratorMemory[params.BIAS_OFFSET + k * 2], val);
-    save_bias(reinterpret_cast<ACCUM_DATATYPE*>(&goldMemory[k]), val);
-    save_bias(reinterpret_cast<UniversalPositAccum*>(&universalGoldMemory[k]),
-              val);
-    save_double(&floatGoldMemory[k], val);
+    save_float(&acceleratorMemory[params.BIAS_OFFSET], i, val, true);
+    save_float(goldMemory, i, val, true);
+    save_float(universalGoldMemory, i, val, true);
+    save_float(floatGoldMemory, i, val);
   }
 
   delete[] tmpValues;
@@ -269,18 +247,13 @@ void load_residual(const SimplifiedParams& params, const std::string& filename,
   double* tmpValues = read_file_as_double(filename, size, useDataFile);
   double* tmpValuePtr = tmpValues;
 
-  for (int y = 0; y < Y; y++) {
-    for (int x = 0; x < X; x++) {
-      for (int k = 0; k < K; k++) {
-        double val = *(tmpValuePtr++);
-
-        int address = y * X * K + x * K + k;
-        save_double(&acceleratorMemory[params.RESIDUAL_OFFSET + address], val);
-        save_double(&goldMemory[address], val);
-        save_double(&universalGoldMemory[address], val);
-        save_double(&floatGoldMemory[address], val);
-      }
-    }
+  for (int i = 0; i < size; i++) {
+    double val = *(tmpValuePtr++);
+    save_float(&acceleratorMemory[params.RESIDUAL_OFFSET], i, val,
+               params.ACC_T_OUTPUT);
+    save_float(goldMemory, i, val, params.ACC_T_OUTPUT);
+    save_float(universalGoldMemory, i, val, params.ACC_T_OUTPUT);
+    save_float(floatGoldMemory, i, val);
   }
 
   delete[] tmpValues;
@@ -325,25 +298,11 @@ void load_datafile_outputs(const SimplifiedParams params,
   double* tmpValues = read_file_as_double(filename, size, true);
   double* tmpValuePtr = tmpValues;
 
-  if (params.NO_NORM_GRAD) {
-    for (int c = 0; c < C; c++) {
-      double val = *(tmpValuePtr++);
-      save_double(&outputMatrix[c], val);
-      save_double(&universalOutputMatrix[c], val);
-      save_double(&floatOutputMatrix[c], val);
-    }
-  } else {
-    for (int y = 0; y < Y; y++) {
-      for (int x = 0; x < X; x++) {
-        for (int k = 0; k < K; k++) {
-          double val = *(tmpValuePtr++);
-          int address = y * X * K + x * K + k;
-          save_double(&outputMatrix[address], val);
-          save_double(&universalOutputMatrix[address], val);
-          save_double(&floatOutputMatrix[address], val);
-        }
-      }
-    }
+  for (int i = 0; i < size; i++) {
+    double val = *(tmpValuePtr++);
+    save_float(outputMatrix, i, val, params.ACC_T_OUTPUT);
+    save_float(universalOutputMatrix, i, val, params.ACC_T_OUTPUT);
+    save_float(floatOutputMatrix, i, val);
   }
 
   delete[] tmpValues;
