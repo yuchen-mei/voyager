@@ -8,6 +8,36 @@
 // #include "matplotlib-cpp/matplotlibcpp.h"
 // namespace plt = matplotlibcpp;
 
+#ifndef NO_UNIVERSAL
+inline float readInput(UniversalPosit *matrix, int index, bool accType) {
+  if (!accType) {
+    return static_cast<float>(matrix[index]);
+  }
+
+  int encoding1 = matrix[2 * index].encoding();
+  int encoding2 = matrix[2 * index + 1].encoding();
+  UniversalPositAccum p16;
+  p16.setbits((encoding2 << 8) + encoding1);
+  return static_cast<float>(p16);
+}
+#endif
+
+inline float readInput(INPUT_DATATYPE *matrix, int index, bool accType) {
+  if (!accType) {
+    return static_cast<float>(matrix[index]);
+  }
+
+  int encoding1 = matrix[2 * index].bits;
+  int encoding2 = matrix[2 * index + 1].bits;
+  ACCUM_DATATYPE p16;
+  p16.setbits((encoding2 << 8) + encoding1);
+  return static_cast<float>(p16);
+}
+
+inline float readInput(float *matrix, int index, bool accType) {
+  return accType ? matrix[2 * index] : matrix[index];
+}
+
 template <typename T>
 std::vector<float> get_float_vector(T *matrix, size_t size) {
   std::vector<float> vector(size);
@@ -31,7 +61,7 @@ void plot_histograms(TA *matrixA, TB *matrixB, size_t size,
 
 template <typename TA, typename TB>
 int compare_arrays_internal(TA *matrixA, TB *matrixB, size_t size,
-                            std::string &filename) {
+                            std::string filename, bool accType) {
   // plot_histograms<TA, TB>(matrixA, matrixB, size, filename);
   // buckets of <0.001, <0.01, <0.1, <1, >1
   int diff_buckets[5] = {0, 0, 0, 0, 0};
@@ -41,8 +71,8 @@ int compare_arrays_internal(TA *matrixA, TB *matrixB, size_t size,
   std::cout << "Writing comparison to file: " << filename << std::endl;
   std::ofstream diffFile(filename);
   for (int index = 0; index < size; index++) {
-    float a = static_cast<float>(matrixA[index]);
-    float b = static_cast<float>(matrixB[index]);
+    float a = readInput(matrixA, index, accType);
+    float b = readInput(matrixB, index, accType);
     diffFile << a << " vs. " << b << " ";
     float diff = abs(a - b);
 
@@ -121,32 +151,39 @@ int compare_arrays_internal(TA *matrixA, TB *matrixB, size_t size,
 }
 
 int compare_arrays(INPUT_DATATYPE *matrixA, INPUT_DATATYPE *matrixB,
-                   size_t size, std::string &filename) {
+                   size_t size, std::string filename, bool accType) {
   return compare_arrays_internal<INPUT_DATATYPE, INPUT_DATATYPE>(
-      matrixA, matrixB, size, filename);
+      matrixA, matrixB, size, filename, accType);
 }
 
 int compare_arrays(INPUT_DATATYPE *matrixA, float *matrixB, size_t size,
-                   std::string &filename) {
+                   std::string filename, bool accType) {
   return compare_arrays_internal<INPUT_DATATYPE, float>(matrixA, matrixB, size,
-                                                        filename);
+                                                        filename, accType);
 }
 
 #ifndef NO_UNIVERSAL
 int compare_arrays(INPUT_DATATYPE *matrixA, UniversalPosit *matrixB,
-                   size_t size, std::string &filename) {
+                   size_t size, std::string filename, bool accType) {
   return compare_arrays_internal<INPUT_DATATYPE, UniversalPosit>(
-      matrixA, matrixB, size, filename);
+      matrixA, matrixB, size, filename, accType);
 }
+
 int compare_arrays(UniversalPosit *matrixA, UniversalPosit *matrixB,
-                   size_t size, std::string &filename) {
+                   size_t size, std::string filename, bool accType) {
   return compare_arrays_internal<UniversalPosit, UniversalPosit>(
-      matrixA, matrixB, size, filename);
+      matrixA, matrixB, size, filename, accType);
+}
+
+int compare_arrays(UniversalPosit *matrixA, float *matrixB, size_t size,
+                   std::string filename, bool accType) {
+  return compare_arrays_internal<UniversalPosit, float>(matrixA, matrixB, size,
+                                                        filename, accType);
 }
 #endif
 
 int compare_arrays(float *matrixA, float *matrixB, size_t size,
-                   std::string &filename) {
-  return compare_arrays_internal<float, float>(matrixA, matrixB, size,
-                                               filename);
+                   std::string filename, bool accType) {
+  return compare_arrays_internal<float, float>(matrixA, matrixB, size, filename,
+                                               accType);
 }

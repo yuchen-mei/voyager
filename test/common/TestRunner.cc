@@ -100,6 +100,7 @@ int run_sequence(const std::string& group,
                  const std::vector<std::string>& comparisons) {
   // Set data parameters
   bool use_data_file = true;
+  bool accType = false;
   std::string data_dir;
   std::map<std::string, MemoryMap>* mem_map;
   std::map<std::string, SimplifiedParams>* param_map;
@@ -220,7 +221,7 @@ int run_sequence(const std::string& group,
           hls_gold_sram_memory + (*param_map)[test].OUTPUT_OFFSET,
           hls_gold_rram_memory + (*param_map)[test].BIAS_OFFSET,
           hls_gold_sram_memory + (*param_map)[test].RESIDUAL_OFFSET, nullptr,
-          nullptr, false, false);
+          nullptr);
     }
     if (std::find(comparisons.begin(), comparisons.end(), "universal") !=
         comparisons.end()) {
@@ -231,7 +232,7 @@ int run_sequence(const std::string& group,
           uni_gold_sram_memory + (*param_map)[test].OUTPUT_OFFSET,
           uni_gold_rram_memory + (*param_map)[test].BIAS_OFFSET,
           uni_gold_sram_memory + (*param_map)[test].RESIDUAL_OFFSET, nullptr,
-          nullptr, false, false);
+          nullptr);
     }
     if (std::find(comparisons.begin(), comparisons.end(), "fp32") !=
         comparisons.end()) {
@@ -242,7 +243,7 @@ int run_sequence(const std::string& group,
           float_gold_sram_memory + (*param_map)[test].OUTPUT_OFFSET,
           float_gold_rram_memory + (*param_map)[test].BIAS_OFFSET,
           float_gold_sram_memory + (*param_map)[test].RESIDUAL_OFFSET, nullptr,
-          nullptr, false, false);
+          nullptr);
     }
   }
 
@@ -285,21 +286,21 @@ int run_sequence(const std::string& group,
       error_count += compare_arrays(
           acc_sram_memory + (*param_map)[last_test].OUTPUT_OFFSET,
           hls_gold_sram_memory + (*param_map)[last_test].OUTPUT_OFFSET,
-          X * Y * K, diff_file);
+          X * Y * K, diff_file, accType);
     } else if ((comparisons[i] == "accelerator" &&
                 comparisons[i + 1] == "file") ||
                (comparisons[i + 1] == "accelerator" &&
                 comparisons[i] == "file")) {
       error_count += compare_arrays(
           acc_sram_memory + (*param_map)[last_test].OUTPUT_OFFSET, hls_comp,
-          X * Y * K, diff_file);
+          X * Y * K, diff_file, accType);
     } else if ((comparisons[i] == "customposit" &&
                 comparisons[i + 1] == "file") ||
                (comparisons[i + 1] == "customposit" &&
                 comparisons[i] == "file")) {
       error_count += compare_arrays(
           hls_gold_sram_memory + (*param_map)[last_test].OUTPUT_OFFSET,
-          hls_comp, X * Y * K, diff_file);
+          hls_comp, X * Y * K, diff_file, accType);
     } else if ((comparisons[i] == "universal" &&
                 comparisons[i + 1] == "customposit") ||
                (comparisons[i + 1] == "universal" &&
@@ -307,19 +308,19 @@ int run_sequence(const std::string& group,
       error_count += compare_arrays(
           hls_gold_sram_memory + (*param_map)[last_test].OUTPUT_OFFSET,
           uni_gold_sram_memory + (*param_map)[last_test].OUTPUT_OFFSET,
-          X * Y * K, diff_file);
+          X * Y * K, diff_file, accType);
     } else if ((comparisons[i] == "universal" &&
                 comparisons[i + 1] == "file") ||
                (comparisons[i + 1] == "universal" &&
                 comparisons[i] == "file")) {
       error_count += compare_arrays(
           uni_gold_sram_memory + (*param_map)[last_test].OUTPUT_OFFSET,
-          uni_comp, X * Y * K, diff_file);
+          uni_comp, X * Y * K, diff_file, accType);
     } else if ((comparisons[i] == "fp32" && comparisons[i + 1] == "file") ||
                (comparisons[i + 1] == "fp32" && comparisons[i] == "file")) {
       error_count += compare_arrays(
           float_gold_sram_memory + (*param_map)[last_test].OUTPUT_OFFSET,
-          fp_comp, X * Y * K, diff_file);
+          fp_comp, X * Y * K, diff_file, accType);
     } else if ((comparisons[i] == "customposit" &&
                 comparisons[i + 1] == "fp32") ||
                (comparisons[i] == "fp32" &&
@@ -327,7 +328,7 @@ int run_sequence(const std::string& group,
       error_count += compare_arrays(
           hls_gold_sram_memory + (*param_map)[last_test].OUTPUT_OFFSET,
           float_gold_sram_memory + (*param_map)[last_test].OUTPUT_OFFSET,
-          X * Y * K, diff_file);
+          X * Y * K, diff_file, accType);
     } else {
       std::cout << "Comparison not supported." << std::endl;
     }
@@ -344,7 +345,7 @@ extern "C" int sc_main(int argc, char* argv[]) {
   const char* env_test = std::getenv("TESTS");
   const char* env_sims = std::getenv("SIMS");
   const char* env_task = std::getenv("TASK");
-  const char* env_datapath = std::getenv("DATA_PATH");
+  const char* env_datapath = std::getenv("DATA");
 
   if (!(env_test && env_group && env_sims)) {
     std::cout << "Warning! No group/test specified! Please set the environment "
@@ -384,11 +385,12 @@ extern "C" int sc_main(int argc, char* argv[]) {
 
   if (group == "mobilebert") {
     if (!env_task) {
-      env_task = "inference";
+      env_task = "forward";
     }
 
     if (!env_datapath) {
-      env_datapath = "/sim/jeffreyy/accelerator/data/train/datafile/step0/";
+      env_datapath =
+          "/sim/jeffreyy/accelerator/data/sst2_train/datafile/step0/";
     }
 
     std::string task(env_task);
@@ -414,7 +416,7 @@ extern "C" int sc_main(int argc, char* argv[]) {
       loadActivation(activationDataDir);
 
       errors += runBackward(datapath, compList);
-      errors += verifyGradients(gradientDataDir, "test_outputs/");
+      errors += verifyGradients(gradientDataDir, "test_outputs/verif_");
 
       deleteMemory();
     } else if (tests == "e2e") {
@@ -424,7 +426,7 @@ extern "C" int sc_main(int argc, char* argv[]) {
 
       errors += runForward(datapath, compList);
       errors += runBackward(datapath, compList);
-      errors += verifyGradients(gradientDataDir, "test_outputs/");
+      errors += verifyGradients(gradientDataDir, "test_outputs/verif_");
 
       deleteMemory();
     } else {

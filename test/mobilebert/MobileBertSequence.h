@@ -8,6 +8,7 @@
 #include "test/mobilebert/backprop.h"
 #include "test/mobilebert/gradient.h"
 #include "test/mobilebert/inference.h"
+#include "test/mobilebert/utils.h"
 
 #ifndef SRAM_MEMORY_SIZE
 // #define SRAM_MEMORY_SIZE (2 * 1024 * 1024)
@@ -19,7 +20,9 @@
 #define RRAM_MEMORY_SIZE (22 * 1024 * 1024)  // RRAM size for MobileBERT
 #endif
 
-#define VERBOSE 1
+#define VERBOSE
+// #define DUMP_PARAMS
+// #define ACC_T_ERROR 1
 
 // Data memory
 INPUT_DATATYPE* acc_sram_memory;
@@ -74,30 +77,6 @@ SimplifiedParams paramsLookup(std::string operation, std::string task) {
   params.RESIDUAL_OFFSET = offsets.RESIDUAL_OFFSET;
 
   return params;
-}
-
-void formatOperation(const SimplifiedParams params) {
-  int X = params.loops[0][params.inputXLoopIndex[0]] *
-          params.loops[1][params.inputXLoopIndex[1]];
-  int Y = params.loops[0][params.inputYLoopIndex[0]] *
-          params.loops[1][params.inputYLoopIndex[1]];
-  int C = params.loops[1][params.reductionLoopIndex[1]] * DIMENSION;
-  int K = params.loops[0][params.weightLoopIndex[0]] *
-          params.loops[1][params.weightLoopIndex[1]] * DIMENSION;
-  int FX = params.loops[1][params.fxIndex];
-  int FY = params.loops[1][params.fyIndex];
-  int STRIDE = params.STRIDE;
-
-  if (params.SOFTMAX || params.SOFTMAX_GRAD) {
-    K = 1;
-    C = 1;
-  }
-
-  std::cout << "Performing the following operation:" << std::endl;
-  std::cout << "(" << X << "x" << Y << "x" << C << ")"
-            << " * "
-            << "(" << FX << "x" << FY << "x" << C << "x" << K << ")"
-            << std::endl;
 }
 
 int allocateMemory() {
@@ -183,6 +162,7 @@ void loadActivation(std::string dataDir) {
   std::string datafile = dataDir + layerName + files.inputs_file;
   bool useDataFile = true;
 
+  params.INPUT_OFFSET += ACTIVATION_OFFSET;
   load_inputs(params, datafile, useDataFile, acc_sram_memory,
               hls_sram_memory + params.INPUT_OFFSET,
               uni_sram_memory + params.INPUT_OFFSET,
@@ -194,7 +174,8 @@ void loadActivation(std::string dataDir) {
       params = paramsLookup(operation, "inference");
       files = inferenceTestFiles.at(operation);
 
-      params.OUTPUT_OFFSET += layer * ENCODER_ACTIVATION_SIZE;
+      params.OUTPUT_OFFSET +=
+          ACTIVATION_OFFSET + layer * ENCODER_ACTIVATION_SIZE;
 
       if (operation == "classifier") {
         if (layer != 23) continue;
@@ -232,39 +213,42 @@ int verifyGradients(std::string dataDir, std::string outfilePrefix) {
       int C = params.loops[1][params.reductionLoopIndex[1]] * DIMENSION;
       int K = params.loops[0][params.weightLoopIndex[0]] *
               params.loops[1][params.weightLoopIndex[1]] * DIMENSION;
+
       int weightSize = params.NO_NORM ? K : C * K;
-
-      float floatMatrixB[weightSize];
-      INPUT_DATATYPE hlsMatrixB[weightSize];
-      UniversalPosit universalMatrixB[weightSize];
-
-      float floatBias[K];
-      INPUT_DATATYPE hlsBias[K];
-      UniversalPosit universalBias[K];
+      int biasSize = 2 * K;
 
       if (params.WEIGHT) {
+        float floatMatrixB[weightSize];
+        INPUT_DATATYPE hlsMatrixB[weightSize];
+        UniversalPosit uniMatrixB[weightSize];
+
         datafile = dataDir + layerName + files.weights_file;
         std::cout << "Checking " << datafile << std::endl;
         load_weights(params, datafile, true, acc_sram_memory, hlsMatrixB,
-                     universalMatrixB, floatMatrixB);
-        diffFile = outfilePrefix + files.weights_file + "_float_vs_pytorch.txt";
+                     uniMatrixB, floatMatrixB);
+        diffFile =
+            outfilePrefix + files.weights_file + "_fpgold_vs_pytorch.txt";
         errors = compare_arrays(float_sram_memory + params.WEIGHT_OFFSET,
-                                floatMatrixB, weightSize, diffFile);
+                                floatMatrixB, weightSize, diffFile, false);
         if (errors) {
-          std::cerr << "ERROR: " << errors << " errors found" << std::endl;
+          std::cerr << "ERROR: " << errors << " mismatches found" << std::endl;
         }
       }
 
       if (params.BIAS) {
+        float floatBiasMatrix[biasSize];
+        INPUT_DATATYPE hlsBiasMatrix[biasSize];
+        UniversalPosit uniBiasMatrix[biasSize];
+
         datafile = dataDir + layerName + files.bias_file;
         std::cout << "Checking " << datafile << std::endl;
-        load_bias(params, datafile, true, acc_sram_memory, hlsBias,
-                  universalBias, floatBias);
-        diffFile = outfilePrefix + files.bias_file + "_float_vs_pytorch.txt";
+        load_bias(params, datafile, true, acc_sram_memory, hlsBiasMatrix,
+                  uniBiasMatrix, floatBiasMatrix);
+        diffFile = outfilePrefix + files.bias_file + "_fpgold_vs_pytorch.txt";
         errors = compare_arrays(float_sram_memory + params.BIAS_OFFSET,
-                                floatBias, K, diffFile);
+                                floatBiasMatrix, K, diffFile, true);
         if (errors) {
-          std::cerr << "ERROR: " << errors << " errors found" << std::endl;
+          std::cerr << "ERROR: " << errors << " mismatches found" << std::endl;
         }
       }
     }
@@ -295,10 +279,10 @@ int runOperation(const SimplifiedParams params,
   }
 
   int outputSize = X * Y * K;
-  if (params.CROSS_ENTROPY_GRAD) {
+  if (params.NO_NORM_GRAD) {
+    outputSize = K;
+  } else if (params.CROSS_ENTROPY_GRAD) {
     outputSize = X;
-  } else if (params.NO_NORM_GRAD) {
-    outputSize = C;
   }
 
 #ifdef VERBOSE
@@ -324,7 +308,7 @@ int runOperation(const SimplifiedParams params,
         hls_rram_memory + params.BIAS_OFFSET,
         hls_sram_memory + params.RESIDUAL_OFFSET,
         hls_sram_memory + params.WEIGHT_GRADIENT_OFFSET,
-        hls_sram_memory + params.BIAS_GRADIENT_OFFSET, false, false);
+        hls_sram_memory + params.BIAS_GRADIENT_OFFSET);
   }
 
   if (universal) {
@@ -336,7 +320,7 @@ int runOperation(const SimplifiedParams params,
         uni_rram_memory + params.BIAS_OFFSET,
         uni_sram_memory + params.RESIDUAL_OFFSET,
         uni_sram_memory + params.WEIGHT_GRADIENT_OFFSET,
-        uni_sram_memory + params.BIAS_GRADIENT_OFFSET, false, false);
+        uni_sram_memory + params.BIAS_GRADIENT_OFFSET);
   }
 
   if (fp32) {
@@ -347,15 +331,14 @@ int runOperation(const SimplifiedParams params,
                       float_rram_memory + params.BIAS_OFFSET,
                       float_sram_memory + params.RESIDUAL_OFFSET,
                       float_sram_memory + params.WEIGHT_GRADIENT_OFFSET,
-                      float_sram_memory + params.BIAS_GRADIENT_OFFSET, false,
-                      false);
+                      float_sram_memory + params.BIAS_GRADIENT_OFFSET);
   }
 
   int errors = 0;
 
 #ifdef VERBOSE
-  INPUT_DATATYPE hlsDataFileOutput[outputSize];
-  UniversalPosit uniDataFileOutput[outputSize];
+  INPUT_DATATYPE hlsDataFileOutput[2 * outputSize];
+  UniversalPosit uniDataFileOutput[2 * outputSize];
   float dataFileOutput[outputSize];
 
   load_datafile_outputs(params, outputDataFile, hlsDataFileOutput,
@@ -367,16 +350,16 @@ int runOperation(const SimplifiedParams params,
     std::cout << "(reveals bugs in mapping operations to accelerator)"
               << std::endl;
     diffFile = outfilePrefix + "hlsgold_vs_pytorch.txt";
-    errors = compare_arrays(hls_sram_memory + params.OUTPUT_OFFSET,
-                            hlsDataFileOutput, outputSize, diffFile);
+    compare_arrays(hls_sram_memory + params.OUTPUT_OFFSET, dataFileOutput,
+                   outputSize, diffFile, params.ACC_T_OUTPUT);
   }
 
   if (universal) {
     std::cout << "Universal Posit Gold Model vs. Pytorch" << std::endl;
     std::cout << "(reveals issues in representing float as Posit)" << std::endl;
     diffFile = outfilePrefix + "universalgold_vs_pytorch.txt";
-    errors = compare_arrays(uni_sram_memory + params.OUTPUT_OFFSET,
-                            uniDataFileOutput, outputSize, diffFile);
+    compare_arrays(uni_sram_memory + params.OUTPUT_OFFSET, dataFileOutput,
+                   outputSize, diffFile, params.ACC_T_OUTPUT);
   }
 
   if (customposit && universal) {
@@ -386,17 +369,22 @@ int runOperation(const SimplifiedParams params,
         << "(reveals bugs in implementation of custom HLS Posit operators)"
         << std::endl;
     diffFile = outfilePrefix + "hlsgold_vs_universalgold.txt";
-    errors = compare_arrays(hls_sram_memory + params.OUTPUT_OFFSET,
-                            uni_sram_memory + params.OUTPUT_OFFSET, outputSize,
-                            diffFile);
+    compare_arrays(hls_sram_memory + params.OUTPUT_OFFSET,
+                   uni_sram_memory + params.OUTPUT_OFFSET, outputSize, diffFile,
+                   params.ACC_T_OUTPUT);
   }
 
   if (fp32) {
     std::cout << "FP32 Gold Model vs. Pytorch" << std::endl;
     std::cout << "(reveals issues in data loading or mapping)" << std::endl;
     diffFile = outfilePrefix + "fpgold_vs_pytorch.txt";
-    errors = compare_arrays(float_sram_memory + params.OUTPUT_OFFSET,
-                            dataFileOutput, outputSize, diffFile);
+    errors =
+        compare_arrays(float_sram_memory + params.OUTPUT_OFFSET, dataFileOutput,
+                       outputSize, diffFile, params.ACC_T_OUTPUT);
+  }
+
+  if (errors) {
+    std::cerr << "ERROR: " << errors << " mismatches found" << std::endl;
   }
 #endif
 
@@ -407,6 +395,13 @@ int runForward(std::string datapath, std::vector<std::string> groups) {
   std::string inputDataDir = datapath + "activations/";
   std::string outfilePrefix;
 
+#ifdef DUMP_PARAMS
+  std::ofstream myfile;
+  myfile.open("test/mobilebert/mobilebert_inference_params.h");
+  myfile << "#ifndef MOBILEBERT_PARAMS\n"
+         << "#define MOBILEBERT_PARAMS\n\n";
+#endif
+
   // Load embedding inputs
   std::string operation = inferenceOrder[0];
   SimplifiedParams params = paramsLookup(operation, "inference");
@@ -415,14 +410,16 @@ int runForward(std::string datapath, std::vector<std::string> groups) {
   std::string datafile = inputDataDir + layerName + files.inputs_file;
   bool useDataFile = true;
 
+  params.INPUT_OFFSET += ACTIVATION_OFFSET;
   load_inputs(params, datafile, useDataFile, acc_sram_memory,
-              hls_sram_memory + params.INPUT_OFFSET + 128,
-              uni_sram_memory + params.INPUT_OFFSET + 128,
-              float_sram_memory + params.INPUT_OFFSET + 128);
+              hls_sram_memory + params.INPUT_OFFSET,
+              uni_sram_memory + params.INPUT_OFFSET,
+              float_sram_memory + params.INPUT_OFFSET);
 
   // Load attention mask
   params = paramsLookup("attention_self_attention_probs_0", "inference");
   datafile = inputDataDir + "mobilebert_attention_mask";
+  params.WEIGHT_OFFSET += STACK_SIZE;
   load_weights(params, datafile, useDataFile, acc_sram_memory,
                hls_sram_memory + params.WEIGHT_OFFSET,
                uni_sram_memory + params.WEIGHT_OFFSET,
@@ -448,7 +445,7 @@ int runForward(std::string datapath, std::vector<std::string> groups) {
       params.WEIGHT_SPLITTING = false;
 
       if (params.ATTENTION_MASK) {
-        params.WEIGHT_OFFSET = 0;
+        params.WEIGHT_OFFSET = STACK_SIZE;
       }
 
       if (op == "classifier") {
@@ -456,18 +453,22 @@ int runForward(std::string datapath, std::vector<std::string> groups) {
         layerName = "";
       }
 
-      outfilePrefix = "test_outputs/" + op + "_activation_";
-      datafile = inputDataDir + layerName + files.outputs_file;
-      int errors =
-          runOperation(params, datafile, outfilePrefix, layerName + op, groups);
-
-#ifdef VERBOSE
-      if (errors) {
-        std::cerr << "ERROR: " << errors << " errors found" << std::endl;
+#ifdef DUMP_PARAMS
+      if (layer == 0 || op == "classifier") {
+        myfile << formatOperation(params, op) << std::endl;
       }
 #endif
+
+      outfilePrefix = "test_outputs/" + op + "_activation_";
+      datafile = inputDataDir + layerName + files.outputs_file;
+      runOperation(params, datafile, outfilePrefix, layerName + op, groups);
     }
   }
+
+#ifdef DUMP_PARAMS
+  myfile << "#endif\n";
+  myfile.close();
+#endif
 
   for (int i = 0; i < 2; i++) {
     std::cout << hls_sram_memory[params.OUTPUT_OFFSET + i] << "\t"
@@ -478,6 +479,12 @@ int runForward(std::string datapath, std::vector<std::string> groups) {
 }
 
 int runBackward(std::string datapath, std::vector<std::string> groups) {
+#ifdef DUMP_PARAMS
+  std::ofstream myfile;
+  myfile.open("test/mobilebert/mobilebert_backprop_params.h");
+  myfile << "#ifndef MOBILEBERT_PARAMS\n"
+         << "#define MOBILEBERT_PARAMS\n\n";
+#endif
   std::string inputDataDir = datapath + "activations/";
   std::string errorDataDir = datapath + "errors/";
   std::string gradDataDir = datapath + "gradients/";
@@ -504,6 +511,16 @@ int runBackward(std::string datapath, std::vector<std::string> groups) {
       MemoryOffsets offsets = backpropMemOffsets.at(backOp);
       layerName = "mobilebert_encoder_layer_" + std::to_string(layer) + "_";
 
+#ifdef ACC_T_ERROR
+      params.INPUT_OFFSET = 2 * offsets.INPUT_OFFSET;
+      params.OUTPUT_OFFSET = 2 * offsets.OUTPUT_OFFSET;
+      params.RESIDUAL_OFFSET = 2 * offsets.RESIDUAL_OFFSET;
+#else
+      params.ACC_T_INPUT = false;
+      params.ACC_T_WEIGHT = false;
+      params.ACC_T_OUTPUT = false;
+#endif
+
       const int actOffset = ACTIVATION_OFFSET + layer * ENCODER_ACTIVATION_SIZE;
       const int weightOffset = layer * ENCODER_WEIGHT_SIZE;
       const int gradOffset = GRADIENT_OFFSET + layer * ENCODER_WEIGHT_SIZE;
@@ -520,6 +537,9 @@ int runBackward(std::string datapath, std::vector<std::string> groups) {
       if (backOp.find("attention_self_value_layer") != std::string::npos) {
         params.INPUT_OFFSET = actOffset + offsets.INPUT_OFFSET;
         params.WEIGHT_OFFSET = ERROR_OFFSET + offsets.WEIGHT_OFFSET;
+#ifdef ACC_T_ERROR
+        params.WEIGHT_OFFSET += offsets.WEIGHT_OFFSET;
+#endif
       }
 
       if (params.RELU_GRAD || params.SOFTMAX_GRAD) {
@@ -539,28 +559,28 @@ int runBackward(std::string datapath, std::vector<std::string> groups) {
         layerName = "";
       }
 
+#ifdef DUMP_PARAMS
+      if (layer == 0) {
+        myfile << formatOperation(params, backOp) << std::endl;
+      }
+#endif
+
       outfilePrefix = "test_outputs/" + backOp + "_error_";
       datafile = errorDataDir + layerName + files.outputs_file;
       int errors = runOperation(params, datafile, outfilePrefix,
                                 layerName + backOp, groups);
 
-#ifdef VERBOSE
-      if (errors) {
-        std::cerr << "ERROR: " << errors << " errors found" << std::endl;
-      }
-#endif
-
       operation = backOp;
-      if (backOp == "attention_self_query_layer_0") {
+      if (backOp == "bottlenecked_hidden_states" && layer > 0) {
+        operation = "output_bottleneck_LayerNorm";
+      } else if (backOp == "attention_self_query_layer_0") {
         operation = "attention_self_query";
       } else if (backOp == "attention_self_key_layer_0") {
         operation = "attention_self_key";
       } else if (backOp == "attention_self_value_layer_0") {
         operation = "attention_self_value";
-      } else if (backOp == "bottleneck_attention_LayerNorm_1") {
+      } else if (backOp == "bottleneck_attention_LayerNorm_k") {
         operation = "bottleneck_attention_LayerNorm";
-      } else if (backOp == "hidden_states_2" && layer > 0) {
-        operation = "output_bottleneck_LayerNorm";
       }
 
       std::vector<std::string> gradOperations = {operation + "_weight",
@@ -591,8 +611,7 @@ int runBackward(std::string datapath, std::vector<std::string> groups) {
             layerName = "";
           }
 
-          if (operation == "output_bottleneck_LayerNorm" &&
-              backOp == "hidden_states_2") {
+          if (backOp == "bottlenecked_hidden_states") {
             params.INPUT_OFFSET =
                 actOffset - ENCODER_ACTIVATION_SIZE + gradOffsets.INPUT_OFFSET;
             params.OUTPUT_OFFSET =
@@ -601,20 +620,25 @@ int runBackward(std::string datapath, std::vector<std::string> groups) {
                 "mobilebert_encoder_layer_" + std::to_string(layer - 1) + "_";
           }
 
+#ifdef DUMP_PARAMS
+          if (layer == 0) {
+            myfile << formatOperation(params, gradOp) << std::endl;
+          }
+#endif
+
           outfilePrefix = "test_outputs/" + gradOp + "_";
           datafile = gradDataDir + layerName + files.outputs_file;
           errors = runOperation(params, datafile, outfilePrefix,
                                 layerName + gradOp, groups);
-
-#ifdef VERBOSE
-          if (errors) {
-            std::cerr << "ERROR: " << errors << " errors found" << std::endl;
-          }
-#endif
         }
       }
     }
   }
+
+#ifdef DUMP_PARAMS
+  myfile << "#endif\n";
+  myfile.close();
+#endif
 
   return 0;
 }

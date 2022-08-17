@@ -7,7 +7,6 @@ import sys, getopt
 import os
 import struct
 
-
 ''' @brief: Writes data of form torch.tensor dtype=float64 to binary data. '''
 def write_fp64(filename, data):
     data = data.astype(np.float64)
@@ -26,13 +25,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--datapath",
         type=str,
-        default="data/mobilebert/datafile/",
+        required=True,
         help="Input pickle datafiles.",
     )
     parser.add_argument(
         "--output_dir",
         type=str,
-        required=True,
+        default=None,
         help="Path to output datafiles.",
     )
     parser.add_argument(
@@ -43,8 +42,9 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
+    output_dir = os.path.join(args.datapath, "datafile") if args.output_dir is None else args.output_dir
     for i in range(args.n_steps):
-        dataDir = os.path.join(args.output_dir, f"step{i}")
+        dataDir = os.path.join(output_dir, f"step{i}")
         if not os.path.exists(dataDir):
             os.makedirs(dataDir)
 
