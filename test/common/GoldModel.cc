@@ -556,7 +556,8 @@ void run_gold_op(const SimplifiedParams params, T *matrixA, T *matrixB,
           }
 
           if (params.ATTENTION_SCALING) {
-            ACC_T scale = 1.0f / sqrt(32);
+            float fscale = 1.0f / sqrt(32);
+            T scale = static_cast<T>(fscale); 
             acc *= scale;
           }
 
