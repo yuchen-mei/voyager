@@ -390,21 +390,21 @@ void run_gold_op(const SimplifiedParams params, T *matrixA, T *matrixB,
       saveOutput(matrixC, i, outputMatrix[i], params.ACC_T_OUTPUT);
     }
   } else if (params.CROSS_ENTROPY_GRAD) {
-    INT_T labels[X];
-    INT_T logits[X];
-    INT_T gradients[X];
+    ACC_T labels[X];
+    ACC_T logits[X];
+    ACC_T gradients[X];
 
     for (int i = 0; i < X; i++) {
       labels[i] = readInput(matrixA, i, params.ACC_T_INPUT);
       logits[i] = readInput(matrixB, i, params.ACC_T_WEIGHT);
     }
 
-    INT_T max = 0;
+    ACC_T max = 0;
     for (int i = 0; i < X; i++) {
       max = logits[i] > max ? logits[i] : max;
     }
 
-    INT_T sum = 0;
+    ACC_T sum = 0;
     for (int i = 0; i < X; i++) {
       INT_T exp = logits[i] - max;
       gold_exp(exp);
@@ -412,9 +412,11 @@ void run_gold_op(const SimplifiedParams params, T *matrixA, T *matrixB,
       sum += exp;
     }
 
-    gold_reciprocal(sum);
+    INT_T divisor = sum;
+    gold_reciprocal(divisor);
     for (int i = 0; i < X; i++) {
-      gradients[i] = gradients[i] * sum - labels[i];
+      gradients[i] *= divisor;
+      gradients[i] -= labels[i];
       saveOutput(matrixC, i, gradients[i], params.ACC_T_OUTPUT);
     }
   } else if (params.MSE_GRAD) {
@@ -426,23 +428,6 @@ void run_gold_op(const SimplifiedParams params, T *matrixA, T *matrixB,
     INT_T divisor = 1 / X;
     for (int i = 0; i < X; i++) {
       matrixC[i] = static_cast<INT_T>(matrixA[i] - matrixB[i]) * divisor;
-    }
-  } else if (params.GRAD_CLIPPING_UNIT_TEST) {
-    INT_T outputMatrix[X * C];
-    for (int i = 0; i < X * C; i++) {
-      outputMatrix[i] = readInput(matrixA, i, params.ACC_T_INPUT);
-    }
-
-    INT_T acc = 0;
-    for (int i = 0; i < X * C; i++) {
-      acc += outputMatrix[i] * outputMatrix[i];
-    }
-
-    gold_reciprocal(acc);
-    acc = std::min(static_cast<float>(acc), 1.0f);
-    for (int i = 0; i < X * C; i++) {
-      outputMatrix[i] *= acc;
-      saveOutput(matrixC, i, outputMatrix[i], params.ACC_T_OUTPUT);
     }
   } else {
     INT_T inputMatrixA[(STRIDE * X) * (STRIDE * Y) * C];

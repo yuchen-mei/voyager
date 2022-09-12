@@ -127,9 +127,7 @@ class Posit {
   ac_int<nbits, false> bits;
 
   Posit() {}
-#ifndef __SYNTHESIS__
   Posit(const float f);
-#endif
 
   template <int nbits2, int es2>
   Posit(const Posit<nbits2, es2> &input);
@@ -163,6 +161,7 @@ class Posit {
   Posit operator*(const Posit &rhs);
   Posit log_mult(const Posit &rhs);
   Posit operator/(const Posit &rhs);
+
   Posit &operator+=(const Posit &rhs);
   Posit &operator-=(const Posit &rhs);
   Posit &operator*=(const Posit &rhs);
@@ -170,13 +169,7 @@ class Posit {
 
   bool operator<(const Posit &rhs) const;
 
-  // template <int nbits2, int es2, int sbits, int fbits>
-  // Posit &fma(const Posit<nbits2, es2> input, const PositFP<sbits, fbits>
-  // weight);
-
-#ifndef __SYNTHESIS__
   operator float() const;
-#endif
 
 // SystemC is not compatible with C++11
 #ifndef NO_SYSC
@@ -287,14 +280,9 @@ inline Posit<nbits, es> Posit<nbits, es>::log_mult(
 template <int nbits, int es>
 inline Posit<nbits, es> Posit<nbits, es>::operator/(
     const Posit<nbits, es> &rhs) {
-#ifdef __SYNTHESIS__
-  return *this;
-#else
-  float op1 = static_cast<float>(*this);
-  float op2 = static_cast<float>(rhs);
-  float result = op1 / op2;
-  return result;
-#endif
+  Posit<nbits, es> op2 = rhs;
+  op2.reciprocal();
+  return *this * op2;
 }
 
 template <int nbits, int es>
@@ -385,11 +373,10 @@ class PositFP {
 #pragma ccore_type combinational
   template <int nbits, int es>
   PositFP(const Posit<nbits, es> &input);
-
+  PositFP(ac_float_rep ac_f);
   PositFP(const float f);
 
   bool isZero() const { return _zero; }
-
   void setZero() { _zero = true; }
 
   ac_int<fhbits, false> get_fixed_point() const {
@@ -412,6 +399,7 @@ class PositFP {
   PositFP<sbits, abits + 1> operator-(const PositFP &op) const;
   PositFP<sbits, mbits> operator*(const PositFP &op) const;
   PositFP log_mult(const PositFP &op) const;
+
   PositFP &operator+=(const PositFP &rhs);
   PositFP &operator-=(const PositFP &rhs);
   PositFP &operator*=(const PositFP &rhs);
@@ -424,58 +412,13 @@ class PositFP {
   bool operator>=(const PositFP &rhs) const;
 
   template <int sbits2, int fbits2>
+  explicit operator PositFP<sbits2, fbits2>() const;
+  explicit operator ac_float_rep() const;
+  explicit operator float() const;
+
+  template <int sbits2, int fbits2>
   PositFP &fma(const PositFP<sbits2, fbits2> &op2,
                const PositFP<sbits2, fbits2> &op3);
-
-#ifndef __SYNTHESIS__
-  explicit operator float() const {
-    if (isZero()) return 0;
-
-    union ufloat uf;
-    uf.u = sign ? 1 << 31 : 0;
-    uf.u += (scale + 127) << 23;
-
-    ac_int<23, false> mantissa;
-    copy_(fraction, mantissa);
-    uf.u += mantissa;
-    return uf.f;
-  }
-#endif
-
-  PositFP(ac_float_rep ac_f) {
-    // only works when ac_f > 1
-    _zero = false;
-    sign = 0;
-    scale = ac_f.exp();
-
-    ac_fixed<fbits + 1, 1, false> mantissa = ac_f.m;
-    ac_fixed<fbits, 0, false> mantissa_hidden = mantissa;
-    fraction = mantissa_hidden.template slc<fbits>(0);
-
-    // std::cout << ac_f.to_float() << " -> " << (float)(*this) << std::endl;
-  }
-
-  explicit operator ac_float_rep() const {
-    // std::cout << "PositFP to ac_float " << std::endl;
-    ac_fixed<fbits, 0, false> mantissa_hidden;
-    mantissa_hidden.set_slc(0, fraction);
-
-    ac_fixed<fbits + 1, 1, false> mantissa_abs = mantissa_hidden;
-    if (!_zero) {
-      mantissa_abs = mantissa_abs + 1;
-    }
-    ac_fixed<fbits + 2, 2, true> mantissa;
-    if (sign) {
-      mantissa = mantissa_abs * (-1);
-    } else {
-      mantissa = mantissa_abs;
-    }
-
-    // std::cout << (float)(*this ) << " -> " <<
-    // ac_float_rep(mantissa,scale).to_float() << std::endl;
-
-    return ac_float_rep(mantissa, scale);
-  }
 
   PositFP inv_sqrt() {
     ac_float_rep ac_f = static_cast<ac_float_rep>(*this);
@@ -484,33 +427,6 @@ class PositFP {
     ac_math::ac_inverse_sqrt_pwl(ac_f, ac_f_inv_sqrt);
 
     return PositFP(ac_f_inv_sqrt);
-  }
-
-  template <int sbits2, int fbits2>
-  explicit operator PositFP<sbits2, fbits2>() const {
-    PositFP<sbits2, fbits2> fp;
-    if (isZero()) {
-      fp.setZero();
-      return fp;
-    }
-
-    fp.sign = this->sign;
-    fp.scale = this->scale;
-    copy_(this->fraction, fp.fraction);
-
-    if (fbits > fbits2) {
-      bool last = this->fraction[fbits2 - 1];
-      bool guard = this->fraction[fbits2];
-      bool sticky = this->fraction << (fbits2 + 1);
-      if (guard & (last | sticky)) {
-        fp.fraction++;
-        if (fp.fraction == 0) {
-          fp.scale++;
-        }
-      }
-    }
-
-    return fp;
   }
 
   // SystemC is not compatible with C++11
@@ -544,6 +460,20 @@ PositFP<sbits, fbits>::PositFP(const Posit<nbits, es> &input) {
     this->scale = scale;
     this->fraction = fraction;
   }
+}
+
+template <int sbits, int fbits>
+PositFP<sbits, fbits>::PositFP(ac_float_rep ac_f) {
+  // only works when ac_f > 1
+  _zero = false;
+  sign = 0;
+  scale = ac_f.exp();
+
+  ac_fixed<fbits + 1, 1, false> mantissa = ac_f.m;
+  ac_fixed<fbits, 0, false> mantissa_hidden = mantissa;
+  fraction = mantissa_hidden.template slc<fbits>(0);
+
+  // std::cout << ac_f.to_float() << " -> " << (float)(*this) << std::endl;
 }
 
 #ifndef __SYNTHESIS__
@@ -744,6 +674,73 @@ template <int sbits, int fbits>
 bool PositFP<sbits, fbits>::operator>=(const PositFP<sbits, fbits> &rhs) const {
   return !(*this < rhs);
 }
+
+template <int sbits, int fbits>
+template <int sbits2, int fbits2>
+PositFP<sbits, fbits>::operator PositFP<sbits2, fbits2>() const {
+  PositFP<sbits2, fbits2> fp;
+  if (isZero()) {
+    fp.setZero();
+    return fp;
+  }
+
+  fp.sign = this->sign;
+  fp.scale = this->scale;
+  copy_(this->fraction, fp.fraction);
+
+  if (fbits > fbits2) {
+    bool last = this->fraction[fbits2 - 1];
+    bool guard = this->fraction[fbits2];
+    bool sticky = this->fraction << (fbits2 + 1);
+    if (guard & (last | sticky)) {
+      fp.fraction++;
+      if (fp.fraction == 0) {
+        fp.scale++;
+      }
+    }
+  }
+
+  return fp;
+}
+
+template <int sbits, int fbits>
+PositFP<sbits, fbits>::operator ac_float_rep() const {
+  // std::cout << "PositFP to ac_float " << std::endl;
+  ac_fixed<fbits, 0, false> mantissa_hidden;
+  mantissa_hidden.set_slc(0, fraction);
+
+  ac_fixed<fbits + 1, 1, false> mantissa_abs = mantissa_hidden;
+  if (!_zero) {
+    mantissa_abs = mantissa_abs + 1;
+  }
+  ac_fixed<fbits + 2, 2, true> mantissa;
+  if (sign) {
+    mantissa = mantissa_abs * (-1);
+  } else {
+    mantissa = mantissa_abs;
+  }
+
+  // std::cout << (float)(*this ) << " -> " <<
+  // ac_float_rep(mantissa,scale).to_float() << std::endl;
+
+  return ac_float_rep(mantissa, scale);
+}
+
+#ifndef __SYNTHESIS__
+template <int sbits, int fbits>
+PositFP<sbits, fbits>::operator float() const {
+  if (isZero()) return 0;
+
+  union ufloat uf;
+  uf.u = sign ? 1 << 31 : 0;
+  uf.u += (scale + 127) << 23;
+
+  ac_int<23, false> mantissa;
+  copy_(fraction, mantissa);
+  uf.u += mantissa;
+  return uf.f;
+}
+#endif
 
 template <int sbits, int fbits>
 template <int sbits2, int fbits2>
