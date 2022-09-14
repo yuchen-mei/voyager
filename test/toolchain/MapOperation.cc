@@ -905,7 +905,7 @@ void map_operation(const SimplifiedParams &params, MatrixParams &matrixParams,
 
     // residual
     vectorParams.ADDRESS_GEN1_OFFSET = params.RESIDUAL_OFFSET;
-    vectorParams.addressGen1Mode = params.RESIDUAL;
+    vectorParams.addressGen1Mode = params.RESIDUAL || params.RELU_GRAD;
 
     for (int i = 0; i < 3; i++) {
       vectorParams.addressGen1Loops[0][i] = params.loops[0][i];
@@ -1090,6 +1090,9 @@ void map_operation(const SimplifiedParams &params, MatrixParams &matrixParams,
 
       if (params.RELU) {
         vInst0.vOp4 = VectorInstructions::vrelu;
+      } else if(params.RELU_GRAD){
+        vInst0.vOp0Src1 = VectorInstructions::readInterface;
+        vInst0.vOp4 = VectorInstructions::vrelumask;
       } else {
         vInst0.vOp4 = VectorInstructions::nop;
       }
