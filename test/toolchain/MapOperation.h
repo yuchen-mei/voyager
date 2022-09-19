@@ -5,7 +5,7 @@
 #include "test/common/VerificationTypes.h"
 #include "src/ArchitectureParams.h"
 
-void map_operation(const SimplifiedParams &params, MatrixParams &matrixParams,
+void MapOperation(const SimplifiedParams &params, MatrixParams &matrixParams,
                    bool &matrixParamsValid, VectorParams &vectorParams,
                    VectorInstructionConfig &vectorInstructionConfig,
                    bool &vectorParamsValid);
