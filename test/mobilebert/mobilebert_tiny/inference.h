@@ -9,8 +9,6 @@
 std::vector<std::string> inferenceOrder{
     "bottleneck_input_dense",
     "bottleneck_input_LayerNorm",
-    "bottleneck_attention_dense",
-    "bottleneck_attention_LayerNorm",
     "attention_self_query_layer",
     "attention_self_key_layer",
     "attention_self_attention_scores_0",
@@ -42,11 +40,9 @@ std::vector<std::string> inferenceOrder{
 std::map<std::string, std::string> inferenceParamsMapping{
     {"bottleneck_input_dense", "inputBottleneck"},
     {"bottleneck_input_LayerNorm", "bottleneckLayerNorm"},
-    {"bottleneck_attention_dense", "inputBottleneck"},
-    {"bottleneck_attention_LayerNorm", "bottleneckLayerNorm"},
-    {"attention_self_query_layer", "qkProjection"},
-    {"attention_self_key_layer", "qkProjection"},
-    {"attention_self_value_layer", "vProjection"},
+    {"attention_self_query_layer", "qkvProjection"},
+    {"attention_self_key_layer", "qkvProjection"},
+    {"attention_self_value_layer", "qkvProjection"},
     {"attention_self_attention_scores_0", "qkAttention"},
     {"attention_self_attention_scores_1", "qkAttention"},
     {"attention_self_attention_scores_2", "qkAttention"},
@@ -116,28 +112,9 @@ std::map<std::string, SimplifiedParams> inferenceParams{
      }},
 
     // (128 x 128) x (128 x 128)
-    {"qkProjection",
+    {"qkvProjection",
      {
          .loops = {{4, 1, 1, 1, 1, 1}, {8, 8, 1, 1, 1, 32}},
-         .inputXLoopIndex = {0, 5},
-         .inputYLoopIndex = {1, 4},
-         .reductionLoopIndex = {3, 0},
-         .weightLoopIndex = {2, 1},
-         .fxIndex = 3,
-         .fyIndex = 2,
-         .weightReuseIndex = {4, 5},
-         .STRIDE = 1,
-         .BIAS = true,
-         .WEIGHT = true,
-         .SPLIT_OUTPUT = true,
-         .WEIGHT_SPLITTING = true,
-         .learningRate = -2e-2,
-     }},
-
-    // (128 x 512) x (512 x 128)
-    {"vProjection",
-     {
-         .loops = {{4, 1, 1, 1, 1, 1}, {32, 8, 1, 1, 1, 32}},
          .inputXLoopIndex = {0, 5},
          .inputYLoopIndex = {1, 4},
          .reductionLoopIndex = {3, 0},
@@ -602,20 +579,6 @@ std::map<std::string, Files> inferenceTestFiles{
          "bottleneck_input_LayerNorm_weight",
          "bottleneck_input_LayerNorm_bias",
          "bottleneck_input_LayerNorm",
-     }},
-    {"bottleneck_attention_dense",
-     {
-         "hidden_states",
-         "bottleneck_attention_dense_weight",
-         "bottleneck_attention_dense_bias",
-         "bottleneck_attention_dense",
-     }},
-    {"bottleneck_attention_LayerNorm",
-     {
-         "bottleneck_attention_dense",
-         "bottleneck_attention_LayerNorm_weight",
-         "bottleneck_attention_LayerNorm_bias",
-         "bottleneck_attention_LayerNorm",
      }},
 
     // QKV Projection

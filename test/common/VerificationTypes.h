@@ -8,6 +8,8 @@ struct Files {
   std::string bias_file;
   std::string outputs_file;
   std::string residual_file;
+  std::string weight_grad_file;
+  std::string bias_grad_file;
 };
 
 enum MemorySource { SRAM, RRAM };
@@ -133,4 +135,4 @@ const int ACTIVATION_OFFSET = STACK_SIZE + 128;
 const int GRADIENT_OFFSET =
     ACTIVATION_OFFSET + 24 * ENCODER_ACTIVATION_SIZE + INTERMEDIATE_SIZE + 16;
 const int ERROR_OFFSET = GRADIENT_OFFSET + 24 * ENCODER_WEIGHT_SIZE +
-                         16 * BIAS_INTERMEDIATE_SIZE + 16;
+                         16 * BIAS_INTERMEDIATE_SIZE + 32;
