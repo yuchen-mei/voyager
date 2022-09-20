@@ -239,7 +239,7 @@ void run_gold_op(const SimplifiedParams params, T *matrixA, T *matrixB,
 
         if (params.WEIGHT_SPLITTING) {
           ACC_T grad = weightGradMatrix[k * C + c];
-          b += static_cast<ACC_T>(learningRate * b);
+          b += static_cast<ACC_T>(learningRate * grad);
         }
 
         acc += static_cast<ACC_T>(a * b);
