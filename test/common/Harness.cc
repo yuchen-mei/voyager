@@ -294,8 +294,8 @@ void Harness::sendParams() {
     VectorInstructionConfig vectorInstructionConfig;
     bool matrixParamsValid, vectorParamsValid;
 
-    map_operation(params, matrixParams, matrixParamsValid, vectorParams,
-                  vectorInstructionConfig, vectorParamsValid);
+    MapOperation(params, matrixParams, matrixParamsValid, vectorParams,
+                 vectorInstructionConfig, vectorParamsValid);
 
     if (matrixParamsValid) {
       sendSerializedParams<MatrixParams, 32>(matrixParams,

@@ -18,6 +18,9 @@ C17FLAGS = $(BASEFLAGS) -std=c++17
 LDFLAGS = -lsystemc -lpython3.6m
 LDLIBS = -L/cad/mentor/2021.1/Mgc_home/shared/lib/
 
+BUILD_DIRS = build build/test build/test/toolchain build/test/toolchain/operations
+$(info $(shell mkdir -p $(BUILD_DIRS)))
+
 ###########################################################
 # Catapult Synthesis
 ###########################################################
@@ -126,7 +129,7 @@ rtl_sim_debug: rtl
 gui:
 	catapult build/Catapult_debug
 
-build/TestRunner: build/Accelerator.o build/Harness.o build/TestRunner.o build/GoldModel.o build/Utils.o build/DataLoader.o build/MapOperation.o
+build/TestRunner: build/Accelerator.o build/Harness.o build/TestRunner.o build/GoldModel.o build/Utils.o build/DataLoader.o build/toolchain.a
 	$(CC) -o $@ $^ $(LDLIBS) $(LDFLAGS)
 
 build/PositTest: build/PositTest.o
@@ -137,9 +140,6 @@ build/Accelerator.o: src/Accelerator.cc $(wildcard src/*.h)
 
 build/Harness.o: test/common/Harness.cc test/common/Harness.h $(wildcard src/*.h) 
 	$(CC) $(C11FLAGS) -c -o $@ $<
-
-build/MapOperation.o: test/toolchain/MapOperation.cc test/toolchain/MapOperation.h
-	$(CC) $(C11FLAGS) -DNO_SYSC -c -o $@ $<
 
 build/GoldModel.o: test/common/GoldModel.cc test/common/GoldModel.h src/ArchitectureParams.h
 	$(CC) $(C17FLAGS) -c -o $@ $<
@@ -162,3 +162,19 @@ clean:
 
 clean-catapult:
 	rm -rf build/Catapult_*
+
+###########################################################
+# Toolchain
+###########################################################
+
+TOOLCHAIN_SRC = test/toolchain/MapOperation.cc $(wildcard test/toolchain/operations/*.cc)
+TOOLCHAIN_OBJ = $(addprefix build/,  $(TOOLCHAIN_SRC:.cc=.o) )
+
+build/test/toolchain/%.o: test/toolchain/%.cc
+	$(CC) $(C11FLAGS) -c -o $@ $<
+
+.PHONY: toolchain
+toolchain: build/toolchain.a
+
+build/toolchain.a: $(TOOLCHAIN_OBJ)
+	$(AR) rcs $@ $^
