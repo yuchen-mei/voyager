@@ -390,7 +390,7 @@ extern "C" int sc_main(int argc, char* argv[]) {
 
     if (!env_datapath) {
       env_datapath =
-          "/sim/jeffreyy/accelerator/data/sst2_train/datafile/step0/";
+          "/sim/jeffreyy/accelerator/data/mobilebert_tiny/datafile/step0/";
     }
 
     std::string task(env_task);

@@ -17,7 +17,7 @@
 #include "test/common/Utils.h"
 #include "test/mobilebert/backprop.h"
 #include "test/mobilebert/gradient.h"
-#include "test/mobilebert/inference.h"
+#include "test/mobilebert/mobilebert_tiny/inference.h"
 
 #ifndef SRAM_MEMORY_SIZE
 #define SRAM_MEMORY_SIZE (30 * 1024 * 1024)
@@ -272,7 +272,7 @@ int runMobileBertUnitTest(std::string task, std::string test,
 
   std::string paramName;
   std::string layerName = "mobilebert_encoder_layer_0_";
-  std::string outfilePrefix = "test_outputs/" + test + ".";
+  std::string outfilePrefix = "test_outputs/" + test + "_";
 
   std::string inputDataDir;
   std::string weightDataDir;

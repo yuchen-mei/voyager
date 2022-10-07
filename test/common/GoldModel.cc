@@ -621,7 +621,7 @@ void run_gold_op(const SimplifiedParams params, T *matrixA, T *matrixB,
                   }
 
                   if (params.RELU_GRAD &&
-                      inputResidualMatrix[outputAddress] <= 0) {
+                      inputResidualMatrix[outputAddress] < 0) {
                     outputMatrix[outputAddress] = 0;
                   }
 
