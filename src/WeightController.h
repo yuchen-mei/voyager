@@ -46,7 +46,7 @@ struct WeightController<std::tuple<Weight...>, Bias, NRows, NCols, FetchWidth,
   MatrixParamsDeserializer<2> CCS_INIT_S1(paramsDeserializer);
 
   static constexpr int LOOP_WIDTH = 10;
-  static constexpr int DATA_WIDTH = BufferWidth / NRows;
+  static constexpr int DATA_WIDTH = BufferWidth / NCols;
 
   SC_CTOR(WeightController) {
     paramsDeserializer.clk(clk);
