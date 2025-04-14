@@ -311,14 +311,13 @@ SC_MODULE(VectorFetchUnit) {
   }
 
   void feed_data_response_0() {
+    data_resp_0_params.ResetRead();
     vector_fetch_0_resp_in.Reset();
     vector_fetch_0_data_out.Reset();
-    data_resp_0_params.ResetRead();
 
+    accumulationBufferOutput.Reset();
     accumulation_buffer_read_data[0].Reset();
     accumulation_buffer_read_data[1].Reset();
-    accumulation_buffer_write_request[0].Reset();
-    accumulation_buffer_write_request[1].Reset();
 
     bool accumulation_buffer_bank = 0;
 

@@ -6,7 +6,6 @@
 
 #include <fstream>
 
-#include "spdlog/spdlog.h"
 #include "src/ArchitectureParams.h"
 #include "test/common/VerificationTypes.h"
 

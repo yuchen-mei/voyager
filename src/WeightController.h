@@ -29,7 +29,6 @@ struct WeightController<std::tuple<Weight...>, Bias, NRows, NCols, FetchWidth,
 
   Connections::Out<MemoryRequest> CCS_INIT_S1(biasAddressRequest);
   Connections::In<ac_int<OC_PORT_WIDTH, false>> CCS_INIT_S1(biasDataResponse);
-
   Connections::Out<Pack1D<Bias, NCols>> CCS_INIT_S1(biasToSystolicArray);
 
   Connections::Combinational<MatrixParams> CCS_INIT_S1(paramsIn);

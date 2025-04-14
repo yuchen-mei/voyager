@@ -207,30 +207,34 @@ class MemoryInterface {
   template <typename T>
   void write_value_to_memory(const uint64_t address, const int partition,
                              const int index, T value) {
-    size_t bit_offset = index * T::width;
-    size_t byte_address = address + bit_offset / 8;
-    constexpr size_t width_in_bytes = (T::width + 7) / 8;
-    char buffer[width_in_bytes];
+    int start = index * T::width / 8;
+    int end = (index + 1) * T::width / 8;
+    int offset = (index * T::width) % 8;
+    int num_bytes = (end - start + 1) * 8;
 
-    ac_int<width_in_bytes * 8 + 1, false> value_in_bits = value.bits_rep();
+    int bits_remaining = num_bytes * 8 - T::width - offset;
+    num_bytes = num_bytes - bits_remaining / 8;
+
+    constexpr int buf_width = (T::width / 8 + 2) * 8;
+    ac_int<buf_width, false> bytes = value.bits_rep();
+    ac_int<buf_width, false> masks = ((1 << T::width) - 1);
+
+    bytes = bytes << offset;
+    masks = masks << offset;
+
+    char buffer[num_bytes];
 
     // for non-byte aligned data, we need to read the memory first
-    if (T::width % 8 != 0) {
-      read_bytes_from_memory(byte_address, partition, width_in_bytes, buffer);
+    read_bytes_from_memory(address + start, partition, num_bytes, buffer);
+
+    for (int i = 0; i < num_bytes; i++) {
+      char mask = masks.template slc<8>(i * 8);
+      char new_data = bytes.template slc<8>(i * 8) & mask;
+      char orig_data = buffer[i] & ~mask;
+      buffer[i] = new_data | orig_data;
     }
 
-    size_t start_bit = bit_offset;
-    for (int byte_offset = 0; byte_offset < width_in_bytes; byte_offset++) {
-      size_t bit_start = start_bit % 8;
-      size_t bits_to_write =
-          std::min<size_t>(8 - bit_start, T::width - byte_offset * 8);
-      unsigned char mask = (1 << bits_to_write) - 1;
-      buffer[byte_offset] &= ~(mask << bit_start);
-
-      char data = value_in_bits.template slc<8>(byte_offset * 8) & mask;
-      buffer[byte_offset] |= data << bit_start;
-    }
-    write_bytes_to_memory(byte_address, partition, width_in_bytes, buffer);
+    write_bytes_to_memory(address + start, partition, num_bytes, buffer);
   }
 
   virtual std::vector<std::any> get_reference_outputs(
