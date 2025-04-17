@@ -14,15 +14,15 @@ bool fetch_matrix_input(ac_int<DTYPE_INDEX_WIDTH, false> dtype,
   return true;
 }
 
-template <typename T, size_t N, int fetch_width, int buf_width>
-void process_matrix_input(Connections::In<ac_int<fetch_width, false>>& response,
+template <typename T, size_t N, int port_width, int buf_width>
+void process_matrix_input(Connections::In<ac_int<port_width, false>>& response,
                           ac_int<buf_width, false>& outputs) {
-  constexpr int num_words = (T::width * N + fetch_width - 1) / fetch_width;
+  constexpr int num_words = (T::width * N + port_width - 1) / port_width;
 
-  ac_int<num_words * fetch_width, false> bits;
+  ac_int<num_words * port_width, false> bits;
 
   for (int i = 0; i < num_words; i++) {
-    bits.set_slc(i * fetch_width, response.Pop());
+    bits.set_slc(i * port_width, response.Pop());
   }
 
   constexpr int data_width = buf_width / N;
@@ -33,15 +33,15 @@ void process_matrix_input(Connections::In<ac_int<fetch_width, false>>& response,
   }
 }
 
-template <typename T, size_t N, int fetch_width, int buf_width, typename... Ts>
+template <typename T, size_t N, int port_width, int buf_width, typename... Ts>
 bool process_matrix_input(ac_int<DTYPE_INDEX_WIDTH, false> dtype,
-                          Connections::In<ac_int<fetch_width, false>>& response,
+                          Connections::In<ac_int<port_width, false>>& response,
                           ac_int<buf_width, false>& outputs) {
   if (get_type_index<T, Ts...>() != dtype) {
     return false;
   }
 
-  process_matrix_input<T, N, fetch_width, buf_width>(response, outputs);
+  process_matrix_input<T, N, port_width, buf_width>(response, outputs);
   return true;
 }
 

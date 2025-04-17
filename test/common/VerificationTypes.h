@@ -110,3 +110,21 @@ inline std::vector<codegen::Tensor> get_op_outputs(
   }
   return outputs;
 }
+
+inline float* read_constant_param(const codegen::Tensor& tensor) {
+  const char* env_var = std::getenv("NETWORK");
+  std::string model_name(env_var);
+  std::string project_root = std::string(std::getenv("PROJECT_ROOT"));
+  std::string datatype = std::string(std::getenv("DATATYPE"));
+  std::string filename =
+      project_root + "/" + std::string(getenv("CODEGEN_DIR")) + "/networks/" +
+      model_name + "/" + datatype + "/tensor_files/" + tensor.node() + ".bin";
+
+  const int size = get_size(tensor, false);
+
+  float* data = new float[size];
+  std::ifstream input_stream(filename, std::ios::binary);
+  input_stream.read(reinterpret_cast<char*>(data), size * sizeof(float));
+
+  return data;
+}

@@ -1,5 +1,5 @@
 set block "ProcessingElement"
-set full_block_name "ProcessingElement<$PE_INPUT_DATATYPE, $PE_WEIGHT_DATATYPE, $ACCUM_DATATYPE>"
+set full_block_name "ProcessingElement<$SA_INPUT_TYPE, $SA_WEIGHT_TYPE, $ACCUM_DATATYPE>"
 set clock_multiplier 1.3
 
 proc pre_extract {} {

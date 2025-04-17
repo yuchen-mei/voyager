@@ -7,11 +7,11 @@
 #include "ParamsDeserializer.h"
 #include "Utils.h"
 
-template <typename InputTypes, int NRows, int FetchWidth, int BufferWidth>
+template <typename InputTypeTuple, int NRows, int PortWidth, int BufferWidth>
 struct InputController;
 
-template <typename... Input, int NRows, int FetchWidth, int BufferWidth>
-struct InputController<std::tuple<Input...>, NRows, FetchWidth, BufferWidth>
+template <typename... InputTypes, int NRows, int PortWidth, int BufferWidth>
+struct InputController<std::tuple<InputTypes...>, NRows, PortWidth, BufferWidth>
     : public sc_module {
   sc_in<bool> CCS_INIT_S1(clk);
   sc_in<bool> CCS_INIT_S1(rstn);
@@ -19,7 +19,7 @@ struct InputController<std::tuple<Input...>, NRows, FetchWidth, BufferWidth>
   Connections::In<int> CCS_INIT_S1(serialParamsIn);
 
   Connections::Out<MemoryRequest> CCS_INIT_S1(addressRequest);
-  Connections::In<ac_int<FetchWidth, false>> CCS_INIT_S1(dataResponse);
+  Connections::In<ac_int<PortWidth, false>> CCS_INIT_S1(dataResponse);
 
   Connections::Out<BufferWriteRequest<ac_int<BufferWidth, false>>>
       writeRequest[2];
@@ -87,7 +87,7 @@ struct InputController<std::tuple<Input...>, NRows, FetchWidth, BufferWidth>
         FX = 7;
       }
       ac_int<4, false> FY = params.loops[1][params.fyIndex];
-      ac_int<2, false> STRIDE = params.STRIDE;
+      ac_int<2, false> STRIDE = params.stride;
 
       ac_int<LOOP_WIDTH, false> X1 = params.loops[0][params.inputXLoopIndex[0]];
       ac_int<16, false> X0 =
@@ -282,7 +282,7 @@ struct InputController<std::tuple<Input...>, NRows, FetchWidth, BufferWidth>
                                 (c + (x % NRows)) * X + (x / NRows) * NRows;
                           }
 
-                          (fetch_matrix_input<Input, NRows, Input...>(
+                          (fetch_matrix_input<InputTypes, NRows, InputTypes...>(
                                params.input_dtype, params.INPUT_OFFSET, address,
                                addressRequest),
                            ...);
@@ -367,7 +367,7 @@ struct InputController<std::tuple<Input...>, NRows, FetchWidth, BufferWidth>
       }
 
       ac_int<4, false> FY = params.loops[1][params.fyIndex];
-      ac_int<2, false> STRIDE = params.STRIDE;
+      ac_int<2, false> STRIDE = params.stride;
 
       bool isDownsample = FX == 1 && FY == 1;
 
@@ -501,8 +501,9 @@ struct InputController<std::tuple<Input...>, NRows, FetchWidth, BufferWidth>
                               (full_x >= STRIDE * X0 * X1) ||
                               (full_y >= STRIDE * Y0 * Y1)) {
                             bool success =
-                                (set_zero<Input, NRows, BufferWidth, Input...>(
-                                     params.input_dtype, data) ||
+                                (set_zero<InputTypes, NRows, BufferWidth,
+                                          InputTypes...>(params.input_dtype,
+                                                         data) ||
                                  ...);
 
 #ifndef __SYNTHESIS__
@@ -624,7 +625,7 @@ struct InputController<std::tuple<Input...>, NRows, FetchWidth, BufferWidth>
 
       ac_int<LOOP_WIDTH, false> loop_counters[2][6];
       ac_int<LOOP_WIDTH, false> loop_bounds[2][6];
-      ac_int<2, false> STRIDE = params.STRIDE;
+      ac_int<2, false> STRIDE = params.stride;
 
 #pragma hls_unroll yes
       for (int i = 0; i < 2; i++) {
@@ -1123,9 +1124,9 @@ struct InputController<std::tuple<Input...>, NRows, FetchWidth, BufferWidth>
                               ac_int<BufferWidth, false> bits = 0;
 
                               bool success =
-                                  (process_matrix_input<Input, NRows,
-                                                        FetchWidth, BufferWidth,
-                                                        Input...>(
+                                  (process_matrix_input<InputTypes, NRows,
+                                                        PortWidth, BufferWidth,
+                                                        InputTypes...>(
                                        params.input_dtype, dataResponse,
                                        bits) ||
                                    ...);
@@ -1192,10 +1193,10 @@ struct InputController<std::tuple<Input...>, NRows, FetchWidth, BufferWidth>
                 } else {
                   loop_bounds[1][params.inputXLoopIndex[1]] =
                       params.loops[1][params.inputXLoopIndex[1]] *
-                      params.STRIDE;
+                      params.stride;
                   loop_bounds[1][params.inputYLoopIndex[1]] =
                       params.loops[1][params.inputYLoopIndex[1]] *
-                      params.STRIDE;
+                      params.stride;
                 }
 
                 if (params.is_replication) {
@@ -1265,8 +1266,9 @@ struct InputController<std::tuple<Input...>, NRows, FetchWidth, BufferWidth>
                             ac_int<BufferWidth, false> bits = 0;
 
                             bool success =
-                                (process_matrix_input<Input, NRows, FetchWidth,
-                                                      BufferWidth, Input...>(
+                                (process_matrix_input<InputTypes, NRows,
+                                                      PortWidth, BufferWidth,
+                                                      InputTypes...>(
                                      params.input_dtype, dataResponse, bits) ||
                                  ...);
 #ifndef __SYNTHESIS__

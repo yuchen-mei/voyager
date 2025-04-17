@@ -62,10 +62,12 @@ T *adaptive_avg_pool2d(std::map<std::string, std::any> &kwargs,
   const auto input_shape = get_shape(input);
 
   const auto output_size = op.kwargs().at("output_size").int_list().values();
-  std::vector<int> output_shape{output_size[0], output_size[1]};
 
   int input_height = input_shape[2];
-  int output_height = output_shape[0];
+  int output_height = output_size[0];
+  int output_width = output_size[1];
+
+  std::vector<int> output_shape{output_height, output_width};
 
   int stride = input_height / output_height;
   int kernel_size = input_height - (output_height - 1) * stride;

@@ -1,5 +1,5 @@
 #pragma once
-#include "src/datatypes/DataTypes.h"
+#include "datatypes/DataTypes.h"
 
 #if defined(P8_1)
 
@@ -112,10 +112,8 @@ using F16 = DataTypes::bfloat16;
 
 #elif defined(MXNF4)
 
-// #define INPUT_DATATYPE DataTypes::nf4
-// #define WEIGHT_DATATYPE DataTypes::nf4
-#define INPUT_DATATYPE DataTypes::int2, DataTypes::nf4, DataTypes::int6
-#define WEIGHT_DATATYPE DataTypes::int2, DataTypes::nf4, DataTypes::int6
+#define INPUT_DATATYPE DataTypes::int2, DataTypes::int4, DataTypes::int6
+#define WEIGHT_DATATYPE DataTypes::int2, DataTypes::int4, DataTypes::int6
 #define ACCUM_DATATYPE DataTypes::int18
 #define ACCUM_BUFFER_DATATYPE DataTypes::bfloat16
 #define VECTOR_DATATYPE DataTypes::bfloat16
@@ -125,8 +123,10 @@ using F16 = DataTypes::bfloat16;
 #define SA_WEIGHT_TYPE DataTypes::int6
 
 // Width of the widest data type in the list
-#define MAX_INPUT_DTYPE_WIDTH 6
-#define MAX_WEIGHT_DTYPE_WIDTH 6
+#define INPUT_DTYPE_WIDTH 6
+#define WEIGHT_DTYPE_WIDTH 6
+
+#define DECODED_DTYPE_WIDTH 6
 
 // Number of bits used to represent the data type index
 #define DTYPE_INDEX_WIDTH 2
@@ -148,6 +148,24 @@ using F16 = DataTypes::bfloat16;
 #endif
 
 // ================================================================
+// Common Constants
+// ================================================================
+
+#ifndef IC_DIMENSION
+#error "No IC dimension specified!"
+#endif
+
+#ifndef OC_DIMENSION
+#error "No OC dimension specified!"
+#endif
+
+#define ADDRESS_WIDTH 64
+
+#ifndef SUPPORT_MX
+#define SUPPORT_MX false
+#endif
+
+// ================================================================
 // Default Datatypes
 // ================================================================
 
@@ -163,19 +181,15 @@ using F16 = DataTypes::bfloat16;
 #define ACCUM_BUFFER_DATATYPE ACCUM_DATATYPE
 #endif
 
-#ifndef SUPPORT_MX
-#define SUPPORT_MX false
-#endif
-
 #ifndef SCALE_DATATYPE
 #define SCALE_DATATYPE DataTypes::fp8_e8m0
 #endif
 
-#ifndef VECTOR_INPUT_DATATYPES
+#ifndef VU_INPUT_TYPES
 #if SUPPORT_MX
-#define VECTOR_INPUT_DATATYPES VECTOR_DATATYPE, SCALE_DATATYPE
+#define VU_INPUT_TYPES VECTOR_DATATYPE, SCALE_DATATYPE
 #else
-#define VECTOR_INPUT_DATATYPES INPUT_DATATYPE, VECTOR_DATATYPE
+#define VU_INPUT_TYPES INPUT_DATATYPE, VECTOR_DATATYPE
 #endif
 #endif
 
@@ -188,36 +202,47 @@ using F16 = DataTypes::bfloat16;
 #endif
 
 // ================================================================
-// Common Constants
+// Codebook Quantization
 // ================================================================
 
-#ifndef IC_DIMENSION
-#error "No IC dimension specified!"
+#ifndef CODEBOOK_QUANTIZATION
+#define CODEBOOK_QUANTIZATION false
 #endif
 
-#ifndef OC_DIMENSION
-#error "No OC dimension specified!"
+#ifndef DECODED_INPUT_DTYPE_WIDTH
+#define DECODED_INPUT_DTYPE_WIDTH SA_INPUT_TYPE::width
 #endif
 
-#define ADDRESS_WIDTH 64
+#ifndef DECODED_WEIGHT_DTYPE_WIDTH
+#define DECODED_WEIGHT_DTYPE_WIDTH SA_WEIGHT_TYPE::width
+#endif
+
+#define MAX_DECODED_DTYPE_WIDTH                           \
+  (DECODED_INPUT_DTYPE_WIDTH > DECODED_WEIGHT_DTYPE_WIDTH \
+       ? DECODED_INPUT_DTYPE_WIDTH                        \
+       : DECODED_WEIGHT_DTYPE_WIDTH)
+
+#ifndef NUM_CODEBOOK_ENTRIES
+#define NUM_CODEBOOK_ENTRIES 16
+#endif
 
 // ================================================================
 // Datatype Width Configuration
 // ================================================================
 
-using MatrixInputTypes = std::tuple<INPUT_DATATYPE>;
-using MatrixWeightTypes = std::tuple<WEIGHT_DATATYPE>;
+using InputTypeList = std::tuple<INPUT_DATATYPE>;
+using WeightTypeList = std::tuple<WEIGHT_DATATYPE>;
 
 #ifndef DTYPE_INDEX_WIDTH
 #define DTYPE_INDEX_WIDTH 1
 #endif
 
-#ifndef MAX_INPUT_DTYPE_WIDTH
-#define MAX_INPUT_DTYPE_WIDTH INPUT_DATATYPE::width
+#ifndef INPUT_DTYPE_WIDTH
+#define INPUT_DTYPE_WIDTH INPUT_DATATYPE::width
 #endif
 
-#ifndef MAX_WEIGHT_DTYPE_WIDTH
-#define MAX_WEIGHT_DTYPE_WIDTH WEIGHT_DATATYPE::width
+#ifndef WEIGHT_DTYPE_WIDTH
+#define WEIGHT_DTYPE_WIDTH WEIGHT_DATATYPE::width
 #endif
 
 // ================================================================
@@ -225,13 +250,13 @@ using MatrixWeightTypes = std::tuple<WEIGHT_DATATYPE>;
 // ================================================================
 
 #ifndef IC_PORT_WIDTH
-#define IC_PORT_WIDTH (IC_DIMENSION * MAX_INPUT_DTYPE_WIDTH)
+#define IC_PORT_WIDTH (IC_DIMENSION * INPUT_DTYPE_WIDTH)
 #endif
 
 #define IC_PORT_TYPE ac_int<IC_PORT_WIDTH, false>
 
 #ifndef OC_PORT_WIDTH
-#define OC_PORT_WIDTH (OC_DIMENSION * MAX_WEIGHT_DTYPE_WIDTH)
+#define OC_PORT_WIDTH (OC_DIMENSION * WEIGHT_DTYPE_WIDTH)
 #endif
 
 #define OC_PORT_TYPE ac_int<OC_PORT_WIDTH, false>
@@ -245,7 +270,7 @@ using MatrixWeightTypes = std::tuple<WEIGHT_DATATYPE>;
 #endif
 
 #ifndef INPUT_BUFFER_WIDTH
-#define INPUT_BUFFER_WIDTH (IC_DIMENSION * MAX_INPUT_DTYPE_WIDTH)
+#define INPUT_BUFFER_WIDTH (IC_DIMENSION * INPUT_DTYPE_WIDTH)
 #endif
 
 #ifndef WEIGHT_BUFFER_SIZE
@@ -253,7 +278,7 @@ using MatrixWeightTypes = std::tuple<WEIGHT_DATATYPE>;
 #endif
 
 #ifndef WEIGHT_BUFFER_WIDTH
-#define WEIGHT_BUFFER_WIDTH (OC_DIMENSION * MAX_WEIGHT_DTYPE_WIDTH)
+#define WEIGHT_BUFFER_WIDTH (OC_DIMENSION * WEIGHT_DTYPE_WIDTH)
 #endif
 
 #ifndef ACCUM_BUFFER_SIZE

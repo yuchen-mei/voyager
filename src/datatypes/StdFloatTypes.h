@@ -1,12 +1,10 @@
 #pragma once
 
-// clang-format off
-#include <ac_std_float.h>
-// clang-format on
 #include <ac_math/ac_inverse_sqrt_pwl.h>
 #include <ac_math/ac_pow_pwl.h>
 #include <ac_math/ac_reciprocal_pwl.h>
 #include <ac_math/ac_sigmoid_pwl.h>
+#include <ac_std_float.h>
 #include <ccs_dw_fp_lib.h>
 
 template <int mantissa, int exp, bool use_dw_impl, bool ieee_compliance,
@@ -89,6 +87,12 @@ class StdFloat {
 
   ac_int<e_width, false> unbiased_exponent() const {
     return float_val.d.template slc<e_width>(mant_bits);
+  }
+
+  void adjust_exponent(int bias) {
+    ac_int<e_width, false> e = unbiased_exponent();
+    e += bias;
+    float_val.d.set_slc(mant_bits, e);
   }
 
   template <int mantissa2, int exp2, bool use_dw_impl2, bool ieee_compliance2,

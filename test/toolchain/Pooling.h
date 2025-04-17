@@ -23,10 +23,10 @@ void MapPoolingOperation(const codegen::Operation &param,
   // input
   const auto input_memory = input.memory();
   accelerator_memory_map["vector0"] = get_partition(input_memory.partition());
-  vector_params->VECTOR_OFFSET = input_memory.address();
+  vector_params->ADDRESS_GEN0_OFFSET = input_memory.address();
   vector_params->addr_gen0_mode = 1;
   vector_params->addr_gen0_dtype =
-      get_index_from_type_name<VECTOR_INPUT_DATATYPES>(input.dtype());
+      get_index_from_type_name<VU_INPUT_TYPES>(input.dtype());
 
   for (int i = 0; i < 2; i++) {
     vector_params->addr_gen0_loops[i][0] =

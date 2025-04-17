@@ -153,12 +153,37 @@ SC_MODULE(OutputController) {
 
                   Pack1D<VectorType, Width> outputs = vector_in.Pop();
 
-                  bool found = (send_vector_outputs<OutputTypes, Width,
-                                                    VectorType, OutputTypes...>(
-                                    params.output_dtype, outputs, address,
-                                    params.VECTOR_OUTPUT_OFFSET, vector_out,
-                                    vector_address_out) ||
-                                ...);
+                  if (params.use_output_codebook) {
+#pragma hls_unroll yes
+                    for (int i = 0; i < Width; i++) {
+                      // Codebook midpoints are scaled by 2, so we scale the
+                      // values to quantize by 2 as well
+                      VectorType value = outputs[i];
+                      value.adjust_exponent(1);
+
+                      Int<MAX_DECODED_DTYPE_WIDTH + 1, true> int_value(value);
+
+                      ac_int<4, false> index = 0;
+
+#pragma hls_unroll yes
+                      for (int j = 0; j < NUM_CODEBOOK_ENTRIES - 1; j++) {
+                        if (int_value.int_val < params.output_code[j]) {
+                          break;
+                        }
+                        index++;
+                      }
+
+                      outputs[i] = Int<4, true>(index);
+                    }
+                  }
+
+                  bool found =
+                      (send_vector_outputs<OutputTypes, Width, VectorType,
+                                           OutputTypes...>(
+                           params.output_dtype, params.use_output_codebook,
+                           outputs, address, params.VECTOR_OUTPUT_OFFSET,
+                           vector_out, vector_address_out) ||
+                       ...);
 
 #ifndef __SYNTHESIS__
                   if (!found) {

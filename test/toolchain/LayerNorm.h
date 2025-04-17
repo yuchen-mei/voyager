@@ -46,11 +46,11 @@ void MapLayerNorm(const codegen::Operation &param,
 
   const auto input_memory = input.memory();
   memory_map["vector0"] = get_partition(input_memory.partition());
-  vector_params->VECTOR_OFFSET = input_memory.address();
+  vector_params->ADDRESS_GEN0_OFFSET = input_memory.address();
   vector_params->addr_gen0_mode = 2;
   vector_params->addr_gen0_broadcast = 0b010000;
   vector_params->addr_gen0_dtype =
-      get_index_from_type_name<VECTOR_INPUT_DATATYPES>(input.dtype());
+      get_index_from_type_name<VU_INPUT_TYPES>(input.dtype());
 
   // Fetch inputs twice, once for calculating mean and once for subtracting mean
   vector_params->addr_gen0_loops[0][0] = non_reduction_loops[0];
@@ -122,11 +122,11 @@ void MapLayerNorm(const codegen::Operation &param,
   vinstr_config = new VectorInstructionConfig;
 
   memory_map["vector0"] = get_partition(input_memory.partition());
-  vector_params->VECTOR_OFFSET = input_memory.address();
+  vector_params->ADDRESS_GEN0_OFFSET = input_memory.address();
   vector_params->addr_gen0_mode = 2;
   vector_params->addr_gen0_broadcast = 0b010000;
   vector_params->addr_gen0_dtype =
-      get_index_from_type_name<VECTOR_INPUT_DATATYPES>(input.dtype());
+      get_index_from_type_name<VU_INPUT_TYPES>(input.dtype());
 
   // Fetch inputs twice, once for calculating variance and once for division
   vector_params->addr_gen0_loops[0][0] = non_reduction_loops[0];
@@ -202,10 +202,10 @@ void MapLayerNorm(const codegen::Operation &param,
 
   // Fetch inputs
   memory_map["vector0"] = get_partition(input_memory.partition());
-  vector_params->VECTOR_OFFSET = input_memory.address();
+  vector_params->ADDRESS_GEN0_OFFSET = input_memory.address();
   vector_params->addr_gen0_mode = 2;
   vector_params->addr_gen0_dtype =
-      get_index_from_type_name<VECTOR_INPUT_DATATYPES>(input.dtype());
+      get_index_from_type_name<VU_INPUT_TYPES>(input.dtype());
 
   vector_params->addr_gen0_loops[0][0] = 1;
   vector_params->addr_gen0_loops[0][1] = non_reduction_loops[0];
@@ -221,7 +221,7 @@ void MapLayerNorm(const codegen::Operation &param,
   vector_params->addr_gen1_mode = true;
   vector_params->addr_gen1_broadcast = 0b011;
   vector_params->addr_gen1_dtype =
-      get_index_from_type_name<VECTOR_INPUT_DATATYPES>(weight.dtype());
+      get_index_from_type_name<VU_INPUT_TYPES>(weight.dtype());
 
   auto param_loops = squeeze_shape(non_reduction_loops);
   pad_shape_to_ndim(param_loops, 2);
@@ -249,7 +249,7 @@ void MapLayerNorm(const codegen::Operation &param,
     vector_params->addr_gen2_mode = true;
     vector_params->addr_gen2_broadcast = 0b011;
     vector_params->addr_gen2_dtype =
-        get_index_from_type_name<VECTOR_INPUT_DATATYPES>(bias.dtype());
+        get_index_from_type_name<VU_INPUT_TYPES>(bias.dtype());
 
     for (int i = 0; i < 2; i++) {
       vector_params->addr_gen2_y_loop_idx[i] = 0;
@@ -292,44 +292,7 @@ void MapLayerNorm(const codegen::Operation &param,
   }
   inst2.vdest = VectorInstructions::to_output;
 
-  if (op_list.size() > 1) {
-    const auto quantize_op = op_list[1];
-
-    if (quantize_op.target() == "quantize") {
-      const auto scale = quantize_op.kwargs().at("scale").tensor();
-      assert(get_size(scale) == 1);
-
-      inst2.vector_op3 = VectorInstructions::vdiv;
-      inst2.vector_op3_src1 = VectorInstructions::from_immediate_2;
-
-      // scalar scale factor
-      VECTOR_DATATYPE immediate = read_constant_param(scale);
-      inst2.immediate2 = immediate.bits_rep();
-    } else if (quantize_op.target() == "quantize_mx") {
-      const int block_size = quantize_op.kwargs().at("block_size").int_value();
-      assert(block_size == OC_DIMENSION);
-
-      inst2.vector_op3 = VectorInstructions::vquantize_mx;
-
-      float quant_max = quantize_op.kwargs().at("quant_max").float_value();
-      bool force_scale_power_of_two =
-          quantize_op.kwargs().at("force_scale_power_of_two").int_value();
-
-      if (force_scale_power_of_two) {
-        inst2.immediate2 = floor(log2(quant_max));
-      } else {
-        VECTOR_DATATYPE scale = quant_max;
-        inst2.immediate2 = scale.bits_rep();
-      }
-
-      vector_params->quantize_output_mx = true;
-      vector_params->SCALE_OFFSET =
-          param.outputs().tensors(0).memory().address();
-    } else {
-      throw std::invalid_argument("Unsupported operation: " +
-                                  quantize_op.target());
-    }
-  }
+  set_quantize_params(param, vector_params, inst2);
 
   vinstr_config->inst[0] = inst2;
   vinstr_config->instCount[0] = inner_dim * outer_dim / OC_DIMENSION;

@@ -7,7 +7,7 @@ INT8_FLAGS := --activation int8,qs=per_tensor_symmetric --weight int8,qs=per_ten
 INT8_32_FLAGS := --activation int8,qs=per_tensor_symmetric --weight int8,qs=per_tensor_symmetric --bias int32 --bf16
 BLOCK_SIZE := $(shell [ $(IC_DIMENSION) -gt $(OC_DIMENSION) ] && echo $(IC_DIMENSION) || echo $(OC_DIMENSION))
 MXINT8_FLAGS := --activation int8,qs=microscaling,bs=$(BLOCK_SIZE) --weight int8,qs=microscaling,bs=$(BLOCK_SIZE) --force_scale_power_of_two --bf16
-MXNF4_FLAGS := --activation nf4_5,qs=microscaling,bs=$(BLOCK_SIZE),scale=fp8_e5m3 --weight nf4_5,qs=microscaling,bs=$(BLOCK_SIZE),scale=fp8_e5m3 --bf16
+MXNF4_FLAGS := --activation nf4_6,qs=microscaling,bs=$(BLOCK_SIZE),scale=fp8_e5m3 --weight nf4_6,qs=microscaling,bs=$(BLOCK_SIZE),scale=fp8_e5m3 --bf16
 EXTRA_COMPILER_FLAGS ?=
 
 ################################################################################
@@ -33,11 +33,11 @@ $(CODEGEN_DIR)/networks/bert/%/model.txt: quantized-training/test/test_codegen.p
 
 $(CODEGEN_DIR)/networks/llama_prefill/%/model.txt: quantized-training/test/test_codegen.py
 	mkdir -p $(dir $@)
-	python quantized-training/test/test_codegen.py llm_prefill $($(notdir $(patsubst %/,%,$(dir $@)))_FLAGS) $(EXTRA_COMPILER_FLAGS) --output_dir $(dir $@) --context_length 128 --remove_duplicate --qscheme q_0 &> $(dir $@)codegen.log
+	python quantized-training/test/test_codegen.py llm_prefill $($(notdir $(patsubst %/,%,$(dir $@)))_FLAGS) $(EXTRA_COMPILER_FLAGS) --output_dir $(dir $@) --context_length 128 --remove_duplicate --mixed_precision &> $(dir $@)codegen.log
 
 $(CODEGEN_DIR)/networks/llama_decode/%/model.txt: quantized-training/test/test_codegen.py
 	mkdir -p $(dir $@)
-	python quantized-training/test/test_codegen.py llm_decode $($(notdir $(patsubst %/,%,$(dir $@)))_FLAGS) $(EXTRA_COMPILER_FLAGS) --output_dir $(dir $@) --context_length 128 --remove_duplicate --qscheme q_0 &> $(dir $@)codegen.log
+	python quantized-training/test/test_codegen.py llm_decode $($(notdir $(patsubst %/,%,$(dir $@)))_FLAGS) $(EXTRA_COMPILER_FLAGS) --output_dir $(dir $@) --context_length 128 --remove_duplicate --mixed_precision &> $(dir $@)codegen.log
 
 $(CODEGEN_DIR)networks/vit/%/model.txt: quantized-training/test/test_codegen.py
 	mkdir -p $(dir $@)

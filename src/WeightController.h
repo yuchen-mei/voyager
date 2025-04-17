@@ -7,21 +7,21 @@
 #include "ArchitectureParams.h"
 #include "ParamsDeserializer.h"
 
-template <typename WeightTypes, typename Bias, int NRows, int NCols,
-          int FetchWidth, int BufferWidth>
+template <typename WeightTypeTuple, typename Bias, int NRows, int NCols,
+          int PortWidth, int BufferWidth>
 struct WeightController;
 
-template <typename... Weight, typename Bias, int NRows, int NCols,
-          int FetchWidth, int BufferWidth>
-struct WeightController<std::tuple<Weight...>, Bias, NRows, NCols, FetchWidth,
-                        BufferWidth> : public sc_module {
+template <typename... WeightTypes, typename Bias, int NRows, int NCols,
+          int PortWidth, int BufferWidth>
+struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
+                        PortWidth, BufferWidth> : public sc_module {
   sc_in<bool> CCS_INIT_S1(clk);
   sc_in<bool> CCS_INIT_S1(rstn);
 
   Connections::In<int> serialParamsIn;
 
   Connections::Out<MemoryRequest> CCS_INIT_S1(addressRequest);
-  Connections::In<ac_int<FetchWidth, false>> CCS_INIT_S1(dataResponse);
+  Connections::In<ac_int<PortWidth, false>> CCS_INIT_S1(dataResponse);
 
   Connections::Out<BufferWriteRequest<ac_int<BufferWidth, false>>>
       writeRequest[2];
@@ -169,7 +169,7 @@ struct WeightController<std::tuple<Weight...>, Bias, NRows, NCols, FetchWidth,
                           address = ((k + c0) * C2 * C1 + c2 * C1 + c1) * NCols;
                         }
 
-                        (fetch_matrix_input<Weight, NCols, Weight...>(
+                        (fetch_matrix_input<WeightTypes, NCols, WeightTypes...>(
                              params.weight_dtype, params.WEIGHT_OFFSET, address,
                              addressRequest),
                          ...);
@@ -720,8 +720,9 @@ struct WeightController<std::tuple<Weight...>, Bias, NRows, NCols, FetchWidth,
                           ac_int<BufferWidth, false> bits = 0;
 
                           bool success =
-                              (process_matrix_input<Weight, NCols, FetchWidth,
-                                                    BufferWidth, Weight...>(
+                              (process_matrix_input<WeightTypes, NCols,
+                                                    PortWidth, BufferWidth,
+                                                    WeightTypes...>(
                                    params.weight_dtype, dataResponse, bits) ||
                                ...);
 
@@ -796,8 +797,8 @@ struct WeightController<std::tuple<Weight...>, Bias, NRows, NCols, FetchWidth,
         for (int i = 0; i < total_values; i++) {
           ac_int<BufferWidth, false> bits = 0;
 
-          bool success = (process_matrix_input<Weight, NCols, FetchWidth,
-                                               BufferWidth, Weight...>(
+          bool success = (process_matrix_input<WeightTypes, NCols, PortWidth,
+                                               BufferWidth, WeightTypes...>(
                               params.weight_dtype, dataResponse, bits) ||
                           ...);
 
@@ -979,7 +980,7 @@ struct WeightController<std::tuple<Weight...>, Bias, NRows, NCols, FetchWidth,
                            loop_counters[1][5]++) {
                         ac_int<Bias::width * NCols, false> bits;
 
-                        process_matrix_input<Bias, NCols, FetchWidth,
+                        process_matrix_input<Bias, NCols, PortWidth,
                                              Bias::width * NCols>(
                             biasDataResponse, bits);
 

@@ -31,12 +31,36 @@ class MemoryInterface {
     }
 
     const auto& memory = tensor.memory();
+    const uint64_t address = memory.address();
+    const int partition = memory.partition();
     const int size = get_size(tensor, false);
 
-    T* data = new T[size];
-    read_tensor_from_memory<T>(memory.address(), memory.partition(), size,
-                               data);
-    output = data;
+    int num_bytes = (size * T::width + 7) / 8;
+    char* buffer = new char[num_bytes];
+    read_bytes_from_memory(address, partition, num_bytes, buffer);
+
+    T* results = new T[size];
+
+    for (int i = 0; i < size; i++) {
+      // Data may be unaligned and span multiple bytes. We calculate the start
+      // and end byte indices and the offset within the first byte. We then read
+      // the bytes into a temporary ac_int and shift it to the correct position.
+      int start = i * T::width / 8;
+      int end = (i + 1) * T::width / 8;
+      int offset = (i * T::width) % 8;
+
+      ac_int<(T::width / 8 + 2) * 8> bits;
+
+      for (int j = start; j <= end; j++) {
+        bits.set_slc((j - start) * 8, static_cast<ac_int<8, false>>(buffer[j]));
+      }
+
+      results[i].set_bits(bits >> offset);
+    }
+
+    delete[] buffer;
+    output = results;
+
     return true;
   }
 
@@ -51,28 +75,16 @@ class MemoryInterface {
   }
 
   std::any read_tensor(const codegen::Tensor& tensor) {
-    int partition = tensor.memory().partition();
-
     int size = get_size(tensor, false);
 
     // Read scalar from the file directly
     if (size == 1) {
-      const char* env_var = std::getenv("NETWORK");
-      std::string model_name(env_var);
-      std::string project_root = std::string(std::getenv("PROJECT_ROOT"));
-      std::string datatype = std::string(std::getenv("DATATYPE"));
-      std::string filename = project_root + "/" +
-                             std::string(getenv("CODEGEN_DIR")) + "/networks/" +
-                             model_name + "/" + datatype + "/tensor_files/" +
-                             tensor.node() + ".bin";
-
-      float scalar;
-      std::ifstream input_stream(filename, std::ios::binary);
-      input_stream.read(reinterpret_cast<char*>(&scalar), sizeof(float));
+      float* array = read_constant_param(tensor);
 
       if (tensor.dtype() == "bfloat16" || tensor.dtype() == "float32") {
         VECTOR_DATATYPE* data = new VECTOR_DATATYPE[1];
-        data[0] = scalar;
+        data[0] = array[0];
+        delete[] array;
         return data;
       } else {
         spdlog::debug("Unsupported data type for scalar tensor: {}",
@@ -142,37 +154,16 @@ class MemoryInterface {
   }
 
   template <typename T>
-  void read_tensor_from_memory(const long long address, const int partition,
-                               const int size, T* tensor) {
-    // read extra byte in case of alignment issues
-    int bytes_to_read = ((size * T::width) / 8) + 1;
-    char* memory_bytes = new char[bytes_to_read];
-    read_bytes_from_memory(address, partition, bytes_to_read, memory_bytes);
-
-    ac_int<(T::width / 8 + 2) * 8> bits;
-
-    for (int i = 0; i < size; i++) {
-      // Data may be unaligned and span multiple bytes. We calculate the start
-      // and end byte indices and the offset within the first byte. We then read
-      // the bytes into a temporary ac_int and shift it to the correct position.
-      int start = i * T::width / 8;
-      int end = (i + 1) * T::width / 8;
-      int offset = (i * T::width) % 8;
-
-      for (int j = start; j <= end; j++) {
-        bits.set_slc((j - start) * 8,
-                     static_cast<ac_int<8, false>>(memory_bytes[j]));
-      }
-
-      tensor[i].set_bits(bits >> offset);
+  bool write_value_to_memory(const codegen::Tensor& tensor, const int index,
+                             T value) {
+    if (tensor.dtype() != DataTypes::TypeName<T>::name()) {
+      return false;
     }
 
-    delete[] memory_bytes;
-  }
+    const auto& memory = tensor.memory();
+    const uint64_t address = memory.address();
+    const int partition = memory.partition();
 
-  template <typename T>
-  void write_value_to_memory(const uint64_t address, const int partition,
-                             const int index, T value) {
     int start = index * T::width / 8;
     int end = (index + 1) * T::width / 8;
     int offset = (index * T::width) % 8;
@@ -201,15 +192,22 @@ class MemoryInterface {
     }
 
     write_bytes_to_memory(address + start, partition, num_bytes, buffer);
+
+    return true;
   }
 
-  std::vector<std::any> get_outputs(const codegen::Operation& param) {
-    const auto tensors = get_op_outputs(param);
-    std::vector<std::any> outputs;
-    for (const auto& tensor : tensors) {
-      outputs.push_back(read_tensor(tensor));
+  template <typename... Ts>
+  void write_data_helper(const codegen::Tensor& tensor, int index,
+                         float value) {
+    bool matched = (write_value_to_memory<Ts>(tensor, index, value) || ...);
+    if (!matched) {
+      throw std::runtime_error("Dataloader: Unsupported tensor dtype: " +
+                               tensor.dtype());
     }
-    return outputs;
+  }
+
+  void write_data(const codegen::Tensor& tensor, int index, float value) {
+    write_data_helper<SUPPORTED_TYPES>(tensor, index, value);
   }
 
   std::map<std::string, std::any> get_args(const codegen::Operation& param) {
@@ -220,13 +218,22 @@ class MemoryInterface {
     for (const auto op : op_list) {
       for (const auto [key, value] : op.kwargs()) {
         if (value.has_tensor() && value.tensor().has_memory()) {
-          spdlog::debug("Pushing tensor: {}", value.tensor().node());
+          spdlog::debug("Pushing tensor: {}\n", value.tensor().node());
           kwargs[value.tensor().node()] = read_tensor(value.tensor());
         }
       }
     }
 
     return kwargs;
+  }
+
+  std::vector<std::any> get_outputs(const codegen::Operation& param) {
+    const auto tensors = get_op_outputs(param);
+    std::vector<std::any> outputs;
+    for (const auto& tensor : tensors) {
+      outputs.push_back(read_tensor(tensor));
+    }
+    return outputs;
   }
 
   virtual std::vector<std::any> get_reference_outputs(

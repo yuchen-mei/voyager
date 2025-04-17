@@ -239,27 +239,33 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
       for (int i = 0; i < total_loops; i++) {
         for (int weight_count = 0; weight_count < NRows; weight_count++) {
           Pack1D<PEWeight<Weight>, NCols> weights;
-          spdlog::debug("Read weights from buffer\n");
           auto bits = weightsChannel.Pop();
 
 #pragma hls_unroll yes
           for (int i = 0; i < NCols; i++) {
-            auto data = bits.template slc<MAX_WEIGHT_DTYPE_WIDTH>(
-                i * MAX_WEIGHT_DTYPE_WIDTH);
-            bool success = (decode_type<WeightTypes, Weight,
-                                        MAX_WEIGHT_DTYPE_WIDTH, WeightTypes...>(
-                                params.weight_dtype, data, weights[i].data) ||
-                            ...);
+            auto data =
+                bits.template slc<WEIGHT_DTYPE_WIDTH>(i * WEIGHT_DTYPE_WIDTH);
+
+            if (params.use_weight_codebook) {
+              auto value = params.weight_code[data];
+              weights[i].data.set_bits(value);
+            } else {
+              bool success = (decode_type<WeightTypes, Weight,
+                                          WEIGHT_DTYPE_WIDTH, WeightTypes...>(
+                                  params.weight_dtype, data, weights[i].data) ||
+                              ...);
 #ifndef __SYNTHESIS__
-            if (!success) {
-              std::cerr << "Error: matrix weight dtype '" << params.weight_dtype
-                        << "' is not valid" << std::endl;
-            }
+              if (!success) {
+                std::cerr << "Error: matrix weight dtype '"
+                          << params.weight_dtype << "' is not valid"
+                          << std::endl;
+              }
 #endif
+            }
+
             weights[i].tag = weight_count;
           }
 
-          spdlog::debug("Push weights to skewer\n");
           weightSkewerDin.Push(weights);
         }
       }
@@ -333,7 +339,6 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
             loop_counters[1][params.fyIndex] != 0;
 
         if (is_accumulating && step < total_ops) {
-          spdlog::debug("Read psum from accumulation buffer\n");
           psum = accumulation_buffer_read_data[accumulation_buffer_bank].Pop();
         } else if (params.has_bias && step < total_ops) {
           // we need to load in a new bias every time the weight loop index
@@ -396,7 +401,6 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
     }
   }
 
-  // FIXME: what is this doing?
   void delay_inputs() {
     inputsToSkewer.ResetRead();
     inputsToSkewer_delayed.ResetWrite();
@@ -474,7 +478,6 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
       ac_int<32, false> output_step = 0;
       ac_int<32, false> last_output_step = 0;
 
-      // FIXME: why this is set to 0?
       // accumulation buffer takes 3 cycles to access, so we need to send the
       // read request 3 cycles in advance. to do this, we create another set
       // of loop counters and step counter, but start them at 3.
@@ -527,7 +530,6 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
           CCS_LOG("step " << step << " out of " << total_ops);
         }
 #endif
-        spdlog::debug("step {} out of {}\n", step.to_int(), total_ops.to_int());
 
         accumulation_buffer_bank_delayed = accumulation_buffer_bank;
 
@@ -542,7 +544,7 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
 #if !SUPPORT_MX
         stall_inputs =
             is_accumulating && accum_step < total_ops &&
-            last_output_step < accum_step - non_accumulating_tile_size + 3;
+            last_output_step < accum_step - non_accumulating_tile_size + 2;
 #endif
 
         last_output_step = output_step;
@@ -582,27 +584,30 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
         }
 
         if (!stall_inputs) {
-          spdlog::debug("inputsChannel.Pop()\n");
           auto bits = inputsChannel.Pop();
 
 #pragma hls_unroll yes
           for (int i = 0; i < NRows; i++) {
-            auto data = bits.template slc<MAX_INPUT_DTYPE_WIDTH>(
-                i * MAX_INPUT_DTYPE_WIDTH);
-            bool success = (decode_type<InputTypes, Input,
-                                        MAX_INPUT_DTYPE_WIDTH, InputTypes...>(
-                                params.input_dtype, data, inputs[i].data) ||
-                            ...);
+            auto data =
+                bits.template slc<INPUT_DTYPE_WIDTH>(i * INPUT_DTYPE_WIDTH);
+            if (params.use_input_codebook) {
+              auto value = params.input_code[data];
+              inputs[i].data.set_bits(value);
+            } else {
+              bool success = (decode_type<InputTypes, Input, INPUT_DTYPE_WIDTH,
+                                          InputTypes...>(
+                                  params.input_dtype, data, inputs[i].data) ||
+                              ...);
 #ifndef __SYNTHESIS__
-            if (!success) {
-              std::cerr << "Error: matrix input dtype '" << params.input_dtype
-                        << "' is not valid" << std::endl;
-            }
+              if (!success) {
+                std::cerr << "Error: matrix input dtype '" << params.input_dtype
+                          << "' is not valid" << std::endl;
+              }
 #endif
+            }
           }
 
 #if !SUPPORT_MX
-          spdlog::debug("inputsToSkewer.Push(inputs)\n");
           inputsToSkewer.Push(inputs);
 
           if (is_accumulating && accum_step < total_ops) {
@@ -618,7 +623,6 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
                 readAddress);
           }
 #else
-          spdlog::debug("inputSkewerDin.Push(inputs)\n");
           inputSkewerDin.Push(inputs);
 
           Pack1D<Psum, NCols> psum;
@@ -632,7 +636,6 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
 
         Pack1D<Psum, NCols> outputs;
         if (psumOutSkewerDout.PopNB(outputs)) {
-          spdlog::debug("psumOutSkewerDout.PopNB(outputs)\n");
         INCR_OUT_STEP:
           output_step++;
           // CCS_LOG("systolic array output: " << outputs);
@@ -668,19 +671,14 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
                     params.loops[1][params.inputXLoopIndex[1]] +
                 loop_counters_out[1][params.inputXLoopIndex[1]];
 
-            spdlog::debug(
-                "MatrixProcessor::run write to accumulation buffer\n");
             accumulation_buffer_read_address[accumulation_buffer_bank].Push(
                 readAddress);
-            spdlog::debug(
-                "MatrixProcessor::run write to accumulation buffer done\n");
           }
 
           if (output_tile_completed) {
             accumulation_buffer_bank = !accumulation_buffer_bank;
           }
 
-          spdlog::debug("unscaledAccumulationChannel.Push(outputs)\n");
           unscaledAccumulationChannel.Push(outputs);
 #else
           ac_int<int_log2(BufferSize), false> writeAddress =
@@ -893,12 +891,12 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
     accumulationBufferParams.ResetRead();
     inputScaleChannel.Reset();
     weightScaleChannel.Reset();
+    accumulation_buffer_done[0].Reset();
+    accumulation_buffer_done[1].Reset();
     accumulation_buffer_read_data[0].Reset();
     accumulation_buffer_read_data[1].Reset();
     accumulation_buffer_write_request[0].Reset();
     accumulation_buffer_write_request[1].Reset();
-    accumulation_buffer_done[0].Reset();
-    accumulation_buffer_done[1].Reset();
 
     bool accumulation_buffer_bank = 0;
 
@@ -966,19 +964,12 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
             previous_accumulation = bias;
           }
         } else {
-          spdlog::debug(
-              "MatrixProcessor::process_accumulation read from "
-              "accumulation buffer\n");
           previous_accumulation =
               accumulation_buffer_read_data[accumulation_buffer_bank].Pop();
-          spdlog::debug(
-              "MatrixProcessor::process_accumulation read from "
-              "accumulation buffer done\n");
         }
 
         Pack1D<Psum, NCols> outputs;
 #ifndef __SYNTHESIS__
-        spdlog::debug("unscaledAccumulationChannel.Pop()\n");
         outputs = unscaledAccumulationChannel.Pop();
 #else
         outputs = unscaledAccumulationChannel_delayed.Pop();
@@ -986,7 +977,6 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
 
         Scale inputScale;
         if (params.is_mx_op) {
-          spdlog::debug("inputScaleChannel.Pop()\n");
           inputScale.set_bits(inputScaleChannel.Pop());
         }
 
@@ -1000,7 +990,6 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
         }
         readNewWeights = readNewWeights || step == 0;
         if (readNewWeights && params.is_mx_op) {
-          spdlog::debug("weightScaleChannel.Pop()\n");
           auto bits = weightScaleChannel.Pop();
           weightScales = BitsToType<Pack1D<Scale, NCols>>(TypeToBits(bits));
         }
@@ -1027,18 +1016,10 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
                                params.loops[1][params.inputXLoopIndex[1]]) +
                            loop_counters[1][params.inputXLoopIndex[1]];
 
-        spdlog::debug(
-            "MatrixProcessor::process_accumulation write to accumulation "
-            "buffer\n");
-
         BufferWriteRequest<Pack1D<Buffer, NCols>> req;
         req.address = writeAddress;
         req.data = previous_accumulation;
         accumulation_buffer_write_request[accumulation_buffer_bank].Push(req);
-
-        spdlog::debug(
-            "MatrixProcessor::process_accumulation write to accumulation "
-            "buffer done\n");
 
         bool output_tile_completed =
             (loop_counters[0][params.reductionLoopIndex[0]] ==
@@ -1057,8 +1038,6 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
              params.loops[1][params.inputYLoopIndex[1]] - 1);
 
         if (output_tile_completed) {
-          spdlog::debug("accumulation_buffer_done[{}].SyncPush()\n",
-                        accumulation_buffer_bank);
           accumulation_buffer_done[accumulation_buffer_bank].SyncPush();
           accumulation_buffer_bank = !accumulation_buffer_bank;
         }

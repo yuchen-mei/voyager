@@ -1,4 +1,6 @@
 #pragma once
+
+#include <ac_fixed.h>
 #include <ac_std_float.h>
 
 #include <string>
@@ -11,14 +13,14 @@ class StdFloat;
 template <int W, bool S>
 class Int;
 
-#include "datatypes/IntTypes.h"
-#include "datatypes/NormalFloat.h"
-#include "datatypes/PositTypes.h"
-#include "datatypes/ScaleTypes.h"
-#include "datatypes/StdFloatTypes.h"
+#include "IntTypes.h"
+#include "NormalFloat.h"
+#include "PositTypes.h"
+#include "ScaleTypes.h"
+#include "StdFloatTypes.h"
 
 #ifndef __SYNTHESIS__
-#include "datatypes/CFloat.h"
+#include "CFloat.h"
 #endif
 
 namespace DataTypes {
@@ -38,8 +40,6 @@ typedef StdFloat<7, 8, false, true, AC_RND_CONV> bfloat16;
 typedef StdFloat<23, 8, false, true, AC_RND_CONV> float32;
 
 typedef Posit<8, 1> posit8;
-
-typedef NormalFloat4 nf4;
 
 typedef UFloat<8, 8> fp8_e8m0;
 typedef UFloat<8, 5> fp8_e5m3;
@@ -129,11 +129,6 @@ struct TypeName<posit8> {
   static std::string name() { return "posit8_1"; }
 };
 
-template <>
-struct TypeName<nf4> {
-  static std::string name() { return "nf4_5"; }
-};
-
 };  // namespace DataTypes
 
 // clang-format off
@@ -152,7 +147,6 @@ struct TypeName<nf4> {
   DataTypes::bfloat16,           \
   DataTypes::float32,            \
   DataTypes::posit8,             \
-  DataTypes::nf4,                \
   DataTypes::fp8_e8m0,           \
   DataTypes::fp8_e5m3
 // clang-format on

@@ -8,26 +8,6 @@ DataLoader::DataLoader(MemoryInterface* memory_interface, bool is_dut,
                        bool is_cnn)
     : memory_interface(memory_interface), is_dut(is_dut), is_cnn(is_cnn) {}
 
-template <typename T>
-bool write_data(MemoryInterface* memory, uint64_t offset, int partition,
-                int address, float value, std::string dtype) {
-  if (dtype == DataTypes::TypeName<T>::name()) {
-    memory->write_value_to_memory<T>(offset, partition, address, value);
-    return true;
-  }
-  return false;
-}
-
-template <typename... Ts>
-void write_data_helper(MemoryInterface* memory, uint64_t offset, int partition,
-                       int address, float value, std::string dtype) {
-  bool matched =
-      (write_data<Ts>(memory, offset, partition, address, value, dtype) || ...);
-  if (!matched) {
-    throw std::runtime_error("Unsupported tensor dtype: " + dtype);
-  }
-}
-
 void DataLoader::load_tensor(const codegen::Tensor& tensor,
                              std::string data_dir, bool transpose,
                              bool replication) {
@@ -63,9 +43,6 @@ void DataLoader::load_tensor(const codegen::Tensor& tensor,
     }
   }
 
-  int partition = tensor.memory().partition();
-  uint64_t offset = tensor.memory().address();
-
   // number of elements packed into a single word for replication
   const int packing_factor = IC_DIMENSION / 4 * 3;
   if (replication) {
@@ -74,8 +51,7 @@ void DataLoader::load_tensor(const codegen::Tensor& tensor,
 
   int address = 0;
   for (auto it = array.begin(); it != array.end(); ++it) {
-    write_data_helper<SUPPORTED_TYPES>(memory_interface, offset, partition,
-                                       address, *it, tensor.dtype());
+    memory_interface->write_data(tensor, address, *it);
 
     address++;
     if (replication && address % IC_DIMENSION == packing_factor) {

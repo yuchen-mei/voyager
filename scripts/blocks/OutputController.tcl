@@ -3,5 +3,5 @@ set full_block_name "OutputController<$VECTOR_DATATYPE, $SCALE_DATATYPE, $OC_DIM
 set full_block_name_stripped [string map {" " ""} $full_block_name]
 
 proc pre_architect {} {
-  global full_block_name_stripped VECTOR_DATATYPE IO_DATATYPE
+  global full_block_name_stripped
 }

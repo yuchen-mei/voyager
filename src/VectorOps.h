@@ -257,37 +257,38 @@ bool process_vector_input(
   return true;
 }
 
-template <typename OutputType, size_t Width, typename VectorType,
-          typename... Ts>
+template <typename T, size_t Width, typename VectorType, typename... Ts>
 bool send_vector_outputs(
-    ac_int<4, false> dtype, Pack1D<VectorType, Width> inputs,
-    ac_int<32, false> address, ac_int<ADDRESS_WIDTH, false> offset,
+    ac_int<4, false> dtype, bool is_codebook_quant,
+    Pack1D<VectorType, Width> inputs, ac_int<32, false> address,
+    ac_int<ADDRESS_WIDTH, false> offset,
     Connections::Out<ac_int<OC_PORT_WIDTH, false>>& output_channel,
     Connections::Out<ac_int<ADDRESS_WIDTH, false>>& address_channel) {
-  if (get_type_index<OutputType, Ts...>() != dtype) {
+  if (get_type_index<T, Ts...>() != dtype) {
     return false;
   }
 
   constexpr int num_words =
-      (OutputType::width * Width + OC_PORT_WIDTH - 1) / OC_PORT_WIDTH;
+      (T::width * Width + OC_PORT_WIDTH - 1) / OC_PORT_WIDTH;
 
-  static_assert(
-      num_words > 0,
-      "Width of output type must be greater than or equal to the width "
-      "of the output channel");
+  Pack1D<T, Width> outputs;
 
-  Pack1D<OutputType, Width> outputs;
 #pragma hls_unroll yes
   for (int i = 0; i < Width; i++) {
-    outputs[i] = inputs[i];
+    if (is_codebook_quant) {
+      outputs[i].set_bits(
+          inputs[i].float_val.template convert_to_ac_int<T::width, true>());
+    } else {
+      outputs[i] = inputs[i];
+    }
   }
 
-  ac_int<OutputType::width * Width, false> bits;
+  ac_int<T::width * Width, false> bits;
   bits = BitsToType<decltype(bits)>(TypeToBits(outputs));
 
   for (int i = 0; i < num_words; i++) {
     output_channel.Push(bits.template slc<OC_PORT_WIDTH>(i * OC_PORT_WIDTH));
-    address_channel.Push(offset + address * OutputType::width / 8 +
+    address_channel.Push(offset + address * T::width / 8 +
                          i * OC_PORT_WIDTH / 8);
   }
 

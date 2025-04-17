@@ -9,7 +9,7 @@
 #include <mc_connections.h>
 
 #include "Params.h"
-#include "src/datatypes/DataTypes.h"
+#include "datatypes/DataTypes.h"
 
 #ifdef DEBUG
 #define DLOG(x) CCS_LOG(x)

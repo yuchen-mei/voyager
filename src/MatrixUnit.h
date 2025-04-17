@@ -28,13 +28,9 @@ SC_MODULE(MatrixUnit) {
   Connections::In<int> CCS_INIT_S1(serialMatrixParamsIn);
   Connections::Combinational<int> serialMatrixParams[PARAMS_MODULE_COUNT];
 
-  // clang-format off
-#ifdef SIM_InputController
-  CCS_DESIGN((InputController<MatrixInputTypes, IC_DIMENSION>)) CCS_INIT_S1(inputController);
-#else
-  InputController<MatrixInputTypes, IC_DIMENSION, IC_PORT_WIDTH, INPUT_BUFFER_WIDTH> CCS_INIT_S1(inputController);
-#endif
-  // clang-format on
+  InputController<InputTypeList, IC_DIMENSION, IC_PORT_WIDTH,
+                  INPUT_BUFFER_WIDTH>
+      CCS_INIT_S1(inputController);
 
   DoubleBuffer<INPUT_BUFFER_SIZE, INPUT_BUFFER_WIDTH> CCS_INIT_S1(inputBuffer);
   Connections::Out<MemoryRequest> CCS_INIT_S1(inputAddressRequest);
@@ -65,15 +61,9 @@ SC_MODULE(MatrixUnit) {
       inputScaleFromBuffer);
 #endif
 
-#ifdef SIM_WeightController
-  // clang-format off
-  CCS_DESIGN( (WeightController<WEIGHT_DATATYPE, ACCUM_BUFFER_DATATYPE, IC_DIMENSION, OC_DIMENSION>) ) CCS_INIT_S1(weightController);
-  // clang-format on
-#else
-  WeightController<MatrixWeightTypes, ACCUM_BUFFER_DATATYPE, IC_DIMENSION,
+  WeightController<WeightTypeList, ACCUM_BUFFER_DATATYPE, IC_DIMENSION,
                    OC_DIMENSION, OC_PORT_WIDTH, WEIGHT_BUFFER_WIDTH>
       CCS_INIT_S1(weightController);
-#endif
 
   DoubleBuffer<WEIGHT_BUFFER_SIZE, WEIGHT_BUFFER_WIDTH> CCS_INIT_S1(
       weightBuffer);
@@ -104,17 +94,10 @@ SC_MODULE(MatrixUnit) {
       weightScaleFromBuffer);
 #endif
 
-#ifdef SIM_MatrixProcessor
-  // clang-format off
-  CCS_DESIGN( (MatrixProcessor<SA_INPUT_TYPE, SA_WEIGHT_TYPE, ACCUM_DATATYPE,
-    ACCUM_BUFFER_DATATYPE, SCALE_DATATYPE, IC_DIMENSION, OC_DIMENSION, ACCUM_BUFFER_SIZE>) ) CCS_INIT_S1(matrixProcessor);
-  // clang-format on
-#else
-  MatrixProcessor<MatrixInputTypes, MatrixWeightTypes, SA_INPUT_TYPE,
+  MatrixProcessor<InputTypeList, WeightTypeList, SA_INPUT_TYPE,
                   SA_WEIGHT_TYPE, ACCUM_DATATYPE, ACCUM_BUFFER_DATATYPE,
                   SCALE_DATATYPE, IC_DIMENSION, OC_DIMENSION, ACCUM_BUFFER_SIZE>
       CCS_INIT_S1(matrixProcessor);
-#endif
 
   Connections::Combinational<Pack1D<ACCUM_BUFFER_DATATYPE, OC_DIMENSION>>
       CCS_INIT_S1(biasToSystolicArray);

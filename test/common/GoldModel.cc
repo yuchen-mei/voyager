@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "spdlog/spdlog.h"
+#include "test/common/MemoryInterface.h"
 #include "test/common/VerificationTypes.h"
 #include "test/common/operations/LayerNorm.h"
 #include "test/common/operations/MatrixOps.h"
@@ -14,9 +15,9 @@
 #include "test/common/operations/Softmax.h"
 #include "test/common/operations/VectorOps.h"
 
-template <typename T, typename U>
-bool type_cast_helper(std::any &input_ptr, codegen::Tensor tensor,
-                      bool is_input) {
+template <typename T, typename U, bool is_input>
+bool type_cast_helper(std::any &input_ptr, float *codebook,
+                      codegen::Tensor tensor) {
   if ((is_input && tensor.dtype() != DataTypes::TypeName<T>::name()) ||
       (!is_input && tensor.dtype() != DataTypes::TypeName<U>::name())) {
     return false;
@@ -32,7 +33,21 @@ bool type_cast_helper(std::any &input_ptr, codegen::Tensor tensor,
   U *outputs = new U[size];
 
   for (int i = 0; i < size; i++) {
-    outputs[i] = static_cast<U>(inputs[i]);
+    if (codebook != nullptr) {
+      if constexpr (is_input) {
+        outputs[i] = codebook[inputs[i].bits_rep().to_uint()];
+      } else {
+        unsigned index = 0;
+        for (; index < NUM_CODEBOOK_ENTRIES - 1; index++) {
+          if (static_cast<float>(inputs[i]) < codebook[index]) {
+            break;
+          }
+        }
+        outputs[i] = index;
+      }
+    } else {
+      outputs[i] = static_cast<U>(inputs[i]);
+    }
   }
 
   delete[] inputs;
@@ -42,15 +57,15 @@ bool type_cast_helper(std::any &input_ptr, codegen::Tensor tensor,
 }
 
 template <typename U, typename... Ts>
-void cast_input(std::any &input_ptr, codegen::Tensor tensor) {
-  if (!(type_cast_helper<Ts, U>(input_ptr, tensor, true) || ...)) {
+void cast_input(std::any &input_ptr, float *codebook, codegen::Tensor tensor) {
+  if (!(type_cast_helper<Ts, U, true>(input_ptr, codebook, tensor) || ...)) {
     throw std::runtime_error("Unsupported tensor dtype: " + tensor.dtype());
   }
 }
 
 template <typename U, typename... Ts>
-void cast_output(std::any &input_ptr, codegen::Tensor tensor) {
-  if (!(type_cast_helper<U, Ts>(input_ptr, tensor, false) || ...)) {
+void cast_output(std::any &input_ptr, float *codebook, codegen::Tensor tensor) {
+  if (!(type_cast_helper<U, Ts, false>(input_ptr, codebook, tensor) || ...)) {
     throw std::runtime_error("Unsupported tensor dtype: " + tensor.dtype());
   }
 }
@@ -61,6 +76,7 @@ std::vector<std::any> run_operation(const Operation &operation,
                                     std::map<std::string, std::any> kwargs) {
   std::any output_ptr;
   std::vector<std::any> outputs;
+  float *output_code = nullptr;
 
   const auto param = operation.param;
   auto op_list = get_op_list(param);
@@ -98,9 +114,21 @@ std::vector<std::any> run_operation(const Operation &operation,
       output_ptr = matrix_vector_multiply<Vector>(input_ptr, weight_ptr,
                                                   bias_ptr, get_shape(weight));
     } else {
+      float *input_code = nullptr;
+      if (first_op.kwargs().contains("input_code")) {
+        const auto code = first_op.kwargs().at("input_code").tensor();
+        input_code = read_constant_param(code);
+      }
+
+      float *weight_code = nullptr;
+      if (first_op.kwargs().contains("weight_code")) {
+        const auto code = first_op.kwargs().at("weight_code").tensor();
+        weight_code = read_constant_param(code);
+      }
+
       // Cast input and weight to systolic array compute types
-      cast_input<SaInput, SUPPORTED_TYPES>(input_ptr, input);
-      cast_input<SaWeight, SUPPORTED_TYPES>(weight_ptr, weight);
+      cast_input<SaInput, SUPPORTED_TYPES>(input_ptr, input_code, input);
+      cast_input<SaWeight, SUPPORTED_TYPES>(weight_ptr, weight_code, weight);
 
       // Perform reshape if necessary
       if (input.has_reshape()) {
@@ -127,6 +155,13 @@ std::vector<std::any> run_operation(const Operation &operation,
       output_ptr = gemm<SaInput, SaWeight, Psum, AccumBuffer, Scale>(
           input_ptr, input_scale_ptr, weight_ptr, weight_scale_ptr, bias_ptr,
           operation);
+
+      if (input_code != nullptr) {
+        delete[] input_code;
+      }
+      if (weight_code != nullptr) {
+        delete[] weight_code;
+      }
     }
   }
 
@@ -289,6 +324,11 @@ std::vector<std::any> run_operation(const Operation &operation,
         const bool force_scale_power_of_two =
             op.kwargs().at("force_scale_power_of_two").int_value();
 
+        if (op.kwargs().contains("quant_code")) {
+          const auto code = op.kwargs().at("quant_code").tensor();
+          output_code = read_constant_param(code);
+        }
+
         Vector *mx_scale = calculate_mx_qparam<Vector, Scale>(
             output_ptr, input_shape, quant_max, block_size, axis,
             force_scale_power_of_two);
@@ -347,7 +387,13 @@ std::vector<std::any> run_operation(const Operation &operation,
       outputs[i] = reshape_if_needed<Vector>(outputs[i], reshape_op);
     }
 
-    cast_output<Vector, SUPPORTED_TYPES>(outputs[i], output_tensor);
+    cast_output<Vector, SUPPORTED_TYPES>(
+        outputs[i], i == output_tensors.size() - 1 ? output_code : nullptr,
+        output_tensor);
+  }
+
+  if (output_code != nullptr) {
+    delete[] output_code;
   }
 
   return outputs;

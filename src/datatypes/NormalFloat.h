@@ -1,8 +1,6 @@
 #pragma once
 
-// clang-format off
 #include <ac_std_float.h>
-// clang-format on
 
 class NormalFloat4 {
  public:

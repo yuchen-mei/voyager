@@ -261,7 +261,7 @@ SC_MODULE(VectorFetchUnit) {
                     bool found =
                         (fetch_vector_input<InputTypes, Width, InputTypes...>(
                              params.addr_gen0_dtype, address,
-                             params.VECTOR_OFFSET,
+                             params.ADDRESS_GEN0_OFFSET,
                              vector_fetch_0_request_out) ||
                          ...);
 
@@ -318,6 +318,8 @@ SC_MODULE(VectorFetchUnit) {
     accumulationBufferOutput.Reset();
     accumulation_buffer_read_data[0].Reset();
     accumulation_buffer_read_data[1].Reset();
+    accumulation_buffer_write_request[0].Reset();
+    accumulation_buffer_write_request[1].Reset();
 
     bool accumulation_buffer_bank = 0;
 

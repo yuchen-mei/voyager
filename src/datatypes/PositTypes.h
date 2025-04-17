@@ -7,6 +7,7 @@
 // but with more emphasis on a lightweight implementation.
 
 #pragma once
+
 #include <ac_int.h>
 #include <ac_math/ac_inverse_sqrt_pwl.h>
 #include <ac_math/ac_sqrt_pwl.h>
