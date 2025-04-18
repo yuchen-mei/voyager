@@ -316,9 +316,9 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
       Pack1D<Psum, NCols> bias;
 
       // loop indices that are used to determine when to read in a new bias
-      int biasReuseIndices[4] = {5, 5, 5, 5};
+      int bias_reuse_indices[4] = {5, 5, 5, 5};
       for (int i = 5; i > params.weightLoopIndex[1]; i--) {
-        biasReuseIndices[5 - i] = i;
+        bias_reuse_indices[5 - i] = i;
       }
 
 #pragma hls_pipeline_init_interval 1
@@ -338,18 +338,17 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
             loop_counters[1][params.fxIndex] != 0 ||
             loop_counters[1][params.fyIndex] != 0;
 
-        if (is_accumulating && step < total_ops) {
+        if (is_accumulating) {
           psum = accumulation_buffer_read_data[accumulation_buffer_bank].Pop();
-        } else if (params.has_bias && step < total_ops) {
+        } else if (params.has_bias) {
           // we need to load in a new bias every time the weight loop index
           // changes
-          bool readBias = true;
-#pragma hls_unroll yes
-          for (int i = 0; i < 4; i++) {
-            readBias = readBias && (loop_counters[1][biasReuseIndices[i]] == 0);
-          }
+          bool read_bias = loop_counters[1][bias_reuse_indices[0]] == 0 &&
+                           loop_counters[1][bias_reuse_indices[1]] == 0 &&
+                           loop_counters[1][bias_reuse_indices[2]] == 0 &&
+                           loop_counters[1][bias_reuse_indices[3]] == 0;
 
-          if (readBias) {
+          if (read_bias) {
             bias = biasChannel.Pop();
           }
 
@@ -480,16 +479,16 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
       // Y, X), the non_accumulating_tile_size is X * Y. For a loop order of (C,
       // K, FX, Y, FY, X), the non_accumulating_tile_size is X.
       int non_accumulating_tile_size = 1;
-      int largestReductionLoopIndex =
+      int max_reduction_loop_index =
           max3(params.reductionLoopIndex[1], params.fxIndex, params.fyIndex);
-      for (int i = 5; i > largestReductionLoopIndex; i--) {
+      for (int i = 5; i > max_reduction_loop_index; i--) {
         non_accumulating_tile_size *= params.loops[1][i];
       }
 
       // loop indices that are used to determine when to read in a new bias
-      int biasReuseIndices[4] = {5, 5, 5, 5};
+      int bias_reuse_indices[4] = {5, 5, 5, 5};
       for (int i = 5; i > params.weightLoopIndex[1]; i--) {
-        biasReuseIndices[5 - i] = i;
+        bias_reuse_indices[5 - i] = i;
       }
 
       // Push inputs and psums into the array
@@ -540,18 +539,10 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
           swap_weights = (loop_counters[1][params.weightReuseIndex[1]] == 0);
         }
 
-        swap_weights = swap_weights || step == 0;
-
-        if (swap_weights && step < total_ops - 1) {
 #pragma hls_unroll yes
-          for (int i = 0; i < NRows; i++) {
-            inputs[i].swapWeights = true;
-          }
-        } else {
-#pragma hls_unroll yes
-          for (int i = 0; i < NRows; i++) {
-            inputs[i].swapWeights = false;
-          }
+        for (int i = 0; i < NRows; i++) {
+          inputs[i].swapWeights =
+              (swap_weights || step == 0) && step < total_ops - 1;
         }
 
         if (!stall_inputs) {
@@ -652,7 +643,7 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
 
           unscaledAccumulationChannel.Push(outputs);
 #else
-          ac_int<int_log2(BufferSize), false> writeAddress =
+          ac_int<int_log2(BufferSize), false> write_address =
               loop_counters_out[1][params.weightLoopIndex[1]] *
                   params.loops[1][params.inputXLoopIndex[1]] *
                   params.loops[1][params.inputYLoopIndex[1]] +
@@ -661,7 +652,7 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
               loop_counters_out[1][params.inputXLoopIndex[1]];
 
           BufferWriteRequest<Pack1D<Buffer, NCols>> req;
-          req.address = writeAddress;
+          req.address = write_address;
           req.data = outputs;
           accumulation_buffer_write_request[accumulation_buffer_bank].Push(req);
 
@@ -772,7 +763,7 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
           }
           unscaledAccumulationChannel.Push(outputs);
 #else
-          ac_int<int_log2(BufferSize), false> writeAddress =
+          ac_int<int_log2(BufferSize), false> write_address =
               loop_counters_out[1][params.weightLoopIndex[1]] *
                   params.loops[1][params.inputXLoopIndex[1]] *
                   params.loops[1][params.inputYLoopIndex[1]] +
@@ -781,7 +772,7 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
               loop_counters_out[1][params.inputXLoopIndex[1]];
 
           BufferWriteRequest<Pack1D<Buffer, NCols>> req;
-          req.address = writeAddress;
+          req.address = write_address;
           req.data = outputs;
           accumulation_buffer_write_request[accumulation_buffer_bank].Push(req);
 
@@ -877,12 +868,12 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
       ac_int<32, false> step = 0;
 
       Pack1D<Buffer, NCols> bias;
-      Pack1D<Scale, NCols> weightScales;
+      Pack1D<Scale, NCols> weight_scales;
 
       // loop indices that are used to determine when to read in a new bias
-      int biasReuseIndices[4] = {5, 5, 5, 5};
+      int bias_reuse_indices[4] = {5, 5, 5, 5};
       for (int i = 5; i > params.weightLoopIndex[1]; i--) {
-        biasReuseIndices[5 - i] = i;
+        bias_reuse_indices[5 - i] = i;
       }
 
 #pragma hls_pipeline_init_interval 1
@@ -903,14 +894,12 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
 
         if (is_non_accumulating_tile) {
           if (params.has_bias) {
-            bool readBias = true;
-#pragma hls_unroll yes
-            for (int i = 0; i < 4; i++) {
-              readBias =
-                  readBias && (loop_counters[1][biasReuseIndices[i]] == 0);
-            }
+            bool read_bias = loop_counters[1][bias_reuse_indices[0]] == 0 &&
+                             loop_counters[1][bias_reuse_indices[1]] == 0 &&
+                             loop_counters[1][bias_reuse_indices[2]] == 0 &&
+                             loop_counters[1][bias_reuse_indices[3]] == 0;
 
-            if (readBias) {
+            if (read_bias) {
               bias = biasChannel.Pop();
             }
 
@@ -928,31 +917,32 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
         outputs = unscaledAccumulationChannel_delayed.Pop();
 #endif
 
-        Scale inputScale;
+        Scale input_scale;
         if (params.is_mx_op) {
-          inputScale.set_bits(inputScaleChannel.Pop());
+          input_scale.set_bits(inputScaleChannel.Pop());
         }
 
-        bool readNewWeights;
+        bool swap_weights;
         if (params.weightReuseIndex[0] != params.weightReuseIndex[1]) {
-          readNewWeights =
-              (loop_counters[1][params.weightReuseIndex[1]] == 0) &&
-              (loop_counters[1][params.weightReuseIndex[0]] == 0);
+          swap_weights = (loop_counters[1][params.weightReuseIndex[1]] == 0) &&
+                         (loop_counters[1][params.weightReuseIndex[0]] == 0);
         } else {
-          readNewWeights = (loop_counters[1][params.weightReuseIndex[1]] == 0);
+          swap_weights = (loop_counters[1][params.weightReuseIndex[1]] == 0);
         }
-        readNewWeights = readNewWeights || step == 0;
-        if (readNewWeights && params.is_mx_op) {
+
+        swap_weights = swap_weights || step == 0;
+
+        if (swap_weights && params.is_mx_op) {
           auto bits = weightScaleChannel.Pop();
-          weightScales = BitsToType<Pack1D<Scale, NCols>>(TypeToBits(bits));
+          weight_scales = BitsToType<Pack1D<Scale, NCols>>(TypeToBits(bits));
         }
 
         Pack1D<Buffer, NCols> scaled_outputs;
 
 #pragma hls_unroll yes
         for (int i = 0; i < NCols; i++) {
-          Buffer scale = static_cast<Buffer>(inputScale) *
-                         static_cast<Buffer>(weightScales[i]);
+          Buffer scale = static_cast<Buffer>(input_scale) *
+                         static_cast<Buffer>(weight_scales[i]);
           scaled_outputs[i] = static_cast<Buffer>(outputs[i]);
           if (params.is_mx_op) {
             scaled_outputs[i] = scaled_outputs[i] * scale;
@@ -960,17 +950,17 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
           previous_accumulation.value[i] += scaled_outputs[i];
         }
 
-        int writeAddress = static_cast<ac_int<10, false>>(
-                               loop_counters[1][params.weightLoopIndex[1]] *
-                               params.loops[1][params.inputXLoopIndex[1]] *
-                               params.loops[1][params.inputYLoopIndex[1]]) +
-                           static_cast<ac_int<10, false>>(
-                               loop_counters[1][params.inputYLoopIndex[1]] *
-                               params.loops[1][params.inputXLoopIndex[1]]) +
-                           loop_counters[1][params.inputXLoopIndex[1]];
+        int write_address = static_cast<ac_int<10, false>>(
+                                loop_counters[1][params.weightLoopIndex[1]] *
+                                params.loops[1][params.inputXLoopIndex[1]] *
+                                params.loops[1][params.inputYLoopIndex[1]]) +
+                            static_cast<ac_int<10, false>>(
+                                loop_counters[1][params.inputYLoopIndex[1]] *
+                                params.loops[1][params.inputXLoopIndex[1]]) +
+                            loop_counters[1][params.inputXLoopIndex[1]];
 
         BufferWriteRequest<Pack1D<Buffer, NCols>> req;
-        req.address = writeAddress;
+        req.address = write_address;
         req.data = previous_accumulation;
         accumulation_buffer_write_request[accumulation_buffer_bank].Push(req);
 
