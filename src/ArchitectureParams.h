@@ -89,7 +89,7 @@ using F9 = StdFloat<3, 5>;
 #define INPUT_DATATYPE DataTypes::int8
 #define WEIGHT_DATATYPE DataTypes::int8
 #define ACCUM_DATATYPE DataTypes::int24
-#define VECTOR_DATATYPE DataTypes::bfloat16;
+#define VECTOR_DATATYPE DataTypes::bfloat16
 
 #elif defined(INT8_32)
 
