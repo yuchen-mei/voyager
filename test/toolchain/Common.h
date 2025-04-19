@@ -249,6 +249,7 @@ void set_quantize_params(const codegen::Operation &param,
     float *array = read_constant_param(scale);
     VECTOR_DATATYPE immediate = array[0];
     inst.immediate2 = immediate.bits_rep();
+
     delete[] array;
   } else if (last_op.target() == "quantize_mx") {
     int block_size = last_op.kwargs().at("block_size").int_value();
@@ -271,12 +272,16 @@ void set_quantize_params(const codegen::Operation &param,
     vector_params->SCALE_OFFSET = param.outputs().tensors(0).memory().address();
 
     if (last_op.kwargs().contains("quant_code")) {
-      auto code = last_op.kwargs().at("quant_code").tensor();
+      const auto code = last_op.kwargs().at("quant_code").tensor();
+      const int size = get_size(code);
+
       float *array = read_constant_param(code);
 
-      for (int i = 0; i < NUM_CODEBOOK_ENTRIES; i++) {
+      for (int i = 0; i < size; i++) {
         vector_params->output_code[i] = array[i] * 2;
       }
+
+      delete[] array;
 
       vector_params->use_output_codebook = true;
     }

@@ -18,7 +18,7 @@
 // IWYU pragma: end_exports
 
 #ifndef NUM_SRAM_BANKS
-#define NUM_SRAM_BANKS 1024
+#define NUM_SRAM_BANKS 512
 #endif
 #define SRAM_MEMORY_SIZE (NUM_SRAM_BANKS * 1024LL * 1024LL)
 

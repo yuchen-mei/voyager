@@ -436,6 +436,7 @@ void MapVectorOperations(const codegen::Operation &param,
       float *array = read_constant_param(other);
       VECTOR_DATATYPE immediate = array[0];
       inst.vector_dq_scale = immediate.bits_rep();
+
       delete[] array;
 
       continue;
@@ -504,12 +505,16 @@ void MapVectorOperations(const codegen::Operation &param,
           param.outputs().tensors(0).memory().address();
 
       if (op.kwargs().contains("quant_code")) {
-        auto code = op.kwargs().at("quant_code").tensor();
+        const auto code = op.kwargs().at("quant_code").tensor();
+        const int size = get_size(code);
+
         float *array = read_constant_param(code);
 
-        for (int i = 0; i < NUM_CODEBOOK_ENTRIES; i++) {
+        for (int i = 0; i < size; i++) {
           vector_params->output_code[i] = array[i] * 2;
         }
+
+        delete[] array;
 
         vector_params->use_output_codebook = true;
       }
