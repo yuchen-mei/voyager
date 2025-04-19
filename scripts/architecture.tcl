@@ -160,8 +160,8 @@ if { $DATATYPE == "P8_1" } {
   set ACCUM_DATATYPE_WIDTH 16
   set SCALE_DATATYPE_WIDTH 8
 
-  set IC_PORT_WIDTH expr[ {$IC_DIMENSION * 4}]
-  set OC_PORT_WIDTH expr[ {$OC_DIMENSION * 4}]
+  set IC_PORT_WIDTH [expr {$IC_DIMENSION * 4}]
+  set OC_PORT_WIDTH [expr {$OC_DIMENSION * 4}]
 } else {
   puts "Invalid DATATYPE"
   exit 1
