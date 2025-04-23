@@ -272,7 +272,7 @@ std::vector<std::any> run_operation(const Operation &operation,
         auto operand2 = op.kwargs().at("other").tensor();
 
         // input comes from outputs of previous operations
-        if (!operand2.has_memory()) {
+        if (!operand2.has_memory() && get_size(operand2) != 1) {
           std::swap(operand1, operand2);
         }
 
