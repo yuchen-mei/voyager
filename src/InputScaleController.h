@@ -135,26 +135,26 @@ SC_MODULE(InputScaleController) {
                 }
               } else {
                 if (loop_counters[0][params.inputXLoopIndex[0]] != 0) {
-                  x_min_offset = (FX - 1) / 2;
-                  loop_bounds[1][params.inputXLoopIndex[1]] += (FX - 1) / 2;
+                  x_min_offset = params.padding;
+                  loop_bounds[1][params.inputXLoopIndex[1]] += params.padding;
                 }
 
                 if (loop_counters[0][params.inputXLoopIndex[0]] !=
                     loop_bounds[0][params.inputXLoopIndex[0]] - 1) {
-                  x_max_offset = (FX - 1) / 2;
-                  loop_bounds[1][params.inputXLoopIndex[1]] += (FX - 1) / 2;
+                  x_max_offset = params.padding;
+                  loop_bounds[1][params.inputXLoopIndex[1]] += params.padding;
                 }
               }
 
               if (loop_counters[0][params.inputYLoopIndex[0]] != 0) {
-                y_min_offset = (FY - 1) / 2;
-                loop_bounds[1][params.inputYLoopIndex[1]] += (FY - 1) / 2;
+                y_min_offset = params.padding;
+                loop_bounds[1][params.inputYLoopIndex[1]] += params.padding;
               }
 
               if (loop_counters[0][params.inputYLoopIndex[0]] !=
                   loop_bounds[0][params.inputYLoopIndex[0]] - 1) {
-                y_max_offset = (FY - 1) / 2;
-                loop_bounds[1][params.inputYLoopIndex[1]] += (FY - 1) / 2;
+                y_max_offset = params.padding;
+                loop_bounds[1][params.inputYLoopIndex[1]] += params.padding;
               }
 
               for (loop_counters[1][0] = 0;
@@ -313,8 +313,8 @@ SC_MODULE(InputScaleController) {
 
       bool isDownsample = FX == 1 && FY == 1;
 
-      ac_int<4, false> fx_bound = (FX - 1) / 2;
-      ac_int<4, false> fy_bound = (FY - 1) / 2;
+      ac_int<4, false> fx_bound = params.padding;
+      ac_int<4, false> fy_bound = params.padding;
 
       ac_int<LOOP_WIDTH, false> loop_counters[2][6];
       ac_int<LOOP_WIDTH, false> loop_bounds[2][6];

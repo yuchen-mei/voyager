@@ -125,8 +125,9 @@ inline Buffer *gemm(std::any input_ptr, std::any input_scale_ptr,
                       int y0 = counters[1][tiling.y_loop_index[1]];
                       int c1 = counters[1][tiling.reduction_loop_index[1]];
                       int k0 = counters[1][tiling.weight_loop_index[1]];
-                      int fx = counters[1][tiling.fx_index] - (FX - 1) / 2;
-                      int fy = counters[1][tiling.fy_index] - (FY - 1) / 2;
+
+                      int fx = counters[1][tiling.fx_index] - tiling.padding;
+                      int fy = counters[1][tiling.fy_index] - tiling.padding;
 
                       int x = x1 * X0 + x0;
                       int y = y1 * Y0 + y0;
@@ -145,8 +146,8 @@ inline Buffer *gemm(std::any input_ptr, std::any input_scale_ptr,
                           int c = c2 * C1 * IC_UNROLL + c1 * IC_UNROLL + ic0;
                           int input_addr = (STRIDE * y + fy) * STRIDE * X * C +
                                            (STRIDE * x + fx) * C + c;
-                          int weight_addr = (fy + (FY - 1) / 2) * FX * C * K +
-                                            (fx + (FX - 1) / 2) * C * K +
+                          int weight_addr = (fy + tiling.padding) * FX * C * K +
+                                            (fx + tiling.padding) * C * K +
                                             c * K + k;
                           if (STRIDE * x + fx >= 0 &&
                               STRIDE * x + fx < STRIDE * X &&

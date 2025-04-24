@@ -54,6 +54,13 @@ Tiling get_tiling(const Operation& operation) {
     } else {
       tiling.stride = 1;
     }
+
+    if (first_op.kwargs().contains("padding")) {
+      auto padding = first_op.kwargs().at("padding").int_list().values();
+      tiling.padding = padding[0];
+    } else {
+      tiling.padding = 0;
+    }
   }
 
   return tiling;
@@ -211,18 +218,18 @@ Tiling get_conv2d_tiling(const codegen::OpOverload param) {
 
   const auto input = kwargs.at("input").tensor();
   const auto weight = kwargs.at("weight").tensor();
-  const auto padding = kwargs.at("padding").int_list().values();
+  const auto paddings = kwargs.at("padding").int_list().values();
   const auto dilation = kwargs.at("dilation").int_list().values();
   const auto strides = kwargs.at("stride").int_list().values();
 
   const auto input_shape = get_shape(input);
   const auto weight_shape = get_shape(weight);
 
-  const int output_height = (input_shape[1] + 2 * padding[0] -
+  const int output_height = (input_shape[1] + 2 * paddings[0] -
                              dilation[0] * (weight_shape[0] - 1) - 1) /
                                 strides[0] +
                             1;
-  const int output_width = (input_shape[2] + 2 * padding[1] -
+  const int output_width = (input_shape[2] + 2 * paddings[1] -
                             dilation[1] * (weight_shape[1] - 1) - 1) /
                                strides[1] +
                            1;
@@ -273,6 +280,7 @@ Tiling get_conv2d_tiling(const codegen::OpOverload param) {
         .fy_index = 2,
         .weight_reuse_index = {4, 5},
         .stride = stride,
+        .padding = 3,
         .resnet_replication = true,
     };
 
@@ -380,6 +388,7 @@ Tiling get_conv2d_tiling(const codegen::OpOverload param) {
       .fy_index = 2,
       .weight_reuse_index = {4, 5},
       .stride = stride,
+      .padding = padding,
   };
 }
 
@@ -458,6 +467,7 @@ Tiling get_linear_tiling(const codegen::OpOverload op) {
       .fy_index = 2,
       .weight_reuse_index = {4, 5},
       .stride = 1,
+      .padding = 0,
       .resnet_replication = false,
   };
 }

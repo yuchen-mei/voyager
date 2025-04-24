@@ -405,6 +405,7 @@ void MapMatrixOperation(const Operation &operation,
   }
 
   matrix_params->stride = tiling.stride;
+  matrix_params->padding = tiling.padding;
   matrix_params->is_resnet_replication = tiling.resnet_replication;
 
   // Permute input for transformer attention outputs

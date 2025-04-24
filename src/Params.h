@@ -52,6 +52,7 @@ struct MatrixParams : BaseParams {
     weightAddressGenFxIndex = 0;
     weightAddressGenFyIndex = 0;
 
+<<<<<<< HEAD
     input_dtype = 0;
     weight_dtype = 0;
 
@@ -63,6 +64,10 @@ struct MatrixParams : BaseParams {
       weight_code[i] = 0;
     }
 
+=======
+    STRIDE = 1;
+    padding = 0;
+>>>>>>> a9df284a (Add padding field that uses value from compiler instead of calculating padding from filter size)
     head_size_power_of_two = 0;
 
     has_bias = false;
@@ -94,6 +99,7 @@ struct MatrixParams : BaseParams {
   ac_int<3, false> fyIndex;
   ac_int<3, false> weightReuseIndex[2];
   ac_int<2, false> stride;
+  ac_int<2, false> padding;
 
   // weight address generator loop
   ac_int<LOOP_WIDTH, false> weightAddressGenLoops[2][5];
@@ -127,8 +133,8 @@ struct MatrixParams : BaseParams {
 
   static const unsigned int base_width =
       5 * 64 /* OFFSETS */ + (12 + 10) * LOOP_WIDTH /* Loops */ +
-      19 * 3 /* Loop indices */ + 2 /* stride */ + 8 /* Head Size */ +
-      10 * 1 /* Bools */;
+      19 * 3 /* Loop indices */ + 2 /* stride */ + 2 /* padding */ +
+      8 /* Head Size */ + 10 * 1 /* Bools */;
 
   static const unsigned int extra_width =
       2 * DTYPE_INDEX_WIDTH + NUM_CODEBOOK_ENTRIES * DECODED_INPUT_DTYPE_WIDTH +
@@ -168,6 +174,7 @@ struct MatrixParams : BaseParams {
       m& weightReuseIndex[i];
     }
     m & stride;
+    m & padding;
 
     for (int i = 0; i < 2; i++) {
       for (int j = 0; j < 5; j++) {
@@ -252,7 +259,7 @@ struct MatrixParams : BaseParams {
          << std::endl;
     }
     os << "stride: " << params.stride << std::endl;
-
+    os << "padding: " << params.padding << std::endl;
     for (int i = 0; i < 2; i++) {
       for (int j = 0; j < 5; j++) {
         os << "weightAddressGenLoops[" << i << "][" << j
@@ -343,6 +350,7 @@ struct MatrixParams : BaseParams {
          lhs.weightAddressGenFyIndex != rhs.weightAddressGenFyIndex))
       return false;
     if (lhs.stride != rhs.stride) return false;
+    if (lhs.padding != rhs.padding) return false;
 
     if (lhs.input_dtype != rhs.input_dtype) return false;
     if (lhs.weight_dtype != rhs.weight_dtype) return false;
