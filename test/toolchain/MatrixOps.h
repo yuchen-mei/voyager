@@ -4,6 +4,7 @@
 #include "src/AccelTypes.h"
 #include "src/Params.h"
 #include "test/common/GoldModel.h"
+#include "test/common/MemoryInterface.h"
 #include "test/common/Network.h"
 #include "test/common/Tiling.h"
 #include "test/common/VerificationTypes.h"
@@ -24,7 +25,7 @@ void set_addr_gen1(const codegen::Tensor &tensor, const Tiling &tiling,
   vector_params->addr_gen1_mode = true;
   vector_params->addr_gen1_broadcast = nonzero_dims == 1 ? 0b011 : 0b000;
   vector_params->addr_gen1_dtype =
-      get_index_from_type_name<VECTOR_INPUT_DATATYPES>(tensor.dtype());
+      get_index_from_type_name<VU_INPUT_TYPES>(tensor.dtype());
 
   // copy loop values and indices
   for (int i = 0; i < 3; i++) {
@@ -72,7 +73,7 @@ void set_addr_gen2(const codegen::Tensor &tensor, const Tiling &tiling,
   vector_params->addr_gen2_broadcast = nonzero_dims == 1 ? 0b011 : 0b000;
 
   vector_params->addr_gen2_dtype =
-      get_index_from_type_name<VECTOR_INPUT_DATATYPES>(tensor.dtype());
+      get_index_from_type_name<VU_INPUT_TYPES>(tensor.dtype());
 
   // copy loop values and indices
   for (int i = 0; i < 3; i++) {
@@ -137,18 +138,6 @@ void MapMatrixOperation(const Operation &operation,
 
   Tiling tiling = get_tiling(operation);
 
-  int X = tiling.loops[0][tiling.x_loop_index[0]] *
-          tiling.loops[1][tiling.x_loop_index[1]];
-  int Y = tiling.loops[0][tiling.y_loop_index[0]] *
-          tiling.loops[1][tiling.y_loop_index[1]];
-  int C = tiling.loops[0][tiling.reduction_loop_index[0]] *
-          tiling.loops[1][tiling.reduction_loop_index[1]] * IC_DIMENSION;
-  int K = tiling.loops[0][tiling.weight_loop_index[0]] *
-          tiling.loops[1][tiling.weight_loop_index[1]] * OC_DIMENSION;
-  int FX = tiling.loops[1][tiling.fx_index];
-  int FY = tiling.loops[1][tiling.fy_index];
-  int STRIDE = tiling.stride;
-
   std::ostringstream oss;
   oss << tiling;
   spdlog::info("Using tiling: \n{}\n", oss.str());
@@ -162,10 +151,43 @@ void MapMatrixOperation(const Operation &operation,
   const auto input_memory = input.memory();
   accelerator_memory_map["inputs"] = get_partition(input_memory.partition());
   matrix_params->INPUT_OFFSET = input_memory.address();
+  matrix_params->input_dtype =
+      get_index_from_type_name<INPUT_DATATYPE>(input.dtype());
+  matrix_params->use_input_codebook = matrix_op.kwargs().contains("input_code");
+
+  if (matrix_params->use_input_codebook) {
+    const auto code = matrix_op.kwargs().at("input_code").tensor();
+    const auto size = get_size(code);
+
+    float *input_code = read_constant_param(code);
+    for (int i = 0; i < size; i++) {
+      SA_INPUT_TYPE value = input_code[i];
+      matrix_params->input_code[i] = value.bits_rep();
+    }
+
+    delete[] input_code;
+  }
 
   const auto weight_memory = weight.memory();
   accelerator_memory_map["weights"] = get_partition(weight_memory.partition());
   matrix_params->WEIGHT_OFFSET = weight_memory.address();
+  matrix_params->weight_dtype =
+      get_index_from_type_name<WEIGHT_DATATYPE>(weight.dtype());
+  matrix_params->use_weight_codebook =
+      matrix_op.kwargs().contains("weight_code");
+
+  if (matrix_params->use_weight_codebook) {
+    const auto code = matrix_op.kwargs().at("weight_code").tensor();
+    const auto size = get_size(code);
+
+    float *weight_code = read_constant_param(code);
+    for (int i = 0; i < size; i++) {
+      SA_WEIGHT_TYPE value = weight_code[i];
+      matrix_params->weight_code[i] = value.bits_rep();
+    }
+
+    delete[] weight_code;
+  }
 
   matrix_params->is_mx_op = matrix_op.target().find("mx") != std::string::npos;
 
@@ -197,8 +219,6 @@ void MapMatrixOperation(const Operation &operation,
   for (int j = 0; j < 5; j++) {
     matrix_params->weightAddressGenLoops[0][j] = tiling.loops[0][j];
   }
-  // matrix_params->weightAddressGenInputXLoopIndex = tiling.x_loop_index[0];
-  // matrix_params->weightAddressGenInputYLoopIndex = tiling.y_loop_index[0];
   matrix_params->weightAddressGenWeightLoopIndex[0] =
       tiling.weight_loop_index[0];
   matrix_params->weightAddressGenReductionLoopIndex[0] =
@@ -296,7 +316,7 @@ void MapMatrixOperation(const Operation &operation,
     matrix_params->weightAddressGenReductionLoopIndex[1] = 0;
   }
 
-  matrix_params->STRIDE = tiling.stride;
+  matrix_params->stride = tiling.stride;
   matrix_params->is_replication = tiling.replication;
 
   // Permute input for transformer attention outputs
@@ -383,14 +403,7 @@ void MapMatrixOperation(const Operation &operation,
     }
   }
 
-  codegen::Tensor output;
-  if (param.has_output()) {
-    output = param.output();
-  } else {
-    assert(op_list.back().target() == "quantize_mx");
-    output = param.outputs().tensors(1);
-  }
-
+  const auto output = get_op_outputs(param).back();
   const auto output_memory = output.memory();
   accelerator_memory_map["outputs"] = get_partition(output_memory.partition());
   vector_params->VECTOR_OUTPUT_OFFSET = output_memory.address();
@@ -446,116 +459,133 @@ void MapMatrixOperation(const Operation &operation,
 
   auto inst_map = get_vector_instruction_mapping();
 
-  int curr_stage = 0;
+  int stage = 0;
 
   for (int i = 1; i < op_list.size(); i++) {
     const auto op = op_list[i];
     const std::string opcode = op.target();
 
+    // Dequantization doesn't take a stage in the pipeline
     if (opcode == "dequantize") {
+      inst.vdequantize = true;
+
       const auto other = op.kwargs().at("scale").tensor();
 
       assert(get_size(other) == 1);
 
-      VECTOR_DATATYPE immediate = read_constant_param(other);
-      inst.vdequantize = true;
+      float *array = read_constant_param(other);
+      VECTOR_DATATYPE immediate = array[0];
       inst.vector_dq_scale = immediate.bits_rep();
-    } else {
-      if (curr_stage == vector_unit_stages.size()) {
-        // we have already processed all the stages
-        assert(i == op_list.size() - 1);
-        break;
-      }
 
-      for (int stage = curr_stage; stage < vector_unit_stages.size(); stage++) {
-        if (vector_unit_stages[stage].find(opcode) ==
-            vector_unit_stages[stage].end()) {
+      delete[] array;
+
+      continue;
+    }
+
+    // Find the stage of the operation
+    for (; stage < vector_unit_stages.size(); stage++) {
+      // Only the last stage has a true divider
+      if (opcode == "div" && stage != 3) {
+        const auto other = op.kwargs().at("other").tensor();
+        if (get_size(other) > 1) {
           continue;
         }
+      }
 
-        // Only the last stage has a true divider
-        if (opcode == "div" && stage != 3) {
-          const auto other = op.kwargs().at("other").tensor();
-          if (get_size(other) > 1) {
-            continue;
-          }
-        }
-
-        spdlog::debug("stage {} target: {}\n", stage, opcode);
-
-        unsigned int vop = inst_map[opcode];
-        if (stage == 0) {
-          inst.vector_op0 = opcode == "div" ? VectorInstructions::vmult : vop;
-        } else if (stage == 1) {
-          inst.vector_op1 = vop;
-        } else if (stage == 2) {
-          inst.vector_op2 = opcode == "div" ? VectorInstructions::vmult : vop;
-        } else if (stage == 3) {
-          inst.vector_op3 = vop;
-        }
-
-        if (opcode == "vmap") {
-          const auto other = op.kwargs().at("code").tensor();
-          inst.VMAP_OFFSET = other.memory().address();
-        } else if (opcode == "quantize_mx") {
-          float quant_max = op.kwargs().at("quant_max").float_value();
-          bool force_scale_power_of_two =
-              op.kwargs().at("force_scale_power_of_two").int_value();
-
-          if (force_scale_power_of_two) {
-            inst.immediate2 = floor(log2(quant_max));
-          } else {
-            VECTOR_DATATYPE scale = quant_max;
-            inst.immediate2 = scale.bits_rep();
-          }
-
-          vector_params->quantize_output_mx = true;
-          vector_params->SCALE_OFFSET =
-              param.outputs().tensors(0).memory().address();
-        } else if (op.kwargs().contains("other") || opcode == "quantize") {
-          std::string other_key = opcode == "quantize" ? "scale" : "other";
-          const auto other = op.kwargs().at(other_key);
-
-          if (other.has_float_value() || other.has_int_value()) {
-            float scalar = other.has_float_value() ? other.float_value()
-                                                   : other.int_value();
-            set_immediate(scalar, stage, opcode, inst);
-          } else if (other.has_tensor()) {
-            const auto tensor = other.tensor();
-
-            if (get_size(tensor) == 1) {
-              float scalar = read_constant_param(tensor);
-              set_immediate(scalar, stage, opcode, inst);
-            } else {
-              const auto self = op.kwargs().at("input").tensor();
-              const auto tensor_to_load = tensor.has_memory() ? tensor : self;
-
-              if (stage == 0) {
-                inst.vector_op0_src1 = VectorInstructions::from_vector_fetch_1;
-                set_addr_gen1(tensor_to_load, tiling, accelerator_memory_map,
-                              vector_params);
-              } else if (stage == 2) {
-                inst.vector_op2_src1 = VectorInstructions::from_vector_fetch_2;
-                set_addr_gen2(tensor_to_load, tiling, accelerator_memory_map,
-                              vector_params);
-              } else if (inst.vector_op2_src1 !=
-                         VectorInstructions::from_vector_fetch_2) {
-                inst.vector_op3_src1 = VectorInstructions::from_vector_fetch_2;
-                set_addr_gen2(tensor_to_load, tiling, accelerator_memory_map,
-                              vector_params);
-              } else {
-                throw std::invalid_argument(
-                    "Unsupported number of operands for vector operations!");
-              }
-            }
-          }
-        }
-
-        curr_stage = stage + 1;
-
+      if (vector_unit_stages[stage].find(opcode) !=
+          vector_unit_stages[stage].end()) {
         break;
       }
     }
+
+    if (stage == vector_unit_stages.size()) {
+      throw std::runtime_error("Vector operation not supported!\n");
+    }
+
+    spdlog::debug("stage {} target: {}\n", stage, opcode);
+
+    unsigned int vop = inst_map[opcode];
+    if (stage == 0) {
+      inst.vector_op0 = opcode == "div" ? VectorInstructions::vmult : vop;
+    } else if (stage == 1) {
+      inst.vector_op1 = vop;
+    } else if (stage == 2) {
+      inst.vector_op2 = opcode == "div" ? VectorInstructions::vmult : vop;
+    } else if (stage == 3) {
+      inst.vector_op3 = vop;
+    }
+
+    if (opcode == "vmap") {
+      const auto other = op.kwargs().at("code").tensor();
+      inst.VMAP_OFFSET = other.memory().address();
+    } else if (opcode == "quantize_mx") {
+      float quant_max = op.kwargs().at("quant_max").float_value();
+      bool force_scale_power_of_two =
+          op.kwargs().at("force_scale_power_of_two").int_value();
+
+      if (force_scale_power_of_two) {
+        inst.immediate2 = floor(log2(quant_max));
+      } else {
+        VECTOR_DATATYPE scale = quant_max;
+        inst.immediate2 = scale.bits_rep();
+      }
+
+      vector_params->quantize_output_mx = true;
+      vector_params->SCALE_OFFSET =
+          param.outputs().tensors(0).memory().address();
+
+      if (op.kwargs().contains("quant_code")) {
+        const auto code = op.kwargs().at("quant_code").tensor();
+        const int size = get_size(code);
+
+        float *array = read_constant_param(code);
+
+        for (int i = 0; i < size; i++) {
+          vector_params->output_code[i] = array[i] * 2;
+        }
+
+        delete[] array;
+
+        vector_params->use_output_codebook = true;
+      }
+    } else if (op.kwargs().contains("other") || opcode == "quantize") {
+      std::string other_key = opcode == "quantize" ? "scale" : "other";
+      const auto other = op.kwargs().at(other_key);
+
+      if (other.has_float_value()) {
+        float scalar = other.float_value();
+        set_immediate(scalar, stage, opcode, inst);
+      } else if (other.has_int_value()) {
+        int scalar = other.int_value();
+        set_immediate(scalar, stage, opcode, inst);
+      } else if (other.has_tensor() && get_size(other.tensor()) == 1) {
+        float *array = read_constant_param(other.tensor());
+        set_immediate(array[0], stage, opcode, inst);
+        delete[] array;
+      } else {
+        auto self = op.kwargs().at("input").tensor();
+        auto tensor = other.tensor();
+        auto tensor_to_load = tensor.has_memory() ? tensor : self;
+
+        if (stage == 0) {
+          inst.vector_op0_src1 = VectorInstructions::from_vector_fetch_1;
+          set_addr_gen1(tensor_to_load, tiling, accelerator_memory_map,
+                        vector_params);
+        } else if (stage == 2) {
+          inst.vector_op2_src1 = VectorInstructions::from_vector_fetch_2;
+          set_addr_gen2(tensor_to_load, tiling, accelerator_memory_map,
+                        vector_params);
+        } else {
+          assert(inst.vector_op2_src1 !=
+                 VectorInstructions::from_vector_fetch_2);
+          inst.vector_op3_src1 = VectorInstructions::from_vector_fetch_2;
+          set_addr_gen2(tensor_to_load, tiling, accelerator_memory_map,
+                        vector_params);
+        }
+      }
+    }
+
+    stage++;
   }
 
   // total output count

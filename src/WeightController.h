@@ -7,22 +7,28 @@
 #include "ArchitectureParams.h"
 #include "ParamsDeserializer.h"
 
-template <typename Weight, typename Bias, int NRows, int NCols>
-SC_MODULE(WeightController) {
+template <typename WeightTypeTuple, typename Bias, int NRows, int NCols,
+          int PortWidth, int BufferWidth>
+struct WeightController;
+
+template <typename... WeightTypes, typename Bias, int NRows, int NCols,
+          int PortWidth, int BufferWidth>
+struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
+                        PortWidth, BufferWidth> : public sc_module {
   sc_in<bool> CCS_INIT_S1(clk);
   sc_in<bool> CCS_INIT_S1(rstn);
 
   Connections::In<ac_int<64, false>> CCS_INIT_S1(serialParamsIn);
 
   Connections::Out<MemoryRequest> CCS_INIT_S1(addressRequest);
-  Connections::In<ac_int<OC_PORT_WIDTH, false>> CCS_INIT_S1(dataResponse);
+  Connections::In<ac_int<PortWidth, false>> CCS_INIT_S1(dataResponse);
 
-  Connections::Out<BufferWriteRequest<OC_PORT_TYPE>> writeRequest[2];
+  Connections::Out<BufferWriteRequest<ac_int<BufferWidth, false>>>
+      writeRequest[2];
   Connections::Out<BufferReadRequest> readAddress[2];
 
   Connections::Out<MemoryRequest> CCS_INIT_S1(biasAddressRequest);
   Connections::In<ac_int<OC_PORT_WIDTH, false>> CCS_INIT_S1(biasDataResponse);
-
   Connections::Out<Pack1D<Bias, NCols>> CCS_INIT_S1(biasToSystolicArray);
 
   Connections::Combinational<MatrixParams> CCS_INIT_S1(paramsIn);
@@ -33,11 +39,12 @@ SC_MODULE(WeightController) {
   Connections::Combinational<MatrixParams> CCS_INIT_S1(biasFetcherParams);
   Connections::Combinational<MatrixParams> CCS_INIT_S1(biasCombinerParams);
 
-  Connections::Combinational<ac_int<OC_PORT_WIDTH, false>> transposeOut;
+  Connections::Combinational<ac_int<BufferWidth, false>> transposeOut;
 
   MatrixParamsDeserializer<2> CCS_INIT_S1(paramsDeserializer);
 
   static constexpr int LOOP_WIDTH = 10;
+  static constexpr int DATA_WIDTH = BufferWidth / NCols;
 
   SC_CTOR(WeightController) {
     paramsDeserializer.clk(clk);
@@ -163,10 +170,10 @@ SC_MODULE(WeightController) {
                           address = ((k + c0) * C2 * C1 + c2 * C1 + c1) * NCols;
                         }
 
-                        MemoryRequest request = {
-                            params.WEIGHT_OFFSET + address * Weight::width / 8,
-                            NCols * Weight::width / 8};
-                        addressRequest.Push(request);
+                        (fetch_matrix_input<WeightTypes, NCols, WeightTypes...>(
+                             params.weight_dtype, params.WEIGHT_OFFSET, address,
+                             addressRequest),
+                         ...);
 
                         if (loop_counters[1][4] >= loop_bounds[1][4] - 1) {
                           break;
@@ -288,12 +295,12 @@ SC_MODULE(WeightController) {
                         ac_int<16, false> k = k2 * K1 * NCols + k1 * NCols;
                         ac_int<16, false> K = K2 * K1 * NCols;
 
-                        ac_int<OC_PORT_WIDTH, false> data = transposeOut.Pop();
+                        ac_int<BufferWidth, false> data = transposeOut.Pop();
 
                         int address = (fy * FX * C * K1) + (fx * C * K1) +
                                       ((c0 + c1 * C0) * K1) + k1;
 
-                        BufferWriteRequest<OC_PORT_TYPE> req;
+                        BufferWriteRequest<ac_int<BufferWidth, false>> req;
                         req.address = address;
                         req.data = data;
                         req.last =
@@ -680,7 +687,7 @@ SC_MODULE(WeightController) {
       // than 32x32, as it will require a very large buffer
       if (params.has_weight_transpose && NRows < 64 && NCols < 64) {
         // we need a square buffer to store the transpose
-        ac_int<Weight::width, false>
+        ac_int<DATA_WIDTH, false>
             transposeBuffer[NRows > NCols ? NRows : NCols]
                            [NRows > NCols ? NRows : NCols];
 
@@ -714,23 +721,37 @@ SC_MODULE(WeightController) {
 
                         // Fill up transposeBuffer
                         for (int c0 = 0; c0 < NCols; c0++) {
-                          ac_int<OC_PORT_WIDTH, false> response =
-                              dataResponse.Pop();
+                          ac_int<BufferWidth, false> bits = 0;
+
+                          bool success =
+                              (process_matrix_input<WeightTypes, NCols,
+                                                    PortWidth, BufferWidth,
+                                                    WeightTypes...>(
+                                   params.weight_dtype, dataResponse, bits) ||
+                               ...);
+
+#ifndef __SYNTHESIS__
+                          if (!success) {
+                            std::cerr << "Error: matrix weight dtype '"
+                                      << params.weight_dtype << "' is not valid"
+                                      << std::endl;
+                          }
+#endif
+
 #pragma hls_unroll yes
                           for (int dim = 0; dim < NCols; dim++) {
                             transposeBuffer[dim][c0] =
-                                response.template slc<Weight::width>(
-                                    dim * Weight::width);
+                                bits.template slc<DATA_WIDTH>(dim * DATA_WIDTH);
                           }
                         }
 
                         // Write out from tranposeBuffer
                         for (int c0 = 0; c0 < NCols; c0++) {
-                          ac_int<OC_PORT_WIDTH, false> transposed;
+                          ac_int<BufferWidth, false> transposed;
 
 #pragma hls_unroll yes
                           for (int dim = 0; dim < NCols; dim++) {
-                            transposed.set_slc(dim * Weight::width,
+                            transposed.set_slc(dim * DATA_WIDTH,
                                                transposeBuffer[c0][dim]);
                           }
 
@@ -778,7 +799,21 @@ SC_MODULE(WeightController) {
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
         for (int i = 0; i < total_values; i++) {
-          transposeOut.Push(dataResponse.Pop());
+          ac_int<BufferWidth, false> bits = 0;
+
+          bool success = (process_matrix_input<WeightTypes, NCols, PortWidth,
+                                               BufferWidth, WeightTypes...>(
+                              params.weight_dtype, dataResponse, bits) ||
+                          ...);
+
+#ifndef __SYNTHESIS__
+          if (!success) {
+            std::cerr << "Error: matrix weight dtype '" << params.weight_dtype
+                      << "' is not valid" << std::endl;
+          }
+#endif
+
+          transposeOut.Push(bits);
         }
       }
     }
@@ -949,14 +984,11 @@ SC_MODULE(WeightController) {
                       for (loop_counters[1][5] = 0;
                            loop_counters[1][5] < loop_bounds[1][5];
                            loop_counters[1][5]++) {
-                        constexpr int num_words = Bias::width / Weight::width;
-
                         ac_int<Bias::width * NCols, false> bits;
 
-                        for (int i = 0; i < num_words; i++) {
-                          bits.set_slc(i * OC_PORT_WIDTH,
-                                       biasDataResponse.Pop());
-                        }
+                        process_matrix_input<Bias, NCols, PortWidth,
+                                             Bias::width * NCols>(
+                            biasDataResponse, bits);
 
                         Pack1D<Bias, NCols> biases =
                             BitsToType<Pack1D<Bias, NCols>>(TypeToBits(bits));

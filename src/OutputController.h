@@ -160,20 +160,42 @@ SC_MODULE(OutputController) {
 
                   Pack1D<VectorType, Width> outputs = vector_in.Pop();
 
+#if SUPPORT_CODEBOOK_QUANT
+                  if (params.use_output_codebook) {
+#pragma hls_unroll yes
+                    for (int i = 0; i < Width; i++) {
+                      // Codebook midpoints are scaled by 2, so we scale the
+                      // values to quantize by 2 as well
+                      VectorType value = outputs[i];
+                      value.adjust_exponent(1);
+
+                      ac_int<4, false> index = 0;
+
+                      for (int j = 0; j < NUM_CODEBOOK_ENTRIES - 1; j++) {
+                        if (value.float_val <=
+                            typename VectorType::ac_float_rep(
+                                params.output_code[j])) {
+                          break;
+                        }
+                        index++;
+                      }
+
+                      outputs[i] = typename VectorType::ac_float_rep(index);
+                    }
+                  }
+#endif
+
                   bool found =
-                      ((get_type_index<OutputTypes, OutputTypes...>() ==
-                                params.output_dtype
-                            ? (vwrite_out<VectorType, OutputTypes, Width>(
-                                   outputs, address,
-                                   params.VECTOR_OUTPUT_OFFSET, vector_out,
-                                   vector_address_out),
-                               true)
-                            : false) ||
+                      (send_vector_outputs<OutputTypes, Width, VectorType,
+                                           OutputTypes...>(
+                           params.output_dtype, params.use_output_codebook,
+                           outputs, address, params.VECTOR_OUTPUT_OFFSET,
+                           vector_out, vector_address_out) ||
                        ...);
 
 #ifndef __SYNTHESIS__
                   if (!found) {
-                    std::cerr << "Error: Index '" << params.output_dtype
+                    std::cerr << "Error: output type '" << params.output_dtype
                               << "' is not valid.\n";
                   }
 #endif

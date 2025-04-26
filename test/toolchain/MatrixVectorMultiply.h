@@ -27,11 +27,11 @@ void MapMatrixVectorMultiply(const codegen::Operation &param,
   // input is a vector of size reduction_dim
   const auto input_memory = input.memory();
   accelerator_memory_map["vector0"] = get_partition(input_memory.partition());
-  vector_params->VECTOR_OFFSET = input_memory.address();
+  vector_params->ADDRESS_GEN0_OFFSET = input_memory.address();
   vector_params->addr_gen0_mode = 2;
   vector_params->addr_gen0_broadcast = 0b010000;
   vector_params->addr_gen0_dtype =
-      get_index_from_type_name<VECTOR_INPUT_DATATYPES>(input.dtype());
+      get_index_from_type_name<VU_INPUT_TYPES>(input.dtype());
 
   for (int i = 0; i < 3; i++) {
     vector_params->addr_gen0_loops[0][i] = 1;
@@ -46,7 +46,7 @@ void MapMatrixVectorMultiply(const codegen::Operation &param,
   vector_params->ADDRESS_GEN1_OFFSET = weight_memory.address();
   vector_params->addr_gen1_mode = true;
   vector_params->addr_gen1_dtype =
-      get_index_from_type_name<VECTOR_INPUT_DATATYPES>(weight.dtype());
+      get_index_from_type_name<VU_INPUT_TYPES>(weight.dtype());
 
   for (int i = 0; i < 3; i++) {
     vector_params->addr_gen1_loops[0][i] = 1;
@@ -68,7 +68,7 @@ void MapMatrixVectorMultiply(const codegen::Operation &param,
   vector_params->addr_gen2_mode = true;
   vector_params->addr_gen2_broadcast = 0b011;
   vector_params->addr_gen2_dtype =
-      get_index_from_type_name<VECTOR_INPUT_DATATYPES>(bias.dtype());
+      get_index_from_type_name<VU_INPUT_TYPES>(bias.dtype());
 
   for (int i = 0; i < 3; i++) {
     vector_params->addr_gen2_loops[0][i] = 1;

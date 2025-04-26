@@ -6,22 +6,28 @@
 #include "AccelTypes.h"
 #include "ArchitectureParams.h"
 #include "ParamsDeserializer.h"
+#include "Utils.h"
 
-template <typename Input, int NRows>
-SC_MODULE(InputController) {
+template <typename InputTypeTuple, int NRows, int PortWidth, int BufferWidth>
+struct InputController;
+
+template <typename... InputTypes, int NRows, int PortWidth, int BufferWidth>
+struct InputController<std::tuple<InputTypes...>, NRows, PortWidth, BufferWidth>
+    : public sc_module {
   sc_in<bool> CCS_INIT_S1(clk);
   sc_in<bool> CCS_INIT_S1(rstn);
 
   Connections::In<ac_int<64, false>> CCS_INIT_S1(serialParamsIn);
 
   Connections::Out<MemoryRequest> CCS_INIT_S1(addressRequest);
-  Connections::In<IC_PORT_TYPE> CCS_INIT_S1(dataResponse);
+  Connections::In<ac_int<PortWidth, false>> CCS_INIT_S1(dataResponse);
 
-  Connections::Out<BufferWriteRequest<IC_PORT_TYPE>> writeRequest[2];
+  Connections::Out<BufferWriteRequest<ac_int<BufferWidth, false>>>
+      writeRequest[2];
   Connections::Out<BufferReadRequest> readAddress[2];
 
-  Connections::In<IC_PORT_TYPE> CCS_INIT_S1(windowBufferIn);
-  Connections::Out<IC_PORT_TYPE> CCS_INIT_S1(windowBufferOut);
+  Connections::In<ac_int<BufferWidth, false>> CCS_INIT_S1(windowBufferIn);
+  Connections::Out<ac_int<BufferWidth, false>> CCS_INIT_S1(windowBufferOut);
 
   Connections::Combinational<MatrixParams> CCS_INIT_S1(paramsIn);
   Connections::Combinational<MatrixParams> CCS_INIT_S1(fetcherParams);
@@ -30,11 +36,12 @@ SC_MODULE(InputController) {
   Connections::Combinational<MatrixParams> CCS_INIT_S1(windowBufferParams);
   Connections::Combinational<MatrixParams> CCS_INIT_S1(transposerParams);
 
-  Connections::Combinational<IC_PORT_TYPE> transposeOut;
+  Connections::Combinational<ac_int<BufferWidth, false>> transposeOut;
 
   MatrixParamsDeserializer<0> CCS_INIT_S1(paramsDeserializer);
 
   static constexpr int LOOP_WIDTH = 10;
+  static constexpr int DATA_WIDTH = BufferWidth / NRows;
 
   SC_CTOR(InputController) {
     paramsDeserializer.clk(clk);
@@ -81,7 +88,7 @@ SC_MODULE(InputController) {
         FX = 7;
       }
       ac_int<4, false> FY = params.loops[1][params.fyIndex];
-      ac_int<2, false> STRIDE = params.STRIDE;
+      ac_int<2, false> STRIDE = params.stride;
 
       ac_int<LOOP_WIDTH, false> X1 = params.loops[0][params.inputXLoopIndex[0]];
       ac_int<16, false> X0 =
@@ -277,11 +284,10 @@ SC_MODULE(InputController) {
                                 (c + (x % NRows)) * X + (x / NRows) * NRows;
                           }
 
-                          MemoryRequest request = {
-                              params.INPUT_OFFSET + address * Input::width / 8,
-                              NRows * Input::width / 8};
-
-                          addressRequest.Push(request);
+                          (fetch_matrix_input<InputTypes, NRows, InputTypes...>(
+                               params.input_dtype, params.INPUT_OFFSET, address,
+                               addressRequest),
+                           ...);
 
                           if (loop_counters[1][5] >= loop_bounds[1][5] - 1) {
                             break;
@@ -363,7 +369,7 @@ SC_MODULE(InputController) {
       }
 
       ac_int<4, false> FY = params.loops[1][params.fyIndex];
-      ac_int<2, false> STRIDE = params.STRIDE;
+      ac_int<2, false> STRIDE = params.stride;
 
       bool isDownsample = FX == 1 && FY == 1;
 
@@ -492,18 +498,24 @@ SC_MODULE(InputController) {
                             full_y = (y0 - y_min_offset) + y1 * STRIDE * Y0;
                           }
 
-                          IC_PORT_TYPE data;
+                          ac_int<BufferWidth, false> data;
 
                           if ((full_x < 0) || (full_y < 0) ||
                               (full_x >= STRIDE * X0 * X1) ||
                               (full_y >= STRIDE * Y0 * Y1)) {
-                            Input zero;
-                            zero.set_zero();
-#pragma hls_unroll yes
-                            for (int dims = 0; dims < NRows; dims++) {
-                              data.set_slc(dims * Input::width,
-                                           zero.bits_rep());
+                            bool success =
+                                (set_zero<InputTypes, NRows, BufferWidth,
+                                          InputTypes...>(params.input_dtype,
+                                                         data) ||
+                                 ...);
+
+#ifndef __SYNTHESIS__
+                            if (!success) {
+                              std::cerr << "Error: matrix input dtype '"
+                                        << params.input_dtype
+                                        << "' is not valid" << std::endl;
                             }
+#endif
                           } else {
                             data = transposeOut.Pop();
                           }
@@ -522,7 +534,7 @@ SC_MODULE(InputController) {
                                 c1;
                           }
 
-                          BufferWriteRequest<IC_PORT_TYPE> req;
+                          BufferWriteRequest<ac_int<BufferWidth, false>> req;
                           req.address = address;
                           req.data = data;
                           req.last =
@@ -616,7 +628,7 @@ SC_MODULE(InputController) {
 
       ac_int<LOOP_WIDTH, false> loop_counters[2][6];
       ac_int<LOOP_WIDTH, false> loop_bounds[2][6];
-      ac_int<2, false> STRIDE = params.STRIDE;
+      ac_int<2, false> STRIDE = params.stride;
 
 #pragma hls_unroll yes
       for (int i = 0; i < 2; i++) {
@@ -846,23 +858,20 @@ SC_MODULE(InputController) {
                         for (loop_counters[1][4] = 0;
                              loop_counters[1][4] < loop_bounds[1][4];
                              loop_counters[1][4]++) {
-                          IC_PORT_TYPE data;
+                          ac_int<BufferWidth, false> data;
 
-                          IC_PORT_TYPE buffer = windowBufferIn.Pop();
+                          ac_int<BufferWidth, false> buffer =
+                              windowBufferIn.Pop();
 #pragma hls_unroll yes
                           for (int x = 0; x < 3; x++) {
 #pragma hls_unroll yes
                             for (int dim = 0; dim < 3; dim++) {
-                              // grab last 3 x values from buffer
-                              // data.value[x * 3 + dim] =
-                              //     buffer[(packingFactor - 3 + x) * 3 + dim];
-
                               int dst_idx = x * 3 + dim;
                               int src_idx = (packingFactor - 3 + x) * 3 + dim;
 
-                              auto temp = buffer.template slc<Input::width>(
-                                  src_idx * Input::width);
-                              data.set_slc(dst_idx * Input::width, temp);
+                              auto temp = buffer.template slc<DATA_WIDTH>(
+                                  src_idx * DATA_WIDTH);
+                              data.set_slc(dst_idx * DATA_WIDTH, temp);
                             }
                           }
 
@@ -873,14 +882,12 @@ SC_MODULE(InputController) {
                                x++) {
 #pragma hls_unroll yes
                             for (int dim = 0; dim < 3; dim++) {
-                              // data[x * 3 + dim] = buffer[(x - 3) * 3 + dim];
-
                               int dst_idx = x * 3 + dim;
                               int src_idx = (x - 3) * 3 + dim;
 
-                              auto temp = buffer.template slc<Input::width>(
-                                  src_idx * Input::width);
-                              data.set_slc(dst_idx * Input::width, temp);
+                              auto temp = buffer.template slc<DATA_WIDTH>(
+                                  src_idx * DATA_WIDTH);
+                              data.set_slc(dst_idx * DATA_WIDTH, temp);
                             }
                           }
 
@@ -904,9 +911,9 @@ SC_MODULE(InputController) {
                                 int dst_idx = x * 3 + dim;
                                 int src_idx = (x + 2) * 3 + dim;
 
-                                auto temp = data.template slc<Input::width>(
-                                    src_idx * Input::width);
-                                data.set_slc(dst_idx * Input::width, temp);
+                                auto temp = data.template slc<DATA_WIDTH>(
+                                    src_idx * DATA_WIDTH);
+                                data.set_slc(dst_idx * DATA_WIDTH, temp);
                               }
                             }
 
@@ -923,14 +930,6 @@ SC_MODULE(InputController) {
                                  x++) {
 #pragma hls_unroll yes
                               for (int dim = 0; dim < 3; dim++) {
-                                // data[x * 3 + dim] =
-                                //     buffer[(bufferPosition + x -
-                                //             (unrollingFactor +
-                                //              additionalUnrollingFactor - 2))
-                                //              *
-                                //                3 +
-                                //            dim];
-
                                 int dst_idx = x * 3 + dim;
                                 int src_idx =
                                     (bufferPosition + x -
@@ -939,9 +938,9 @@ SC_MODULE(InputController) {
                                         3 +
                                     dim;
 
-                                auto temp = buffer.template slc<Input::width>(
-                                    src_idx * Input::width);
-                                data.set_slc(dst_idx * Input::width, temp);
+                                auto temp = buffer.template slc<DATA_WIDTH>(
+                                    src_idx * DATA_WIDTH);
+                                data.set_slc(dst_idx * DATA_WIDTH, temp);
                               }
                             }
 
@@ -988,30 +987,29 @@ SC_MODULE(InputController) {
                         for (loop_counters[1][4] = 0;
                              loop_counters[1][4] < loop_bounds[1][4];
                              loop_counters[1][4]++) {
-                          IC_PORT_TYPE buffer = windowBufferIn.Pop();
+                          ac_int<BufferWidth, false> buffer =
+                              windowBufferIn.Pop();
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
                           for (loop_counters[1][5] = 0;
                                loop_counters[1][5] < loop_bounds[1][5];
                                loop_counters[1][5]++) {
-                            IC_PORT_TYPE data;
+                            ac_int<BufferWidth, false> data;
 #pragma hls_unroll yes
                             for (int dim = 0; dim < 3; dim++) {
-                              auto temp = buffer.template slc<Input::width>(
-                                  (dim + 3) * Input::width);
-                              data.set_slc(dim * Input::width, temp);
+                              auto temp = buffer.template slc<DATA_WIDTH>(
+                                  (dim + 3) * DATA_WIDTH);
+                              data.set_slc(dim * DATA_WIDTH, temp);
                             }
 
                             buffer = windowBufferIn.Pop();
 
 #pragma hls_unroll yes
                             for (int dim = 0; dim < 3; dim++) {
-                              // data[3 + dim] = buffer[dim];
-
-                              auto temp = buffer.template slc<Input::width>(
-                                  dim * Input::width);
-                              data.set_slc((3 + dim) * Input::width, temp);
+                              auto temp = buffer.template slc<DATA_WIDTH>(
+                                  dim * DATA_WIDTH);
+                              data.set_slc((3 + dim) * DATA_WIDTH, temp);
                             }
                             windowBufferOut.Push(data);
                           }
@@ -1093,7 +1091,7 @@ SC_MODULE(InputController) {
       loop_bounds[1][params.fyIndex] = 1;
 
       if (params.has_input_transpose && NRows <= 32) {
-        ac_int<Input::width> transposeBuffer[NRows][NRows];
+        ac_int<DATA_WIDTH> transposeBuffer[NRows][NRows];
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
@@ -1129,22 +1127,39 @@ SC_MODULE(InputController) {
                                loop_counters[1][5] < loop_bounds[1][5] / NRows;
                                loop_counters[1][5]++) {
                             for (int c0 = 0; c0 < NRows; c0++) {
-                              auto bits = dataResponse.Pop();
+                              ac_int<BufferWidth, false> bits = 0;
+
+                              bool success =
+                                  (process_matrix_input<InputTypes, NRows,
+                                                        PortWidth, BufferWidth,
+                                                        InputTypes...>(
+                                       params.input_dtype, dataResponse,
+                                       bits) ||
+                                   ...);
+
+#ifndef __SYNTHESIS__
+                              if (!success) {
+                                std::cerr << "Error: matrix input dtype '"
+                                          << params.input_dtype
+                                          << "' is not valid" << std::endl;
+                              }
+#endif
+
 #pragma hls_unroll yes
                               for (int dim = 0; dim < NRows; dim++) {
                                 transposeBuffer[dim][c0] =
-                                    bits.template slc<Input::width>(
-                                        dim * Input::width);
+                                    bits.template slc<DATA_WIDTH>(dim *
+                                                                  DATA_WIDTH);
                               }
                             }
 
                             // Write out from tranposeBuffer
                             for (int c0 = 0; c0 < NRows; c0++) {
-                              IC_PORT_TYPE transposed;
+                              ac_int<BufferWidth, false> transposed;
 
 #pragma hls_unroll yes
                               for (int dim = 0; dim < NRows; dim++) {
-                                transposed.set_slc(dim * Input::width,
+                                transposed.set_slc(dim * DATA_WIDTH,
                                                    transposeBuffer[c0][dim]);
                               }
                               transposeOut.Push(transposed);
@@ -1184,10 +1199,10 @@ SC_MODULE(InputController) {
                 } else {
                   loop_bounds[1][params.inputXLoopIndex[1]] =
                       params.loops[1][params.inputXLoopIndex[1]] *
-                      params.STRIDE;
+                      params.stride;
                   loop_bounds[1][params.inputYLoopIndex[1]] =
                       params.loops[1][params.inputYLoopIndex[1]] *
-                      params.STRIDE;
+                      params.stride;
                 }
 
                 if (params.is_replication) {
@@ -1254,7 +1269,22 @@ SC_MODULE(InputController) {
                           for (loop_counters[1][5] = 0;
                                loop_counters[1][5] < loop_bounds[1][5];
                                loop_counters[1][5]++) {
-                            transposeOut.Push(dataResponse.Pop());
+                            ac_int<BufferWidth, false> bits = 0;
+
+                            bool success =
+                                (process_matrix_input<InputTypes, NRows,
+                                                      PortWidth, BufferWidth,
+                                                      InputTypes...>(
+                                     params.input_dtype, dataResponse, bits) ||
+                                 ...);
+#ifndef __SYNTHESIS__
+                            if (!success) {
+                              std::cerr << "Error: matrix input dtype '"
+                                        << params.input_dtype
+                                        << "' is not valid" << std::endl;
+                            }
+#endif
+                            transposeOut.Push(bits);
 
                             if (loop_counters[1][5] >= loop_bounds[1][5] - 1) {
                               break;

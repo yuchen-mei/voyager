@@ -56,7 +56,7 @@ void set_vector_addr_gen1(const codegen::Tensor &tensor,
   }
 
   vector_params->addr_gen1_dtype =
-      get_index_from_type_name<VECTOR_INPUT_DATATYPES>(tensor.dtype());
+      get_index_from_type_name<VU_INPUT_TYPES>(tensor.dtype());
 
   for (int i = 0; i < 3; i++) {
     vector_params->addr_gen1_loops[0][i] = 1;
@@ -95,7 +95,7 @@ void set_vector_addr_gen2(const codegen::Tensor &tensor,
   }
 
   vector_params->addr_gen2_dtype =
-      get_index_from_type_name<VECTOR_INPUT_DATATYPES>(tensor.dtype());
+      get_index_from_type_name<VU_INPUT_TYPES>(tensor.dtype());
 
   for (int i = 0; i < 3; i++) {
     vector_params->addr_gen2_loops[0][i] = 1;
@@ -136,30 +136,21 @@ void set_vector_immediate(const float scalar, const int stage,
   }
 }
 
-void MapVectoreduce_operations(const codegen::Operation &param,
+void MapVectorOperations(const codegen::Operation &param,
                          std::deque<BaseParams *> &mappedParams,
                          std::deque<AcceleratorMemoryMap> &opMemoryMaps) {
   VectorParams *vector_params = new VectorParams;
   AcceleratorMemoryMap accelerator_memory_map;
 
-  const auto op_list = get_op_list(param);
+  auto op_list = get_op_list(param);
 
   const auto input = op_list[0].kwargs().at("input").tensor();
-
-  codegen::Tensor output;
-  if (param.has_output()) {
-    output = param.output();
-  } else {
-    assert(op_list.back().target() == "quantize_mx");
-    output = param.outputs().tensors(1);
-  }
-
   const auto input_memory = input.memory();
   accelerator_memory_map["vector0"] = get_partition(input_memory.partition());
-  vector_params->VECTOR_OFFSET = input_memory.address();
+  vector_params->ADDRESS_GEN0_OFFSET = input_memory.address();
   vector_params->addr_gen0_mode = 2;
   vector_params->addr_gen0_dtype =
-      get_index_from_type_name<VECTOR_INPUT_DATATYPES>(input.dtype());
+      get_index_from_type_name<VU_INPUT_TYPES>(input.dtype());
 
   // Use the original shape without permute/slice
   auto input_shape = get_shape(input, false);
@@ -169,9 +160,8 @@ void MapVectoreduce_operations(const codegen::Operation &param,
     for (const auto dim : input_shape) {
       if (dim > 1024) {
         spdlog::error("ERROR: input shape dimension is greater than 1024: ");
-
         print_shape(input_shape);
-        throw std::invalid_argument("Invalid input shape dimension!");
+        throw std::invalid_argument("Unsupported input shape dimension!");
       }
     }
 
@@ -180,7 +170,7 @@ void MapVectoreduce_operations(const codegen::Operation &param,
           "ERROR: input last dimension is not a multiple of "
           "OC_DIMENSION: ");
       print_shape(input_shape);
-      throw std::invalid_argument("Invalid input shape dimension!");
+      throw std::invalid_argument("Unsupported input shape dimension!");
     }
   } else {
     input_shape = split_loops(input_shape, 1024);
@@ -197,9 +187,12 @@ void MapVectoreduce_operations(const codegen::Operation &param,
   vector_params->addr_gen0_loops[1][1] = input_shape[4];
   vector_params->addr_gen0_loops[1][2] = input_shape[5] / OC_DIMENSION;
 
-  auto reshape_op = op_list[0];
+  codegen::OpOverload reshape_op;
   if (input.has_reshape()) {
     reshape_op = input.reshape();
+  } else if (MEMORY_OPS.find(op_list[0].target()) != MEMORY_OPS.end()) {
+    reshape_op = op_list[0];
+    op_list.erase(op_list.begin());
   }
 
   const auto reshape_kwargs = reshape_op.kwargs();
@@ -228,12 +221,11 @@ void MapVectoreduce_operations(const codegen::Operation &param,
         throw std::invalid_argument(
             "Slice start and end must be multiples of OC_DIMENSION!");
       }
+
       vector_params->addr_gen0_start /= OC_DIMENSION;
       vector_params->addr_gen0_end /= OC_DIMENSION;
     }
-  }
-
-  if (reshape_op.target() == "permute") {
+  } else if (reshape_op.target() == "permute") {
     const auto int_list = reshape_kwargs.at("dims").int_list().values();
     std::vector<int> dims(int_list.begin(), int_list.end());
     const int ndim = input.shape_size();
@@ -350,6 +342,7 @@ void MapVectoreduce_operations(const codegen::Operation &param,
   VECTOR_DATATYPE scale = 1.0;
   vector_params->addr_gen0_dq_scale = scale.bits_rep();
 
+  const auto output = get_op_outputs(param).back();
   const auto output_memory = output.memory();
   accelerator_memory_map["outputs"] = get_partition(output_memory.partition());
   vector_params->VECTOR_OUTPUT_OFFSET = output_memory.address();
@@ -426,146 +419,159 @@ void MapVectoreduce_operations(const codegen::Operation &param,
 
   auto inst_map = get_vector_instruction_mapping();
 
-  int curr_stage = 0;
+  int stage = 0;
 
   for (int i = 0; i < op_list.size(); i++) {
     const auto op = op_list[i];
     const std::string opcode = op.target();
 
+    // Dequantization doesn't take a stage in the pipeline
     if (opcode == "dequantize") {
-      const auto scale = op.kwargs().at("scale").tensor();
-
-      assert(get_size(scale) == 1);
-
-      // scalar scale factor
-      VECTOR_DATATYPE immediate = read_constant_param(scale);
       inst.vdequantize = true;
-      inst.immediate0 = immediate.bits_rep();
-    } else {
-      if (curr_stage == vector_unit_stages.size()) {
-        // we have already processed all the stages
-        assert(i == op_list.size() - 1);
-        break;
-      }
 
-      for (int stage = curr_stage; stage < vector_unit_stages.size(); stage++) {
-        if (vector_unit_stages[stage].find(opcode) ==
-            vector_unit_stages[stage].end()) {
+      const auto other = op.kwargs().at("scale").tensor();
+
+      assert(get_size(other) == 1);
+
+      float *array = read_constant_param(other);
+      VECTOR_DATATYPE immediate = array[0];
+      inst.vector_dq_scale = immediate.bits_rep();
+
+      delete[] array;
+
+      continue;
+    }
+
+    for (; stage < vector_unit_stages.size(); stage++) {
+      // Only the last stage has a true divider
+      if (opcode == "div" && stage != 3) {
+        const auto other = op.kwargs().at("other").tensor();
+        if (get_size(other) > 1) {
           continue;
         }
+      }
 
-        // Only the last stage has a true divider
-        if (opcode == "div" && stage != 3) {
-          const auto other = op.kwargs().at("other").tensor();
-          if (get_size(other) > 1) {
-            continue;
-          }
-        }
-
-        spdlog::debug("stage {} target: {}\n", stage, opcode);
-
-        unsigned int vop = inst_map[opcode];
-        if (stage == 0) {
-          inst.vector_op0 = opcode == "div" ? VectorInstructions::vmult : vop;
-        } else if (stage == 1) {
-          inst.vector_op1 = vop;
-        } else if (stage == 2) {
-          inst.vector_op2 = opcode == "div" ? VectorInstructions::vmult : vop;
-        } else if (stage == 3) {
-          inst.vector_op3 = vop;
-        }
-
-        if (opcode == "vmap") {
-          const auto other = op.kwargs().at("other").tensor();
-          inst.VMAP_OFFSET = other.memory().address();
-        } else if (opcode == "quantize_mx") {
-          float quant_max = op.kwargs().at("quant_max").float_value();
-          bool force_scale_power_of_two =
-              op.kwargs().at("force_scale_power_of_two").int_value();
-
-          if (force_scale_power_of_two) {
-            inst.immediate2 = floor(log2(quant_max));
-          } else {
-            VECTOR_DATATYPE scale = quant_max;
-            inst.immediate2 = scale.bits_rep();
-          }
-
-          vector_params->quantize_output_mx = true;
-          vector_params->SCALE_OFFSET =
-              param.outputs().tensors(0).memory().address();
-        } else if (opcode == "neg") {
-          const auto self = op.kwargs().at("input").tensor();
-          const auto output_shape = squeeze_shape(get_shape(self));
-
-          inst.vector_op0_src0 = VectorInstructions::from_immediate_0;
-
-          VECTOR_DATATYPE immediate = 0;
-          inst.immediate0 = immediate.bits_rep();
-
-          inst.vector_op0_src1 = VectorInstructions::from_vector_fetch_0;
-
-          set_vector_addr_gen1(self, output_shape, accelerator_memory_map,
-                               vector_params);
-        } else if (op.kwargs().contains("other") || opcode == "quantize") {
-          std::string other_key = opcode == "quantize" ? "scale" : "other";
-          const auto other = op.kwargs().at(other_key);
-
-          if (other.has_float_value() || other.has_int_value()) {
-            float scalar = other.has_float_value() ? other.float_value()
-                                                   : other.int_value();
-            set_vector_immediate(scalar, stage, opcode, inst);
-          } else if (other.has_tensor()) {
-            auto tensor = other.tensor();
-
-            if (get_size(tensor) == 1) {
-              float scalar = read_constant_param(tensor);
-              set_vector_immediate(scalar, stage, opcode, inst);
-            } else {
-              auto self = op.kwargs().at("input").tensor();
-
-              auto input_shape = get_shape(self);
-              auto other_shape = get_shape(tensor);
-
-              if (opcode == "quantize") {
-                auto result =
-                    factor_out_non_broadcastable_dim(input_shape, other_shape);
-                input_shape = result.first;
-                other_shape = result.second;
-
-                update_tensor_shape(self, input_shape);
-                update_tensor_shape(tensor, other_shape);
-              }
-
-              auto tensor_to_load = tensor.has_memory() ? tensor : self;
-              auto output_shape = broadcast_shape(input_shape, other_shape);
-              squeeze_front_ones(output_shape);
-
-              if (stage == 0) {
-                inst.vector_op0_src1 = VectorInstructions::from_vector_fetch_1;
-                set_vector_addr_gen1(tensor_to_load, output_shape,
-                                     accelerator_memory_map, vector_params);
-              } else if (stage == 2) {
-                inst.vector_op2_src1 = VectorInstructions::from_vector_fetch_2;
-                set_vector_addr_gen2(tensor_to_load, output_shape,
-                                     accelerator_memory_map, vector_params);
-              } else if (inst.vector_op2_src1 !=
-                         VectorInstructions::from_vector_fetch_2) {
-                inst.vector_op3_src1 = VectorInstructions::from_vector_fetch_2;
-                set_vector_addr_gen2(tensor_to_load, output_shape,
-                                     accelerator_memory_map, vector_params);
-              } else {
-                throw std::invalid_argument(
-                    "Unsupported number of operands for vector operations!");
-              }
-            }
-          }
-        }
-
-        curr_stage = stage + 1;
-
+      if (vector_unit_stages[stage].find(opcode) !=
+          vector_unit_stages[stage].end()) {
         break;
       }
     }
+
+    if (stage == vector_unit_stages.size()) {
+      throw std::runtime_error("Vector operation not supported!\n");
+    }
+
+    spdlog::debug("stage {} target: {}\n", stage, opcode);
+
+    unsigned int vop = inst_map[opcode];
+    if (stage == 0) {
+      inst.vector_op0 = opcode == "div" ? VectorInstructions::vmult : vop;
+    } else if (stage == 1) {
+      inst.vector_op1 = vop;
+    } else if (stage == 2) {
+      inst.vector_op2 = opcode == "div" ? VectorInstructions::vmult : vop;
+    } else if (stage == 3) {
+      inst.vector_op3 = vop;
+    }
+
+    if (opcode == "vmap") {
+      const auto other = op.kwargs().at("other").tensor();
+      inst.VMAP_OFFSET = other.memory().address();
+    } else if (opcode == "neg") {
+      const auto self = op.kwargs().at("input").tensor();
+      const auto output_shape = squeeze_shape(get_shape(self));
+
+      VECTOR_DATATYPE immediate = 0;
+      inst.immediate0 = immediate.bits_rep();
+      inst.vector_op0_src0 = VectorInstructions::from_immediate_0;
+      inst.vector_op0_src1 = VectorInstructions::from_vector_fetch_0;
+
+      set_vector_addr_gen1(self, output_shape, accelerator_memory_map,
+                           vector_params);
+    } else if (opcode == "quantize_mx") {
+      float quant_max = op.kwargs().at("quant_max").float_value();
+      bool force_scale_power_of_two =
+          op.kwargs().at("force_scale_power_of_two").int_value();
+
+      if (force_scale_power_of_two) {
+        inst.immediate2 = floor(log2(quant_max));
+      } else {
+        VECTOR_DATATYPE scale = quant_max;
+        inst.immediate2 = scale.bits_rep();
+      }
+
+      vector_params->quantize_output_mx = true;
+      vector_params->SCALE_OFFSET =
+          param.outputs().tensors(0).memory().address();
+
+      if (op.kwargs().contains("quant_code")) {
+        const auto code = op.kwargs().at("quant_code").tensor();
+        const int size = get_size(code);
+
+        float *array = read_constant_param(code);
+
+        for (int i = 0; i < size; i++) {
+          vector_params->output_code[i] = array[i] * 2;
+        }
+
+        delete[] array;
+
+        vector_params->use_output_codebook = true;
+      }
+    } else if (op.kwargs().contains("other") || opcode == "quantize") {
+      std::string other_key = opcode == "quantize" ? "scale" : "other";
+      const auto other = op.kwargs().at(other_key);
+
+      if (other.has_float_value()) {
+        float scalar = other.float_value();
+        set_immediate(scalar, stage, opcode, inst);
+      } else if (other.has_int_value()) {
+        int scalar = other.int_value();
+        set_immediate(scalar, stage, opcode, inst);
+      } else if (other.has_tensor() && get_size(other.tensor()) == 1) {
+        float *array = read_constant_param(other.tensor());
+        set_immediate(array[0], stage, opcode, inst);
+        delete[] array;
+      } else {
+        auto self = op.kwargs().at("input").tensor();
+        auto tensor = other.tensor();
+
+        auto input_shape = get_shape(self);
+        auto other_shape = get_shape(tensor);
+
+        if (opcode == "quantize") {
+          auto result =
+              factor_out_non_broadcastable_dim(input_shape, other_shape);
+          input_shape = result.first;
+          other_shape = result.second;
+
+          update_tensor_shape(self, input_shape);
+          update_tensor_shape(tensor, other_shape);
+        }
+
+        auto tensor_to_load = tensor.has_memory() ? tensor : self;
+        auto output_shape = broadcast_shape(input_shape, other_shape);
+        squeeze_front_ones(output_shape);
+
+        if (stage == 0) {
+          inst.vector_op0_src1 = VectorInstructions::from_vector_fetch_1;
+          set_vector_addr_gen1(tensor_to_load, output_shape,
+                               accelerator_memory_map, vector_params);
+        } else if (stage == 2) {
+          inst.vector_op2_src1 = VectorInstructions::from_vector_fetch_2;
+          set_vector_addr_gen2(tensor_to_load, output_shape,
+                               accelerator_memory_map, vector_params);
+        } else {
+          assert(inst.vector_op2_src1 !=
+                 VectorInstructions::from_vector_fetch_2);
+          inst.vector_op3_src1 = VectorInstructions::from_vector_fetch_2;
+          set_vector_addr_gen2(tensor_to_load, output_shape,
+                               accelerator_memory_map, vector_params);
+        }
+      }
+    }
+
+    stage++;
   }
 
   // total output count

@@ -4,7 +4,7 @@
 #include <mc_connections.h>
 #endif
 
-#include <ac_int.h>
+#include "ArchitectureParams.h"
 
 // Base params struct
 struct BaseParams {
@@ -36,6 +36,7 @@ struct MatrixParams : BaseParams {
     }
     fxIndex = 0;
     fyIndex = 0;
+    stride = 1;
 
     for (int i = 0; i < 2; i++) {
       for (int j = 0; j < 5; j++) {
@@ -51,7 +52,17 @@ struct MatrixParams : BaseParams {
     weightAddressGenFxIndex = 0;
     weightAddressGenFyIndex = 0;
 
-    STRIDE = 1;
+    input_dtype = 0;
+    weight_dtype = 0;
+
+    use_input_codebook = false;
+    use_weight_codebook = false;
+
+    for (int i = 0; i < NUM_CODEBOOK_ENTRIES; i++) {
+      input_code[i] = 0;
+      weight_code[i] = 0;
+    }
+
     head_size_power_of_two = 0;
 
     has_bias = false;
@@ -63,11 +74,11 @@ struct MatrixParams : BaseParams {
   }
 #endif
 
-  uint64_t INPUT_OFFSET;
-  uint64_t INPUT_SCALE_OFFSET;
-  uint64_t WEIGHT_OFFSET;
-  uint64_t WEIGHT_SCALE_OFFSET;
-  uint64_t BIAS_OFFSET;
+  ac_int<ADDRESS_WIDTH, false> INPUT_OFFSET;
+  ac_int<ADDRESS_WIDTH, false> INPUT_SCALE_OFFSET;
+  ac_int<ADDRESS_WIDTH, false> WEIGHT_OFFSET;
+  ac_int<ADDRESS_WIDTH, false> WEIGHT_SCALE_OFFSET;
+  ac_int<ADDRESS_WIDTH, false> BIAS_OFFSET;
 
   // systolic array loop
   ac_int<10, false> loops[2][6];
@@ -78,6 +89,7 @@ struct MatrixParams : BaseParams {
   ac_int<3, false> fxIndex;
   ac_int<3, false> fyIndex;
   ac_int<3, false> weightReuseIndex[2];
+  ac_int<2, false> stride;
 
   // weight address generator loop
   ac_int<10, false> weightAddressGenLoops[2][5];
@@ -89,7 +101,15 @@ struct MatrixParams : BaseParams {
   ac_int<3, false> weightAddressGenFxIndex;
   ac_int<3, false> weightAddressGenFyIndex;
 
-  ac_int<2, false> STRIDE;
+  ac_int<DTYPE_INDEX_WIDTH, false> input_dtype;
+  ac_int<DTYPE_INDEX_WIDTH, false> weight_dtype;
+
+  bool use_input_codebook;
+  bool use_weight_codebook;
+
+  ac_int<DECODED_INPUT_DTYPE_WIDTH, false> input_code[NUM_CODEBOOK_ENTRIES];
+  ac_int<DECODED_WEIGHT_DTYPE_WIDTH, false> weight_code[NUM_CODEBOOK_ENTRIES];
+
   ac_int<8, false> head_size_power_of_two;
 
   bool has_bias;
@@ -99,9 +119,16 @@ struct MatrixParams : BaseParams {
   bool has_attn_output_permute;
   bool is_mx_op;
 
-  static const unsigned int width =
+  static const unsigned int base_width =
       5 * 64 /* OFFSETS */ + (12 + 10) * 10 /* Loops */ +
-      19 * 3 /* Loop indices */ + 6 * 1 /* Bools */ + 2 + 8;
+      19 * 3 /* Loop indices */ + 2 /* stride */ + 8 /* Head Size */ +
+      8 * 1 /* Bools */;
+
+  static const unsigned int extra_width =
+      2 * DTYPE_INDEX_WIDTH + NUM_CODEBOOK_ENTRIES * DECODED_INPUT_DTYPE_WIDTH +
+      NUM_CODEBOOK_ENTRIES * DECODED_WEIGHT_DTYPE_WIDTH;
+
+  static const unsigned int width = base_width + extra_width;
 
 #ifndef NO_SYSC
   template <unsigned int Size>
@@ -134,6 +161,8 @@ struct MatrixParams : BaseParams {
     for (int i = 0; i < 2; i++) {
       m& weightReuseIndex[i];
     }
+    m & stride;
+
     for (int i = 0; i < 2; i++) {
       for (int j = 0; j < 5; j++) {
         m& weightAddressGenLoops[i][j];
@@ -147,7 +176,21 @@ struct MatrixParams : BaseParams {
     }
     m & weightAddressGenFxIndex;
     m & weightAddressGenFyIndex;
-    m & STRIDE;
+
+    m & input_dtype;
+    m & weight_dtype;
+
+    m & use_input_codebook;
+    m & use_weight_codebook;
+
+    for (int i = 0; i < NUM_CODEBOOK_ENTRIES; i++) {
+      m& input_code[i];
+    }
+
+    for (int i = 0; i < NUM_CODEBOOK_ENTRIES; i++) {
+      m& weight_code[i];
+    }
+
     m & head_size_power_of_two;
 
     m & has_bias;
@@ -200,6 +243,8 @@ struct MatrixParams : BaseParams {
       os << "weightReuseIndex[" << i << "]: " << params.weightReuseIndex[i]
          << std::endl;
     }
+    os << "stride: " << params.stride << std::endl;
+
     for (int i = 0; i < 2; i++) {
       for (int j = 0; j < 5; j++) {
         os << "weightAddressGenLoops[" << i << "][" << j
@@ -218,7 +263,21 @@ struct MatrixParams : BaseParams {
        << std::endl;
     os << "weightAddressGenFyIndex: " << params.weightAddressGenFyIndex
        << std::endl;
-    os << "STRIDE: " << params.STRIDE << std::endl;
+
+    os << "input_dtype: " << params.input_dtype << std::endl;
+    os << "weight_dtype: " << params.weight_dtype << std::endl;
+
+    os << "use_input_codebook: " << params.use_input_codebook << std::endl;
+    os << "use_weight_codebook: " << params.use_weight_codebook << std::endl;
+
+    for (int i = 0; i < NUM_CODEBOOK_ENTRIES; i++) {
+      os << "input_code[" << i << "]: " << params.input_code[i] << std::endl;
+    }
+
+    for (int i = 0; i < NUM_CODEBOOK_ENTRIES; i++) {
+      os << "weight_code[" << i << "]: " << params.weight_code[i] << std::endl;
+    }
+
     os << "head_size_power_of_two: " << params.head_size_power_of_two
        << std::endl;
 
@@ -268,10 +327,19 @@ struct MatrixParams : BaseParams {
 
     // Compare other members
     if (lhs.fxIndex != rhs.fxIndex || lhs.fyIndex != rhs.fyIndex) return false;
-    if (lhs.weightAddressGenFxIndex != rhs.weightAddressGenFxIndex ||
-        lhs.weightAddressGenFyIndex != rhs.weightAddressGenFyIndex)
+    if ((lhs.weightAddressGenFxIndex != rhs.weightAddressGenFxIndex ||
+         lhs.weightAddressGenFyIndex != rhs.weightAddressGenFyIndex))
       return false;
-    if (lhs.STRIDE != rhs.STRIDE) return false;
+    if (lhs.stride != rhs.stride) return false;
+
+    if (lhs.input_dtype != rhs.input_dtype) return false;
+    if (lhs.weight_dtype != rhs.weight_dtype) return false;
+
+    for (int i = 0; i < NUM_CODEBOOK_ENTRIES; i++) {
+      if (lhs.input_code[i] != rhs.input_code[i]) return false;
+      if (lhs.weight_code[i] != rhs.weight_code[i]) return false;
+    }
+
     if (lhs.head_size_power_of_two != rhs.head_size_power_of_two) return false;
 
     // Compare boolean values
@@ -491,7 +559,7 @@ struct VectorParams : BaseParams {
 #ifndef __SYNTHESIS__
   VectorParams() {
     addr_gen0_mode = 0;
-    VECTOR_OFFSET = 0;
+    ADDRESS_GEN0_OFFSET = 0;
     for (int i = 0; i < 2; i++) {
       for (int j = 0; j < 3; j++) {
         addr_gen0_loops[i][j] = 0;
@@ -572,47 +640,51 @@ struct VectorParams : BaseParams {
 
     quantize_output_mx = false;
     SCALE_OFFSET = 0;
+    use_output_codebook = false;
+    for (int i = 0; i < NUM_CODEBOOK_ENTRIES - 1; i++) {
+      output_code[i] = 0;
+    }
   }
 #endif
 
   // Address generator 0 (vector input)
   ac_int<2, false> addr_gen0_mode;
-  uint64_t VECTOR_OFFSET;
+  ac_int<ADDRESS_WIDTH, false> ADDRESS_GEN0_OFFSET;
   ac_int<11, false> addr_gen0_loops[2][3];
   ac_int<3, false> addr_gen0_x_loop_idx[2];
   ac_int<3, false> addr_gen0_y_loop_idx[2];
   ac_int<3, false> addr_gen0_k_loop_idx[2];
   ac_int<16, false> addr_gen0_dq_scale;
-  ac_int<2, false> addr_gen0_dtype;
+  ac_int<4, false> addr_gen0_dtype;
 
   // Address generator 1 (op0src1)
   ac_int<2, false> addr_gen1_mode;
-  uint64_t ADDRESS_GEN1_OFFSET;
+  ac_int<ADDRESS_WIDTH, false> ADDRESS_GEN1_OFFSET;
   ac_int<11, false> addr_gen1_loops[2][3];
   ac_int<3, false> addr_gen1_x_loop_idx[2];
   ac_int<3, false> addr_gen1_y_loop_idx[2];
   ac_int<3, false> addr_gen1_k_loop_idx[2];
   ac_int<16, false> addr_gen1_dq_scale;
-  ac_int<2, false> addr_gen1_dtype;
+  ac_int<4, false> addr_gen1_dtype;
 
   // Address generator 2 (op3src1)
   ac_int<2, false> addr_gen2_mode;
-  uint64_t ADDRESS_GEN2_OFFSET;
+  ac_int<ADDRESS_WIDTH, false> ADDRESS_GEN2_OFFSET;
   ac_int<11, false> addr_gen2_loops[2][3];
   ac_int<3, false> addr_gen2_x_loop_idx[2];
   ac_int<3, false> addr_gen2_y_loop_idx[2];
   ac_int<3, false> addr_gen2_k_loop_idx[2];
   ac_int<16, false> addr_gen2_dq_scale;
-  ac_int<2, false> addr_gen2_dtype;
+  ac_int<4, false> addr_gen2_dtype;
 
   // Output address generator
   ac_int<2, false> output_mode;
-  uint64_t VECTOR_OUTPUT_OFFSET;
+  ac_int<ADDRESS_WIDTH, false> VECTOR_OUTPUT_OFFSET;
   ac_int<11, false> output_loops[2][3];
   ac_int<3, false> output_x_loop_idx[2];
   ac_int<3, false> output_y_loop_idx[2];
   ac_int<3, false> output_k_loop_idx[2];
-  ac_int<2, false> output_dtype;
+  ac_int<4, false> output_dtype;
 
   ac_int<6, false> addr_gen0_broadcast;
   ac_int<3, false> addr_gen1_broadcast;
@@ -636,25 +708,34 @@ struct VectorParams : BaseParams {
   bool has_output_permute;
 
   bool quantize_output_mx;
-  uint64_t SCALE_OFFSET;
+  ac_int<ADDRESS_WIDTH, false> SCALE_OFFSET;
+
+  bool use_output_codebook;
+  ac_int<MAX_DECODED_DTYPE_WIDTH + 1, true>
+      output_code[NUM_CODEBOOK_ENTRIES - 1];
 
   // Each address generator has a 2-bit mode flag, 64-bit address, 6 11-bit loop
-  // boundaries, 6 3-bit loop indices, and a 16-bit dequantize scale
+  // boundaries, 6 3-bit loop indices, a 16-bit dequantize scale, and a 2-bit
+  // data type
   static const unsigned int address_gen_width =
-      2 + 64 + 6 * 11 + 6 * 3 + 16 + 2;
+      2 + ADDRESS_WIDTH + 6 * 11 + 6 * 3 + 16 + 4;
+
+  static const unsigned int codebook_params_width =
+      1 + (NUM_CODEBOOK_ENTRIES - 1) * (MAX_DECODED_DTYPE_WIDTH + 1);
 
   // There are 4 address generators in total + 12-bit broadcasting flag + 36-bit
   // slicing params + 18-bit reshape params + 4-bit head size + 6 boolean flags
   // + 64-bit scale offset
-  static const unsigned int width =
-      4 * address_gen_width + 12 + 36 + 18 + 4 + 6 + 64 - 16;
+  static const unsigned int width = 4 * address_gen_width + 12 + 36 + 18 + 4 +
+                                    6 + ADDRESS_WIDTH - 16 +
+                                    codebook_params_width;
 
 #ifndef NO_SYSC
   template <unsigned int Size>
   void Marshall(Marshaller<Size>& m) {
     // Address generator 0
     m & addr_gen0_mode;
-    m & VECTOR_OFFSET;
+    m & ADDRESS_GEN0_OFFSET;
     for (int i = 0; i < 2; i++) {
       for (int j = 0; j < 3; j++) {
         m& addr_gen0_loops[i][j];
@@ -756,6 +837,11 @@ struct VectorParams : BaseParams {
 
     m & quantize_output_mx;
     m & SCALE_OFFSET;
+
+    m & use_output_codebook;
+    for (int i = 0; i < NUM_CODEBOOK_ENTRIES - 1; i++) {
+      m& output_code[i];
+    }
   }
 
   inline friend void sc_trace(sc_trace_file* tf, const VectorParams& params,
@@ -767,7 +853,7 @@ struct VectorParams : BaseParams {
   inline friend std::ostream& operator<<(ostream& os,
                                          const VectorParams& params) {
     os << "addr_gen0_mode: " << params.addr_gen0_mode << std::endl;
-    os << "VECTOR_OFFSET: " << params.VECTOR_OFFSET << std::endl;
+    os << "ADDRESS_GEN0_OFFSET: " << params.ADDRESS_GEN0_OFFSET << std::endl;
     for (int i = 0; i < 2; i++) {
       for (int j = 0; j < 3; j++) {
         os << "addr_gen0_loops[" << i << "][" << j
@@ -884,13 +970,19 @@ struct VectorParams : BaseParams {
     os << "quantize_output_mx: " << params.quantize_output_mx << std::endl;
     os << "SCALE_OFFSET: " << params.SCALE_OFFSET << std::endl;
 
+    os << "use_output_codebook: " << params.use_output_codebook << std::endl;
+    for (int i = 0; i < NUM_CODEBOOK_ENTRIES - 1; i++) {
+      os << "output_code[" << i << "]: " << params.output_code[i] << std::endl;
+    }
+
     return os;
   }
 
   inline friend bool operator==(const VectorParams& lhs,
                                 const VectorParams& rhs) {
     // Compare Address Gen 0 members
-    if (lhs.VECTOR_OFFSET != rhs.VECTOR_OFFSET) return false;
+    if (lhs.addr_gen0_mode != rhs.addr_gen0_mode) return false;
+    if (lhs.ADDRESS_GEN0_OFFSET != rhs.ADDRESS_GEN0_OFFSET) return false;
     for (int i = 0; i < 2; i++) {
       for (int j = 0; j < 3; j++) {
         if (lhs.addr_gen0_loops[i][j] != rhs.addr_gen0_loops[i][j])
@@ -909,6 +1001,7 @@ struct VectorParams : BaseParams {
     if (lhs.addr_gen0_dtype != rhs.addr_gen0_dtype) return false;
 
     // Compare Address Gen 1 members
+    if (lhs.addr_gen1_mode != rhs.addr_gen1_mode) return false;
     if (lhs.ADDRESS_GEN1_OFFSET != rhs.ADDRESS_GEN1_OFFSET) return false;
     for (int i = 0; i < 2; i++) {
       for (int j = 0; j < 3; j++) {
@@ -928,6 +1021,7 @@ struct VectorParams : BaseParams {
     if (lhs.addr_gen1_dtype != rhs.addr_gen1_dtype) return false;
 
     // Compare Address Gen 2 members
+    if (lhs.addr_gen2_mode != rhs.addr_gen2_mode) return false;
     if (lhs.ADDRESS_GEN2_OFFSET != rhs.ADDRESS_GEN2_OFFSET) return false;
     for (int i = 0; i < 2; i++) {
       for (int j = 0; j < 3; j++) {
@@ -947,6 +1041,7 @@ struct VectorParams : BaseParams {
     if (lhs.addr_gen2_dtype != rhs.addr_gen2_dtype) return false;
 
     // Compare output and other members
+    if (lhs.output_mode != rhs.output_mode) return false;
     if (lhs.VECTOR_OUTPUT_OFFSET != rhs.VECTOR_OUTPUT_OFFSET) return false;
     for (int i = 0; i < 2; i++) {
       for (int j = 0; j < 3; j++) {
@@ -982,12 +1077,11 @@ struct VectorParams : BaseParams {
     if (lhs.has_output_permute != rhs.has_output_permute) return false;
 
     if (lhs.quantize_output_mx != rhs.quantize_output_mx) return false;
-
-    // Compare address generation modes and pooling settings
-    if (lhs.addr_gen0_mode != rhs.addr_gen0_mode) return false;
-    if (lhs.addr_gen1_mode != rhs.addr_gen1_mode) return false;
-    if (lhs.addr_gen2_mode != rhs.addr_gen2_mode) return false;
-    if (lhs.output_mode != rhs.output_mode) return false;
+    if (lhs.SCALE_OFFSET != rhs.SCALE_OFFSET) return false;
+    if (lhs.use_output_codebook != rhs.use_output_codebook) return false;
+    for (int i = 0; i < NUM_CODEBOOK_ENTRIES - 1; i++) {
+      if (lhs.output_code[i] != rhs.output_code[i]) return false;
+    }
 
     // If all members are equal, return true
     return true;

@@ -9,7 +9,7 @@
 #include "test/common/AccessCounter.h"
 #endif
 
-template <int Width, int Depth>
+template <int Depth, int Width>
 SC_MODULE(DoubleBuffer) {
  private:
   ac_int<Width, false> mem0[Depth];

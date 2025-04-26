@@ -22,6 +22,7 @@ void DataLoader::load_tensor(const codegen::Tensor& tensor,
   for (const auto& dim : shape) {
     spdlog::debug("{} ", dim);
   }
+  spdlog::debug("\n");
   spdlog::debug("Datatype: {}\n", tensor.dtype());
   spdlog::debug("Address: {}\n", tensor.memory().address());
   spdlog::debug("Transposed: {}\n", transpose);
@@ -46,9 +47,6 @@ void DataLoader::load_tensor(const codegen::Tensor& tensor,
     }
   }
 
-  int partition = tensor.memory().partition();
-  uint64_t offset = tensor.memory().address();
-
   // number of elements packed into a single word for replication
   const int packing_factor = IC_DIMENSION / 4 * 3;
   if (replication) {
@@ -57,29 +55,7 @@ void DataLoader::load_tensor(const codegen::Tensor& tensor,
 
   int address = 0;
   for (auto it = array.begin(); it != array.end(); ++it) {
-    if (tensor.dtype() == "int8") {
-      memory_interface->write_value_to_memory<DataTypes::int8>(
-          offset, partition, address, *it);
-    } else if (tensor.dtype() == "bfloat16") {
-      memory_interface->write_value_to_memory<DataTypes::bfloat16>(
-          offset, partition, address, *it);
-    } else if (tensor.dtype() == "int24") {
-      memory_interface->write_value_to_memory<DataTypes::int24>(
-          offset, partition, address, *it);
-    } else if (tensor.dtype() == "int32") {
-      memory_interface->write_value_to_memory<DataTypes::int32>(
-          offset, partition, address, *it);
-    } else if (tensor.dtype() == "fp8_e8m0") {
-      memory_interface->write_value_to_memory<DataTypes::fp8_e8m0>(
-          offset, partition, address, *it);
-    } else if (tensor.dtype() == "fp8_e5m3") {
-      memory_interface->write_value_to_memory<DataTypes::fp8_e5m3>(
-          offset, partition, address, *it);
-    } else {
-      // if unspecified, we will assume it's INPUT_DATATYPE
-      memory_interface->write_value_to_memory<INPUT_DATATYPE>(offset, partition,
-                                                              address, *it);
-    }
+    memory_interface->write_data(tensor, address, *it);
 
     address++;
     if (replication && address % IC_DIMENSION == packing_factor) {

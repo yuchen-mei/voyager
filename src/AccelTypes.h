@@ -8,8 +8,8 @@
 #include <ccs_types.h>
 #include <mc_connections.h>
 
-#include "DataTypes.h"
-#include "Params.h"  // IWYU pragma: export
+#include "Params.h"
+#include "datatypes/DataTypes.h"
 
 #ifdef DEBUG
 #define DLOG(x) CCS_LOG(x)
@@ -151,6 +151,94 @@ class Pack1D {
 };
 
 // TODO: is there a way to make this more generic?
+
+template <size_t Width, int W>
+class Pack1D<PEInput<ac_int<W, false>>, Width> {
+ public:
+  PEInput<ac_int<W, false>> value[Width];
+
+  static const unsigned int width = PEInput<ac_int<W, false>>::width * Width;
+
+  Pack1D() {}
+  Pack1D(const int a) {}
+
+  operator int() const { return Pack1D<PEInput<ac_int<W, false>>, Width>(); }
+
+  PEInput<ac_int<W, false>> &operator[](unsigned int i) {
+    return this->value[i];
+  }
+
+  const PEInput<ac_int<W, false>> &operator[](unsigned int i) const {
+    return this->value[i];
+  }
+
+  template <unsigned int Size>
+  void Marshall(Marshaller<Size> &m) {
+#pragma hls_unroll yes
+    for (unsigned int i = 0; i < Width; i++) {
+      m &value[i].data;
+    }
+
+#pragma hls_unroll yes
+    for (unsigned int i = 0; i < Width; i++) {
+      m &value[i].swapWeights;
+    }
+  }
+
+  inline friend bool operator==(const Pack1D &lhs, const Pack1D &rhs) {
+    for (unsigned int i = 0; i < Width; i++) {
+      if (lhs.value[i] != rhs.value[i]) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+};
+
+template <size_t Width, int W>
+class Pack1D<PEWeight<ac_int<W, false>>, Width> {
+ public:
+  PEWeight<ac_int<W, false>> value[Width];
+
+  static const unsigned int width = PEWeight<ac_int<W, false>>::width * Width;
+
+  Pack1D() {}
+  Pack1D(const int a) {}
+
+  operator int() const { return Pack1D<PEWeight<ac_int<W, false>>, Width>(); }
+
+  PEWeight<ac_int<W, false>> &operator[](unsigned int i) {
+    return this->value[i];
+  }
+
+  const PEWeight<ac_int<W, false>> &operator[](unsigned int i) const {
+    return this->value[i];
+  }
+
+  template <unsigned int Size>
+  void Marshall(Marshaller<Size> &m) {
+#pragma hls_unroll yes
+    for (unsigned int i = 0; i < Width; i++) {
+      m &value[i].data;
+    }
+
+#pragma hls_unroll yes
+    for (unsigned int i = 0; i < Width; i++) {
+      m &value[i].tag;
+    }
+  }
+
+  inline friend bool operator==(const Pack1D &lhs, const Pack1D &rhs) {
+    for (unsigned int i = 0; i < Width; i++) {
+      if (lhs.value[i] != rhs.value[i]) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+};
 
 template <size_t Width, int nbits, int es>
 class Pack1D<PEInput<Posit<nbits, es>>, Width> {

@@ -12,7 +12,7 @@
 #include "test/compiler/proto/param.pb.h"
 
 // clang-format off
-#include "src/DataTypes.h"
+#include "src/datatypes/DataTypes.h"
 // clang-format on
 #include "spdlog/spdlog.h"
 #include "src/ArchitectureParams.h"
@@ -24,146 +24,22 @@ class MemoryInterface {
   MemoryInterface() {}
   virtual ~MemoryInterface() {}
 
-  std::any read_tensor(const codegen::Tensor& tensor) {
-    int partition = tensor.memory().partition();
-
-    int size = get_size(tensor, false);
-
-    if (size ==
-        1) {  // for scalar, we get the arg from the file, not from memory
-      const char* env_var = std::getenv("NETWORK");
-      std::string model_name(env_var);
-      std::string project_root = std::string(std::getenv("PROJECT_ROOT"));
-      std::string datatype = std::string(std::getenv("DATATYPE"));
-      std::string filename = project_root + "/" +
-                             std::string(getenv("CODEGEN_DIR")) + "/networks/" +
-                             model_name + "/" + datatype + "/tensor_files/" +
-                             tensor.node() + ".bin";
-
-      float scalar;
-      std::ifstream input_stream(filename, std::ios::binary);
-      input_stream.read(reinterpret_cast<char*>(&scalar), sizeof(float));
-
-      if (tensor.dtype() == "bfloat16" || tensor.dtype() == "float32") {
-        VECTOR_DATATYPE* data = new VECTOR_DATATYPE[1];
-        data[0] = scalar;
-        return data;
-      } else {
-        spdlog::debug("Unsupported data type for scalar tensor: {}",
-                      tensor.dtype());
-        std::abort();
-      }
-    }
-
-    if (tensor.dtype() == "bfloat16") {
-      DataTypes::bfloat16* data = new DataTypes::bfloat16[size];
-      read_tensor_from_memory<DataTypes::bfloat16>(tensor.memory().address(),
-                                                   partition, size, data);
-      return data;
-    } else if (tensor.dtype() == "int8") {
-      DataTypes::int8* data = new DataTypes::int8[size];
-      read_tensor_from_memory<DataTypes::int8>(tensor.memory().address(),
-                                               partition, size, data);
-      return data;
-    } else if (tensor.dtype() == "int24") {
-      DataTypes::int24* data = new DataTypes::int24[size];
-      read_tensor_from_memory<DataTypes::int24>(tensor.memory().address(),
-                                                partition, size, data);
-      return data;
-    } else if (tensor.dtype() == "int32") {
-      DataTypes::int32* data = new DataTypes::int32[size];
-      read_tensor_from_memory<DataTypes::int32>(tensor.memory().address(),
-                                                partition, size, data);
-      return data;
-    } else if (tensor.dtype() == "fp8_e8m0") {
-      DataTypes::fp8_e8m0* data = new DataTypes::fp8_e8m0[size];
-      read_tensor_from_memory<DataTypes::fp8_e8m0>(tensor.memory().address(),
-                                                   partition, size, data);
-      return data;
-    } else if (tensor.dtype() == "fp8_e5m3") {
-      DataTypes::fp8_e5m3* data = new DataTypes::fp8_e5m3[size];
-      read_tensor_from_memory<DataTypes::fp8_e5m3>(tensor.memory().address(),
-                                                   partition, size, data);
-      return data;
-    } else {
-      INPUT_DATATYPE* data = new INPUT_DATATYPE[size];
-      read_tensor_from_memory<INPUT_DATATYPE>(tensor.memory().address(),
-                                              partition, size, data);
-      return data;
-    }
-  }
-
-  std::vector<std::any> get_outputs(const codegen::Operation& param) {
-    const auto tensors = get_op_outputs(param);
-    std::vector<std::any> outputs;
-    for (const auto& tensor : tensors) {
-      outputs.push_back(read_tensor(tensor));
-    }
-    return outputs;
-  }
-
-  std::map<std::string, std::any> get_args(const codegen::Operation& param) {
-    std::map<std::string, std::any> kwargs;
-
-    const auto op_list = get_op_list(param);
-
-    for (const auto op : op_list) {
-      for (const auto [key, value] : op.kwargs()) {
-        if (value.has_tensor() && value.tensor().has_memory()) {
-          spdlog::debug("Pushing tensor: {}", value.tensor().node());
-          kwargs[value.tensor().node()] = read_tensor(value.tensor());
-        }
-      }
-    }
-
-    return kwargs;
-  }
-
-  void write_tensor(const codegen::Tensor& tensor, const std::any data) {
-    const auto& tensor_memory = tensor.memory();
-    const uint64_t address = tensor_memory.address();
-    const int partition = tensor_memory.partition();
-
-    int size = 1;
-    for (const auto& dim : tensor.shape()) {
-      size *= dim;
-    }
-
-    const auto dtype = tensor.dtype();
-    if (dtype == "bfloat16") {
-      write_tensor_to_memory<DataTypes::bfloat16>(
-          address, partition, size, std::any_cast<DataTypes::bfloat16*>(data));
-    } else if (dtype == "int8") {
-      write_tensor_to_memory<DataTypes::int8>(
-          address, partition, size, std::any_cast<DataTypes::int8*>(data));
-    } else if (dtype == "int24") {
-      write_tensor_to_memory<DataTypes::int24>(
-          address, partition, size, std::any_cast<DataTypes::int24*>(data));
-    } else if (dtype == "int32") {
-      write_tensor_to_memory<DataTypes::int32>(
-          address, partition, size, std::any_cast<DataTypes::int32*>(data));
-    } else if (dtype == "fp8_e8m0") {
-      write_tensor_to_memory<DataTypes::fp8_e8m0>(
-          address, partition, size, std::any_cast<DataTypes::fp8_e8m0*>(data));
-    } else if (dtype == "fp8_e5m3") {
-      write_tensor_to_memory<DataTypes::fp8_e5m3>(
-          address, partition, size, std::any_cast<DataTypes::fp8_e5m3*>(data));
-    } else {
-      // Default to INPUT_DATATYPE
-      write_tensor_to_memory<INPUT_DATATYPE>(
-          address, partition, size, std::any_cast<INPUT_DATATYPE*>(data));
-    }
-  }
-
   template <typename T>
-  void read_tensor_from_memory(const long long address, const int partition,
-                               const int size, T* tensor) {
-    // read extra byte in case of alignment issues
-    int bytes_to_read = ((size * T::width) / 8) + 1;
-    char* memory_bytes = new char[bytes_to_read];
-    read_bytes_from_memory(address, partition, bytes_to_read, memory_bytes);
+  bool read_tensor_with_type(codegen::Tensor tensor, std::any& output) {
+    if (tensor.dtype() != DataTypes::TypeName<T>::name()) {
+      return false;
+    }
 
-    ac_int<(T::width / 8 + 2) * 8> bits;
+    const auto& memory = tensor.memory();
+    const uint64_t address = memory.address();
+    const int partition = memory.partition();
+    const int size = get_size(tensor, false);
+
+    int num_bytes = (size * T::width + 7) / 8;
+    char* buffer = new char[num_bytes];
+    read_bytes_from_memory(address, partition, num_bytes, buffer);
+
+    T* results = new T[size];
 
     for (int i = 0; i < size; i++) {
       // Data may be unaligned and span multiple bytes. We calculate the start
@@ -173,74 +49,193 @@ class MemoryInterface {
       int end = (i + 1) * T::width / 8;
       int offset = (i * T::width) % 8;
 
+      ac_int<(T::width / 8 + 2) * 8> bits;
+
       for (int j = start; j <= end; j++) {
-        bits.set_slc((j - start) * 8,
-                     static_cast<ac_int<8, false>>(memory_bytes[j]));
+        bits.set_slc((j - start) * 8, static_cast<ac_int<8, false>>(buffer[j]));
       }
 
-      tensor[i].set_bits(bits >> offset);
+      results[i].set_bits(bits >> offset);
     }
 
-    delete[] memory_bytes;
+    delete[] buffer;
+    output = results;
+
+    return true;
+  }
+
+  template <typename... Ts>
+  std::any read_tensor_helper(const codegen::Tensor& tensor) {
+    std::any output;
+    bool matched = (read_tensor_with_type<Ts>(tensor, output) || ...);
+    if (!matched) {
+      throw std::runtime_error("Unsupported tensor dtype: " + tensor.dtype());
+    }
+    return output;
+  }
+
+  std::any read_tensor(const codegen::Tensor& tensor) {
+    int size = get_size(tensor, false);
+
+    // Read scalar from the file directly
+    if (size == 1) {
+      if (tensor.dtype() != "bfloat16" && tensor.dtype() != "float32") {
+        throw std::runtime_error(
+            "Unsupported tensor dtype for scalar tensor: " + tensor.dtype());
+      }
+
+      float* array = read_constant_param(tensor);
+
+      VECTOR_DATATYPE* data = new VECTOR_DATATYPE[1];
+      data[0] = array[0];
+
+      delete[] array;
+
+      return data;
+    }
+
+    return read_tensor_helper<SUPPORTED_TYPES>(tensor);
   }
 
   template <typename T>
-  void write_tensor_to_memory(const uint64_t address, const int partition,
-                              const int size, T* tensor) {
+  bool write_tensor_with_type(codegen::Tensor tensor, std::any data) {
+    if (tensor.dtype() != DataTypes::TypeName<T>::name()) {
+      return false;
+    }
+
+    const auto& memory = tensor.memory();
+    const uint64_t address = memory.address();
+    const int partition = memory.partition();
+    const int size = get_size(tensor, false);
+    T* casted = std::any_cast<T*>(data);
+
     size_t total_bytes = (size * T::width + 7) / 8;
-    constexpr size_t width_in_bytes = (T::width + 7) / 8;
     char* buffer = new char[total_bytes];
 
-    for (size_t i = 0; i < size; i++) {
-      size_t start_bit = i * T::width;
+    constexpr int lcm = T::width * 8 / std::gcd(T::width, 8);
 
-      ac_int<width_in_bytes * 8 + 1, false> value_in_bits =
-          tensor[i].bits_rep();
+    const int num_groups = size * T::width / lcm;
+    const int num_value_per_group = lcm / T::width;
+    const int num_bytes_per_group = lcm / 8;
+    const int num_bits_remaining = size * T::width - num_groups * lcm;
 
-      for (int byte_offset = 0; byte_offset < (T::width + 7) / 8;
-           byte_offset++) {
-        size_t bit_start = start_bit % 8;
-        size_t bits_to_write =
-            std::min<size_t>(8 - bit_start, T::width - byte_offset * 8);
-        unsigned char mask = (1 << bits_to_write) - 1;
-        buffer[(start_bit / 8) + byte_offset] &= ~(mask << bit_start);
+    for (int i = 0; i < num_groups; i++) {
+      ac_int<lcm, false> bits;
+      for (int j = 0; j < num_value_per_group; j++) {
+        bits.set_slc(j * T::width,
+                     static_cast<ac_int<T::width, false>>(
+                         casted[i * num_value_per_group + j].bits_rep()));
+      }
 
-        char data = value_in_bits.template slc<8>(byte_offset * 8) & mask;
-        buffer[(start_bit / 8) + byte_offset] |= data << bit_start;
+      for (int j = 0; j < num_bytes_per_group; j++) {
+        buffer[i * num_bytes_per_group + j] =
+            static_cast<char>(bits.template slc<8>(j * 8));
       }
     }
+
+    // TODO: Handle the remaining bytes
+    assert(num_bits_remaining == 0);
 
     write_bytes_to_memory(address, partition, total_bytes, buffer);
     delete[] buffer;
+
+    return true;
+  }
+
+  template <typename... Ts>
+  void write_tensor_helper(const codegen::Tensor& tensor, std::any data) {
+    bool matched = (write_tensor_with_type<Ts>(tensor, data) || ...);
+    if (!matched) {
+      throw std::runtime_error("Unsupported tensor dtype: " + tensor.dtype());
+    }
+  }
+
+  void write_tensor(const codegen::Tensor& tensor, const std::any data) {
+    write_tensor_helper<SUPPORTED_TYPES>(tensor, data);
   }
 
   template <typename T>
-  void write_value_to_memory(const uint64_t address, const int partition,
-                             const int index, T value) {
-    size_t bit_offset = index * T::width;
-    size_t byte_address = address + bit_offset / 8;
-    constexpr size_t width_in_bytes = (T::width + 7) / 8;
-    char buffer[width_in_bytes];
+  bool write_value_to_memory(const codegen::Tensor& tensor, const int index,
+                             T value) {
+    if (tensor.dtype() != DataTypes::TypeName<T>::name()) {
+      return false;
+    }
 
-    ac_int<width_in_bytes * 8 + 1, false> value_in_bits = value.bits_rep();
+    const auto& memory = tensor.memory();
+    const uint64_t address = memory.address();
+    const int partition = memory.partition();
+
+    int start = index * T::width / 8;
+    int end = (index + 1) * T::width / 8;
+    int offset = (index * T::width) % 8;
+    int num_bytes = (end - start + 1) * 8;
+
+    int bits_remaining = num_bytes * 8 - T::width - offset;
+    num_bytes = num_bytes - bits_remaining / 8;
+
+    constexpr int buf_width = (T::width / 8 + 2) * 8;
+    ac_int<buf_width, false> bytes = value.bits_rep();
+    ac_int<buf_width, false> masks = ((1UL << T::width) - 1);
+
+    bytes = bytes << offset;
+    masks = masks << offset;
+
+    char buffer[num_bytes];
 
     // for non-byte aligned data, we need to read the memory first
-    if (T::width % 8 != 0) {
-      read_bytes_from_memory(byte_address, partition, width_in_bytes, buffer);
+    read_bytes_from_memory(address + start, partition, num_bytes, buffer);
+
+    for (int i = 0; i < num_bytes; i++) {
+      char mask = masks.template slc<8>(i * 8);
+      char new_data = bytes.template slc<8>(i * 8) & mask;
+      char orig_data = buffer[i] & ~mask;
+      buffer[i] = new_data | orig_data;
     }
 
-    size_t start_bit = bit_offset;
-    for (int byte_offset = 0; byte_offset < width_in_bytes; byte_offset++) {
-      size_t bit_start = start_bit % 8;
-      size_t bits_to_write =
-          std::min<size_t>(8 - bit_start, T::width - byte_offset * 8);
-      unsigned char mask = (1 << bits_to_write) - 1;
-      buffer[byte_offset] &= ~(mask << bit_start);
+    write_bytes_to_memory(address + start, partition, num_bytes, buffer);
 
-      char data = value_in_bits.template slc<8>(byte_offset * 8) & mask;
-      buffer[byte_offset] |= data << bit_start;
+    return true;
+  }
+
+  template <typename... Ts>
+  void write_data_helper(const codegen::Tensor& tensor, int index,
+                         float value) {
+    bool matched = (write_value_to_memory<Ts>(tensor, index, value) || ...);
+    if (!matched) {
+      throw std::runtime_error("Dataloader: Unsupported tensor dtype: " +
+                               tensor.dtype());
     }
-    write_bytes_to_memory(byte_address, partition, width_in_bytes, buffer);
+  }
+
+  void write_data(const codegen::Tensor& tensor, int index, float value) {
+    write_data_helper<SUPPORTED_TYPES>(tensor, index, value);
+  }
+
+  std::map<std::string, std::any> get_args(const codegen::Operation& param) {
+    std::map<std::string, std::any> kwargs;
+
+    const auto op_list = get_op_list(param);
+
+    for (const auto op : op_list) {
+      for (const auto [key, value] : op.kwargs()) {
+        if (value.has_tensor() &&
+            (value.tensor().has_memory() || get_size(value.tensor()) == 1)) {
+          spdlog::debug("Pushing tensor: {}\n", value.tensor().node());
+          kwargs[value.tensor().node()] = read_tensor(value.tensor());
+        }
+      }
+    }
+
+    return kwargs;
+  }
+
+  std::vector<std::any> get_outputs(const codegen::Operation& param) {
+    const auto tensors = get_op_outputs(param);
+    std::vector<std::any> outputs;
+    for (const auto& tensor : tensors) {
+      outputs.push_back(read_tensor(tensor));
+    }
+    return outputs;
   }
 
   virtual std::vector<std::any> get_reference_outputs(

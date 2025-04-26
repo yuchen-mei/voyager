@@ -66,7 +66,7 @@ SC_MODULE(InputScaleController) {
         FX = 7;
       }
       ac_int<4, false> FY = params.loops[1][params.fyIndex];
-      ac_int<2, false> STRIDE = params.STRIDE;
+      ac_int<2, false> STRIDE = params.stride;
 
       // replication packing factor
       int packingFactor;
@@ -319,7 +319,7 @@ SC_MODULE(InputScaleController) {
       }
 
       ac_int<4, false> FY = params.loops[1][params.fyIndex];
-      ac_int<2, false> STRIDE = params.STRIDE;
+      ac_int<2, false> STRIDE = params.stride;
 
       bool isDownsample = FX == 1 && FY == 1;
 
@@ -539,7 +539,7 @@ SC_MODULE(InputScaleController) {
 
       ac_int<LOOP_WIDTH, false> loop_counters[2][6];
       ac_int<LOOP_WIDTH, false> loop_bounds[2][6];
-      ac_int<2, false> STRIDE = params.STRIDE;
+      ac_int<2, false> STRIDE = params.stride;
 
 #pragma hls_unroll yes
       for (int i = 0; i < 2; i++) {
