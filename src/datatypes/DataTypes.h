@@ -21,7 +21,12 @@
 // IWYU pragma: end_exports
 
 namespace DataTypes {
+typedef Int<1, true> int1;
+typedef Int<2, true> int2;
+typedef Int<4, true> int4;
+typedef Int<6, true> int6;
 typedef Int<8, true> int8;
+typedef Int<18, true> int18;
 typedef Int<16, true> int16;
 typedef Int<24, true> int24;
 typedef Int<32, true> int32;
@@ -29,11 +34,14 @@ typedef Int<32, true> int32;
 typedef StdFloat<3, 4, false, true, AC_RND_CONV> e4m3;
 typedef StdFloat<2, 5, false, true, AC_RND_CONV> e5m2;
 typedef StdFloat<7, 8, false, true, AC_RND_CONV> bfloat16;
-typedef StdFloat<23, 8, false, true, AC_RND_CONV> fp32;
+#if defined(CFLOAT)
+typedef CFloat float32;
+#else
+typedef StdFloat<23, 8, false, true, AC_RND_CONV> float32;
+#endif
+
 
 typedef Posit<8, 1> posit8;
-
-typedef NormalFloat4 nf4;
 
 typedef UFloat<8, 8> fp8_e8m0;
 typedef UFloat<8, 5> fp8_e5m3;
@@ -44,6 +52,26 @@ struct TypeName {
 };
 
 template <>
+struct TypeName<int1> {
+  static std::string name() { return "int1"; }
+};
+
+template <>
+struct TypeName<int2> {
+  static std::string name() { return "int2"; }
+};
+
+template <>
+struct TypeName<int4> {
+  static std::string name() { return "int4"; }
+};
+
+template <>
+struct TypeName<int6> {
+  static std::string name() { return "int6"; }
+};
+
+template <>
 struct TypeName<int8> {
   static std::string name() { return "int8"; }
 };
@@ -51,6 +79,11 @@ struct TypeName<int8> {
 template <>
 struct TypeName<int16> {
   static std::string name() { return "int16"; }
+};
+
+template <>
+struct TypeName<int18> {
+  static std::string name() { return "int18"; }
 };
 
 template <>
@@ -79,7 +112,7 @@ struct TypeName<bfloat16> {
 };
 
 template <>
-struct TypeName<fp32> {
+struct TypeName<float32> {
   static std::string name() { return "float32"; }
 };
 
@@ -98,12 +131,31 @@ struct TypeName<posit8> {
   static std::string name() { return "posit8_1"; }
 };
 
-template <>
-struct TypeName<nf4> {
-  static std::string name() { return "nf4_5"; }
-};
-
 };  // namespace DataTypes
+
+// clang-format off
+#define SUPPORTED_TYPES          \
+  DataTypes::int1,               \
+  DataTypes::int2,               \
+  DataTypes::int4,               \
+  DataTypes::int6,               \
+  DataTypes::int8,               \
+  DataTypes::int16,              \
+  DataTypes::int18,              \
+  DataTypes::int24,              \
+  DataTypes::int32,              \
+  DataTypes::e4m3,               \
+  DataTypes::e5m2,               \
+  DataTypes::bfloat16,           \
+  DataTypes::float32,            \
+  DataTypes::posit8,             \
+  DataTypes::fp8_e8m0,           \
+  DataTypes::fp8_e5m3
+// clang-format on
+
+// ================================================================
+// Datatype Indexing
+// ================================================================
 
 template <typename T, typename... Ts>
 struct TypeIndex;
@@ -132,3 +184,25 @@ int get_index_from_type_name(const std::string& dtype) {
    ...);
   return index;
 }
+
+// ================================================================
+// Datatype Concatenation
+// ================================================================
+
+// Base case: single tuple
+template <typename... Tuples>
+struct TupleConcat;
+
+template <typename... Ts>
+struct TupleConcat<std::tuple<Ts...>> {
+  using type = std::tuple<Ts...>;
+};
+
+// Recursive case: combine two or more
+template <typename... Ts1, typename... Ts2, typename... Rest>
+struct TupleConcat<std::tuple<Ts1...>, std::tuple<Ts2...>, Rest...> {
+  using type = typename TupleConcat<std::tuple<Ts1..., Ts2...>, Rest...>::type;
+};
+
+template <typename... Tuples>
+using TypeConcat = typename TupleConcat<Tuples...>::type;

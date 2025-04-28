@@ -43,21 +43,6 @@ inline MemorySource get_partition(const int &partition) {
   return partition == 0 ? SRAM : RRAM;
 }
 
-inline float read_constant_param(const codegen::Tensor tensor) {
-  const char *env_var = std::getenv("NETWORK");
-  std::string model_name(env_var);
-  std::string project_root = std::string(std::getenv("PROJECT_ROOT"));
-  std::string datatype = std::string(std::getenv("DATATYPE"));
-  std::string filename =
-      project_root + "/" + std::string(getenv("CODEGEN_DIR")) + "/networks/" +
-      model_name + "/" + datatype + "/tensor_files/" + tensor.node() + ".bin";
-
-  float *array_ptr = new float[1];
-  std::ifstream input_stream(filename, std::ios::binary);
-  input_stream.read(reinterpret_cast<char *>(array_ptr), sizeof(float));
-  return array_ptr[0];
-}
-
 inline std::vector<int> squeeze_shape(const std::vector<int> &input) {
   std::vector<int> result;
   for (int value : input) {
@@ -236,12 +221,69 @@ std::pair<std::vector<int>, std::vector<int>> factor_out_non_broadcastable_dim(
   return {shape1, shape2};
 }
 
-void update_tensor_shape(codegen::Tensor &tensor, const std::vector<int> &new_shape) {
+void update_tensor_shape(codegen::Tensor &tensor,
+                         const std::vector<int> &new_shape) {
   // Clear the existing shape
   tensor.clear_shape();
 
   // Add new values from the vector
   for (int dim : new_shape) {
     tensor.add_shape(dim);
+  }
+}
+
+void set_quantize_params(const codegen::Operation &param,
+                         VectorParams *vector_params,
+                         VectorInstructions &inst) {
+  const auto op_list = get_op_list(param);
+  const auto last_op = op_list.back();
+
+  if (last_op.target() == "quantize") {
+    const auto scale = last_op.kwargs().at("scale").tensor();
+    assert(get_size(scale) == 1);
+
+    inst.vector_op3 = VectorInstructions::vdiv;
+    inst.vector_op3_src1 = VectorInstructions::from_immediate_2;
+
+    // scalar scale factor
+    float *array = read_constant_param(scale);
+    VECTOR_DATATYPE immediate = array[0];
+    inst.immediate2 = immediate.bits_rep();
+
+    delete[] array;
+  } else if (last_op.target() == "quantize_mx") {
+    int block_size = last_op.kwargs().at("block_size").int_value();
+    float quant_max = last_op.kwargs().at("quant_max").float_value();
+    bool force_scale_power_of_two =
+        last_op.kwargs().at("force_scale_power_of_two").int_value();
+
+    assert(block_size == OC_DIMENSION);
+
+    inst.vector_op3 = VectorInstructions::vquantize_mx;
+
+    if (force_scale_power_of_two) {
+      inst.immediate2 = floor(log2(quant_max));
+    } else {
+      VECTOR_DATATYPE scale = quant_max;
+      inst.immediate2 = scale.bits_rep();
+    }
+
+    vector_params->quantize_output_mx = true;
+    vector_params->SCALE_OFFSET = param.outputs().tensors(0).memory().address();
+
+    if (last_op.kwargs().contains("quant_code")) {
+      const auto code = last_op.kwargs().at("quant_code").tensor();
+      const int size = get_size(code);
+
+      float *array = read_constant_param(code);
+
+      for (int i = 0; i < size; i++) {
+        vector_params->output_code[i] = array[i] * 2;
+      }
+
+      delete[] array;
+
+      vector_params->use_output_codebook = true;
+    }
   }
 }

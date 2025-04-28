@@ -85,8 +85,7 @@ SC_MODULE(ZeroTieoff) {
   }
 
   void drive() {
-    T zero;
-    zero.set_zero();
+    T zero = T::zero();
 #ifdef CONNECTIONS_FAST_SIM
     out.Reset();
 

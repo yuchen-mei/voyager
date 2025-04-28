@@ -268,18 +268,15 @@ SC_MODULE(VectorFetchUnit) {
                   if (params.addr_gen0_mode == 1 ||
                       params.addr_gen0_mode == 2) {
                     bool found =
-                        ((get_type_index<InputTypes, InputTypes...>() ==
-                                  params.addr_gen0_dtype
-                              ? (send_request<InputTypes, Width>(
-                                     address, params.VECTOR_OFFSET,
-                                     vector_fetch_0_request_out),
-                                 true)
-                              : false) ||
+                        (fetch_vector_input<InputTypes, Width, InputTypes...>(
+                             params.addr_gen0_dtype, address,
+                             params.ADDRESS_GEN0_OFFSET,
+                             vector_fetch_0_request_out) ||
                          ...);
 
 #ifndef __SYNTHESIS__
                     if (!found) {
-                      std::cerr << "Error: vector input 0 type index '"
+                      std::cerr << "Error: vector input 0 dtype '"
                                 << params.addr_gen0_dtype
                                 << "' is not valid.\n";
                     }
@@ -325,9 +322,9 @@ SC_MODULE(VectorFetchUnit) {
   }
 
   void feed_data_response_0() {
+    data_resp_0_params.ResetRead();
     vector_fetch_0_resp_in.Reset();
     vector_fetch_0_data_out.Reset();
-    data_resp_0_params.ResetRead();
 
 #if DOUBLE_BUFFERED_ACCUM_BUFFER
     accumulation_buffer_read_data[0].Reset();
@@ -391,17 +388,15 @@ SC_MODULE(VectorFetchUnit) {
                     Pack1D<VectorType, Width> full_response;
 
                     bool found =
-                        ((get_type_index<InputTypes, InputTypes...>() ==
-                                  params.addr_gen0_dtype
-                              ? (feed_response<InputTypes, VectorType, Width>(
-                                     vector_fetch_0_resp_in, full_response),
-                                 true)
-                              : false) ||
+                        (process_vector_input<InputTypes, Width, VectorType,
+                                              InputTypes...>(
+                             params.addr_gen0_dtype, vector_fetch_0_resp_in,
+                             full_response) ||
                          ...);
 
 #ifndef __SYNTHESIS__
                     if (!found) {
-                      std::cerr << "Error: vector input 0 type index '"
+                      std::cerr << "Error: vector input 0 dtype '"
                                 << params.addr_gen0_dtype
                                 << "' is not valid.\n";
                     }
@@ -527,17 +522,15 @@ SC_MODULE(VectorFetchUnit) {
         for (int i = 0; i < num_writes; i++) {
           Pack1D<VectorType, Width> full_response;
 
-          bool found = ((get_type_index<InputTypes, InputTypes...>() ==
-                                 params.addr_gen0_dtype
-                             ? (feed_response<InputTypes, VectorType, Width>(
-                                    vector_fetch_0_resp_in, full_response),
-                                true)
-                             : false) ||
+          bool found = (process_vector_input<InputTypes, Width, VectorType,
+                                             InputTypes...>(
+                            params.addr_gen0_dtype, vector_fetch_0_resp_in,
+                            full_response) ||
                         ...);
 
 #ifndef __SYNTHESIS__
           if (!found) {
-            std::cerr << "Error: vector input 0 type index '"
+            std::cerr << "Error: vector input 0 dtype '"
                       << params.addr_gen0_dtype << "' is not valid.\n";
           }
 #endif
@@ -646,18 +639,16 @@ SC_MODULE(VectorFetchUnit) {
 
                   ac_int<32, false> address = y * X * K + x * K + k;
 
-                  bool found = ((get_type_index<InputTypes, InputTypes...>() ==
-                                         params.addr_gen1_dtype
-                                     ? (send_request<InputTypes, Width>(
-                                            address, params.ADDRESS_GEN1_OFFSET,
-                                            vector_fetch_1_request_out),
-                                        true)
-                                     : false) ||
-                                ...);
+                  bool found =
+                      (fetch_vector_input<InputTypes, Width, InputTypes...>(
+                           params.addr_gen1_dtype, address,
+                           params.ADDRESS_GEN1_OFFSET,
+                           vector_fetch_1_request_out) ||
+                       ...);
 
 #ifndef __SYNTHESIS__
                   if (!found) {
-                    std::cerr << "Error: vector input 1 type index '"
+                    std::cerr << "Error: vector input 1 dtype '"
                               << params.addr_gen1_dtype << "' is not valid.\n";
                   }
 #endif
@@ -736,18 +727,15 @@ SC_MODULE(VectorFetchUnit) {
                      loop_counters[1][2] += loop_steps[1][2]) {
                   Pack1D<VectorType, Width> full_response;
 
-                  bool found =
-                      ((get_type_index<InputTypes, InputTypes...>() ==
-                                params.addr_gen1_dtype
-                            ? (feed_response<InputTypes, VectorType, Width>(
-                                   vector_fetch_1_resp_in, full_response),
-                               true)
-                            : false) ||
-                       ...);
+                  bool found = (process_vector_input<InputTypes, Width,
+                                                     VectorType, InputTypes...>(
+                                    params.addr_gen1_dtype,
+                                    vector_fetch_1_resp_in, full_response) ||
+                                ...);
 
 #ifndef __SYNTHESIS__
                   if (!found) {
-                    std::cerr << "Error: vector input 1 type index '"
+                    std::cerr << "Error: vector input 1 dtype '"
                               << params.addr_gen1_dtype << "' is not valid.\n";
                   }
 #endif
@@ -880,18 +868,16 @@ SC_MODULE(VectorFetchUnit) {
 
                   ac_int<32, false> address = y * X * K + x * K + k;
 
-                  bool found = ((get_type_index<InputTypes, InputTypes...>() ==
-                                         params.addr_gen2_dtype
-                                     ? (send_request<InputTypes, Width>(
-                                            address, params.ADDRESS_GEN2_OFFSET,
-                                            vector_fetch_2_request_out),
-                                        true)
-                                     : false) ||
-                                ...);
+                  bool found =
+                      (fetch_vector_input<InputTypes, Width, InputTypes...>(
+                           params.addr_gen2_dtype, address,
+                           params.ADDRESS_GEN2_OFFSET,
+                           vector_fetch_2_request_out) ||
+                       ...);
 
 #ifndef __SYNTHESIS__
                   if (!found) {
-                    std::cerr << "Error: vector input 2 type index '"
+                    std::cerr << "Error: vector input 2 dtype '"
                               << params.addr_gen2_dtype << "' is not valid.\n";
                   }
 #endif
@@ -970,18 +956,15 @@ SC_MODULE(VectorFetchUnit) {
                      loop_counters[1][2] += loop_steps[1][2]) {
                   Pack1D<VectorType, Width> full_response;
 
-                  bool found =
-                      ((get_type_index<InputTypes, InputTypes...>() ==
-                                params.addr_gen2_dtype
-                            ? (feed_response<InputTypes, VectorType, Width>(
-                                   vector_fetch_2_resp_in, full_response),
-                               true)
-                            : false) ||
-                       ...);
+                  bool found = (process_vector_input<InputTypes, Width,
+                                                     VectorType, InputTypes...>(
+                                    params.addr_gen2_dtype,
+                                    vector_fetch_2_resp_in, full_response) ||
+                                ...);
 
 #ifndef __SYNTHESIS__
                   if (!found) {
-                    std::cerr << "Error: vector input 2 type index '"
+                    std::cerr << "Error: vector input 2 dtype '"
                               << params.addr_gen2_dtype << "' is not valid.\n";
                   }
 #endif

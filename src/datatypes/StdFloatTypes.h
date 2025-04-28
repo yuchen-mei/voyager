@@ -54,11 +54,13 @@ class StdFloat {
 
   void set_bits(int i) { float_val.d = i; }
 
-  void set_zero() { float_val = ac_float_rep::zero(); }
-
   bool is_zero() const { return float_val == ac_float_rep::zero(); }
 
-  static decoded max() { return ac_float_rep::max(); }
+  static StdFloat zero() {
+    StdFloat r;
+    r.float_val = ac_float_rep::zero();
+    return r;
+  }
 
   StdFloat abs() const { return float_val.abs(); }
 
@@ -89,6 +91,12 @@ class StdFloat {
 
   ac_int<e_width, false> unbiased_exponent() const {
     return float_val.d.template slc<e_width>(mant_bits);
+  }
+
+  void adjust_exponent(int bias) {
+    ac_int<e_width, false> e = unbiased_exponent();
+    e += bias;
+    float_val.d.set_slc(mant_bits, e);
   }
 
   template <int mantissa2, int exp2, bool use_dw_impl2, bool ieee_compliance2,

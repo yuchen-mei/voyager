@@ -7,7 +7,7 @@
 #include "ArchitectureParams.h"
 #include "ParamsDeserializer.h"
 
-template <typename Scale, int NRows, int NCols>
+template <typename Scale, int NRows, int NCols, int PortWidth>
 SC_MODULE(WeightScaleController) {
   sc_in<bool> CCS_INIT_S1(clk);
   sc_in<bool> CCS_INIT_S1(rstn);
@@ -15,7 +15,7 @@ SC_MODULE(WeightScaleController) {
   Connections::In<ac_int<64, false>> CCS_INIT_S1(serialParamsIn);
 
   Connections::Out<MemoryRequest> CCS_INIT_S1(addressRequest);
-  Connections::In<ac_int<OC_PORT_WIDTH, false>> CCS_INIT_S1(dataResponse);
+  Connections::In<ac_int<PortWidth, false>> CCS_INIT_S1(dataResponse);
 
   Connections::Out<BufferWriteRequest<ac_int<Scale::width * NCols, false>>>
       writeRequest[2];
@@ -287,12 +287,9 @@ SC_MODULE(WeightScaleController) {
 
                           ac_int<Scale::width * NCols, false> data;
 
-                          constexpr int num_words =
-                              Scale::width * NCols / OC_PORT_WIDTH;
-
-                          for (int i = 0; i < num_words; i++) {
-                            data.set_slc(i * OC_PORT_WIDTH, dataResponse.Pop());
-                          }
+                          process_matrix_input<Scale, NCols, PortWidth,
+                                               Scale::width * NCols>(
+                              dataResponse, data);
 
                           BufferWriteRequest<
                               ac_int<Scale::width * NCols, false>>

@@ -35,27 +35,27 @@ SC_MODULE(MatrixUnit) {
   Connections::Combinational<ac_int<64, false>>
       serialMatrixParams[PARAMS_MODULE_COUNT];
 
-  // clang-format off
-#ifdef SIM_InputController
-  CCS_DESIGN((InputController<INPUT_DATATYPE, IC_DIMENSION>)) CCS_INIT_S1(inputController);
-#else
-  InputController<INPUT_DATATYPE, IC_DIMENSION> CCS_INIT_S1(inputController);
-#endif
-  // clang-format on
+  InputController<InputTypeList, IC_DIMENSION, IC_PORT_WIDTH,
+                  INPUT_BUFFER_WIDTH>
+      CCS_INIT_S1(inputController);
 
-  DoubleBuffer<IC_PORT_WIDTH, INPUT_BUFFER_SIZE> CCS_INIT_S1(inputBuffer);
+  DoubleBuffer<INPUT_BUFFER_SIZE, INPUT_BUFFER_WIDTH> CCS_INIT_S1(inputBuffer);
   Connections::Out<MemoryRequest> CCS_INIT_S1(inputAddressRequest);
-  Connections::In<IC_PORT_TYPE> CCS_INIT_S1(inputDataResponse);
-  Connections::Combinational<BufferWriteRequest<IC_PORT_TYPE>>
+
+  Connections::In<ac_int<IC_PORT_WIDTH, false>> CCS_INIT_S1(inputDataResponse);
+  Connections::Combinational<
+      BufferWriteRequest<ac_int<INPUT_BUFFER_WIDTH, false>>>
       inputBufferWriteReq[2];
   Connections::Combinational<BufferReadRequest> inputBufferReadAddress[2];
-  Connections::Combinational<IC_PORT_TYPE> CCS_INIT_S1(inputsToWindowBuffer);
-  Connections::Combinational<IC_PORT_TYPE> CCS_INIT_S1(inputsFromBuffer);
+  Connections::Combinational<ac_int<INPUT_BUFFER_WIDTH, false>> CCS_INIT_S1(
+      inputsToWindowBuffer);
+  Connections::Combinational<ac_int<INPUT_BUFFER_WIDTH, false>> CCS_INIT_S1(
+      inputsFromBuffer);
 
 #if SUPPORT_MX
   InputScaleController<SCALE_DATATYPE, IC_DIMENSION> CCS_INIT_S1(
       inputScaleController);
-  DoubleBuffer<SCALE_DATATYPE::width, INPUT_BUFFER_SIZE> CCS_INIT_S1(
+  DoubleBuffer<INPUT_BUFFER_SIZE, SCALE_DATATYPE::width> CCS_INIT_S1(
       inputScaleBuffer);
   Connections::Out<MemoryRequest> CCS_INIT_S1(inputScaleAddressRequest);
   Connections::In<ac_int<SCALE_DATATYPE::width, false>> CCS_INIT_S1(
@@ -68,31 +68,28 @@ SC_MODULE(MatrixUnit) {
       inputScaleFromBuffer);
 #endif
 
-#ifdef SIM_WeightController
-  // clang-format off
-  CCS_DESIGN( (WeightController<WEIGHT_DATATYPE, ACCUM_DATATYPE, IC_DIMENSION, OC_DIMENSION>) ) CCS_INIT_S1(weightController);
-  // clang-format on
-#else
-  WeightController<WEIGHT_DATATYPE, ACCUM_BUFFER_DATATYPE, IC_DIMENSION,
-                   OC_DIMENSION>
+  WeightController<WeightTypeList, ACCUM_BUFFER_DATATYPE, IC_DIMENSION,
+                   OC_DIMENSION, OC_PORT_WIDTH, WEIGHT_BUFFER_WIDTH>
       CCS_INIT_S1(weightController);
-#endif
 
-  DoubleBuffer<OC_PORT_WIDTH, WEIGHT_BUFFER_SIZE> CCS_INIT_S1(weightBuffer);
+  DoubleBuffer<WEIGHT_BUFFER_SIZE, WEIGHT_BUFFER_WIDTH> CCS_INIT_S1(
+      weightBuffer);
   Connections::Out<MemoryRequest> CCS_INIT_S1(weightAddressRequest);
   Connections::In<ac_int<OC_PORT_WIDTH, false>> CCS_INIT_S1(weightDataResponse);
   Connections::Out<MemoryRequest> CCS_INIT_S1(biasAddressRequest);
   Connections::In<ac_int<OC_PORT_WIDTH, false>> CCS_INIT_S1(biasDataResponse);
-  Connections::Combinational<BufferWriteRequest<OC_PORT_TYPE>>
+  Connections::Combinational<
+      BufferWriteRequest<ac_int<WEIGHT_BUFFER_WIDTH, false>>>
       weightBufferWriteReq[2];
   Connections::Combinational<BufferReadRequest> weightBufferReadAddress[2];
-  Connections::Combinational<ac_int<OC_PORT_WIDTH, false>> CCS_INIT_S1(
+  Connections::Combinational<ac_int<WEIGHT_BUFFER_WIDTH, false>> CCS_INIT_S1(
       weightsFromBuffer);
 
 #if SUPPORT_MX
-  WeightScaleController<SCALE_DATATYPE, IC_DIMENSION, OC_DIMENSION> CCS_INIT_S1(
-      weightScaleController);
-  DoubleBuffer<SCALE_DATATYPE::width * OC_DIMENSION, WEIGHT_BUFFER_SIZE>
+  WeightScaleController<SCALE_DATATYPE, IC_DIMENSION, OC_DIMENSION,
+                        OC_PORT_WIDTH>
+      CCS_INIT_S1(weightScaleController);
+  DoubleBuffer<WEIGHT_BUFFER_SIZE, SCALE_DATATYPE::width * OC_DIMENSION>
       CCS_INIT_S1(weightScaleBuffer);
   Connections::Out<MemoryRequest> CCS_INIT_S1(weightScaleAddressRequest);
   Connections::In<ac_int<OC_PORT_WIDTH, false>> CCS_INIT_S1(
@@ -104,17 +101,10 @@ SC_MODULE(MatrixUnit) {
       weightScaleFromBuffer);
 #endif
 
-#ifdef SIM_MatrixProcessor
-  // clang-format off
-  CCS_DESIGN( (MatrixProcessor<INPUT_DATATYPE, WEIGHT_DATATYPE, ACCUM_DATATYPE,
-    ACCUM_BUFFER_DATATYPE, SCALE_DATATYPE, IC_DIMENSION, OC_DIMENSION, ACCUM_BUFFER_SIZE>) ) CCS_INIT_S1(matrixProcessor);
-  // clang-format on
-#else
-  MatrixProcessor<INPUT_DATATYPE, WEIGHT_DATATYPE, ACCUM_DATATYPE,
-                  ACCUM_BUFFER_DATATYPE, SCALE_DATATYPE, IC_DIMENSION,
-                  OC_DIMENSION, ACCUM_BUFFER_SIZE>
+  MatrixProcessor<InputTypeList, WeightTypeList, SA_INPUT_TYPE, SA_WEIGHT_TYPE,
+                  ACCUM_DATATYPE, ACCUM_BUFFER_DATATYPE, SCALE_DATATYPE,
+                  IC_DIMENSION, OC_DIMENSION, ACCUM_BUFFER_SIZE>
       CCS_INIT_S1(matrixProcessor);
-#endif
   Connections::Combinational<Pack1D<ACCUM_BUFFER_DATATYPE, OC_DIMENSION>>
       CCS_INIT_S1(biasToSystolicArray);
 

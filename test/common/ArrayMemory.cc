@@ -1,6 +1,15 @@
 #include "test/common/ArrayMemory.h"
 
-ArrayMemory::ArrayMemory(std::vector<long long> sizes) : MemoryInterface() {
+// clang-format off
+#include "src/datatypes/DataTypes.h"
+// clang-format on
+
+#include <fstream>
+
+#include "src/ArchitectureParams.h"
+#include "test/common/VerificationTypes.h"
+
+ArrayMemory::ArrayMemory(std::vector<uint64_t> sizes) : MemoryInterface() {
   memories.reserve(sizes.size());
   try {
     for (const auto size : sizes) {

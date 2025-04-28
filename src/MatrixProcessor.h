@@ -8,31 +8,31 @@
 #include "Skewer.h"
 #include "SystolicArray.h"
 
-template <typename Input, typename Weight, typename Psum, typename Buffer,
-          typename Scale, int NRows, int NCols, int BufferSize>
-SC_MODULE(MatrixProcessor) {
+template <typename InputTypeTuple, typename WeightTypeTuple, typename Input,
+          typename Weight, typename Psum, typename Buffer, typename Scale,
+          int NRows, int NCols, int BufferSize>
+struct MatrixProcessor;
+
+template <typename... InputTypes, typename... WeightTypes, typename Input,
+          typename Weight, typename Psum, typename Buffer, typename Scale,
+          int NRows, int NCols, int BufferSize>
+struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
+                       Input, Weight, Psum, Buffer, Scale, NRows, NCols,
+                       BufferSize> : public sc_module {
  private:
-  MultiInputSerializedSkewer<Input, typename Input::decoded, NRows> CCS_INIT_S1(
-      inputSkewer);
+  InputSerializedSkewer<Input, NRows> CCS_INIT_S1(inputSkewer);
   Connections::Combinational<Pack1D<PEInput<Input>, NRows>> CCS_INIT_S1(
       inputSkewerDin);
-  Connections::Combinational<Pack1D<PEInput<Input>, NRows>> CCS_INIT_S1(
-      inputsToSkewer);
-  Connections::Combinational<Pack1D<PEInput<Input>, NRows>> CCS_INIT_S1(
-      inputsToSkewer_delayed);
 
-  WeightSerializedSkewer<Weight, typename Weight::decoded, NCols> CCS_INIT_S1(
-      weightSkewer);
+  WeightSerializedSkewer<Weight, NCols> CCS_INIT_S1(weightSkewer);
   Connections::Combinational<Pack1D<PEWeight<Weight>, NCols>> CCS_INIT_S1(
       weightSkewerDin);
 
-  DeserializedSkewer<Psum, Psum, NCols> CCS_INIT_S1(psumOutSkewer);
+  DeserializedSkewer<Psum, NCols> CCS_INIT_S1(psumOutSkewer);
   Connections::Combinational<Pack1D<Psum, NCols>> CCS_INIT_S1(
       psumOutSkewerDout);
 
-  SystolicArray<typename Input::decoded, typename Input::decoded, Psum, NRows,
-                NCols>
-      CCS_INIT_S1(systolicArray);
+  SystolicArray<Input, Weight, Psum, NRows, NCols> CCS_INIT_S1(systolicArray);
 
   MatrixParamsDeserializer<1> CCS_INIT_S1(paramsDeserializer);
 
@@ -52,8 +52,9 @@ SC_MODULE(MatrixProcessor) {
   sc_in<bool> CCS_INIT_S1(clk);
   sc_in<bool> CCS_INIT_S1(rstn);
 
-  Connections::In<IC_PORT_TYPE> CCS_INIT_S1(inputsChannel);
-  Connections::In<ac_int<OC_PORT_WIDTH, false>> CCS_INIT_S1(weightsChannel);
+  Connections::In<ac_int<INPUT_BUFFER_WIDTH, false>> CCS_INIT_S1(inputsChannel);
+  Connections::In<ac_int<WEIGHT_BUFFER_WIDTH, false>> CCS_INIT_S1(
+      weightsChannel);
   Connections::In<Pack1D<Buffer, NCols>> CCS_INIT_S1(biasChannel);
 
   Connections::Out<Pack1D<Buffer, NCols>> CCS_INIT_S1(matrixUnitOutputChannel);
@@ -70,15 +71,13 @@ SC_MODULE(MatrixProcessor) {
 #endif
 
   Connections::In<ac_int<64, false>> CCS_INIT_S1(serialParamsIn);
-
-  Connections::Combinational<MatrixParams> CCS_INIT_S1(
-      accumulationBufferParams);
-
   Connections::Combinational<MatrixParams> CCS_INIT_S1(paramsIn);
-  Connections::Combinational<PEInput<typename Input::decoded>>
-      inputsToSystolicArray[NRows];
-  Connections::Combinational<PEWeight<typename Weight::decoded>>
-      weightsToSystolicArray[NCols];
+  Connections::Combinational<MatrixParams> CCS_INIT_S1(push_weights_params);
+  Connections::Combinational<MatrixParams> CCS_INIT_S1(
+      accumulation_buffer_params);
+
+  Connections::Combinational<PEInput<Input>> inputsToSystolicArray[NRows];
+  Connections::Combinational<PEWeight<Weight>> weightsToSystolicArray[NCols];
   Connections::Combinational<Psum> psumsToSystolicArray[NCols];
   Connections::Combinational<Psum> outputsFromSystolicArray[NCols];
 
@@ -130,7 +129,7 @@ SC_MODULE(MatrixProcessor) {
       systolicArray.weights[i](weightsToSystolicArray[i]);
     }
 
-    SC_THREAD(process_weights);
+    SC_THREAD(push_weights);
     sensitive << clk.pos();
     async_reset_signal_is(rstn, false);
 
@@ -143,25 +142,100 @@ SC_MODULE(MatrixProcessor) {
     async_reset_signal_is(rstn, false);
   }
 
-  void process_weights() {
+  void push_weights() {
+    push_weights_params.ResetRead();
     weightsChannel.Reset();
     weightSkewerDin.ResetWrite();
 
     wait();
 
     while (true) {
-#pragma hls_pipeline_init_interval 1
-      for (int weight_count = 0; weight_count < NRows; weight_count++) {
-        auto bits = weightsChannel.Pop();
-        Pack1D<PEWeight<Weight>, NCols> weights;
-#pragma hls_unroll yes
-        for (int i = 0; i < NCols; i++) {
-          weights[i].data.set_bits(
-              bits.template slc<Weight::width>(i * Weight::width));
-          weights[i].tag = weight_count;
-        }
+      MatrixParams params = push_weights_params.Pop();
 
-        weightSkewerDin.Push(weights);
+      ac_int<LOOP_WIDTH, false> loop_bounds[2][6];
+
+#pragma hls_unroll yes
+      for (int i = 0; i < 2; i++) {
+        for (int j = 0; j < 6; j++) {
+          loop_bounds[i][j] = params.loops[i][j];
+        }
+      }
+
+      // set irrelevant loop bounds to 1
+      loop_bounds[1][params.weightReuseIndex[0]] = 1;
+      loop_bounds[1][params.weightReuseIndex[1]] = 1;
+
+      // extra loop to control reuse which only occurs during transpose and when
+      // NCols > NRows
+      int rep_bound = 1;
+
+      if (params.has_weight_transpose && NCols > NRows) {
+        if (loop_bounds[0][params.reductionLoopIndex[0]] >= (NCols / NRows)) {
+          // we are able to reuse the weights already in the buffer
+          loop_bounds[0][params.reductionLoopIndex[0]] /= (NCols / NRows);
+          rep_bound = (NCols / NRows);
+        }
+      }
+
+      // extra loop for exploiting L1 buffer reuse.
+      // this loop is used when OX and OY are the innermost L2 loops. when this
+      // occurs, we can move OX and/or OY into the buffer reuse L1 loop
+      int buffer_reuse = 1;
+      if (params.loops[0][params.reductionLoopIndex[0]] == 1) {
+        // OX loop can be absorbed
+        if (params.weightLoopIndex[0] < params.inputXLoopIndex[0]) {
+          buffer_reuse *= loop_bounds[0][params.inputXLoopIndex[0]];
+          loop_bounds[0][params.inputXLoopIndex[0]] = 1;
+        }
+        // OY loop can be absorbed
+        if (params.weightLoopIndex[0] < params.inputYLoopIndex[0]) {
+          buffer_reuse *= loop_bounds[0][params.inputYLoopIndex[0]];
+          loop_bounds[0][params.inputYLoopIndex[0]] = 1;
+        }
+      }
+
+      ac_int<32, false> total_loops =
+          loop_bounds[0][0] * loop_bounds[0][1] * loop_bounds[0][2] *
+          loop_bounds[0][3] * loop_bounds[1][0] * loop_bounds[1][1] *
+          loop_bounds[1][2] * loop_bounds[1][3] * loop_bounds[1][4] *
+          loop_bounds[1][5] * buffer_reuse * rep_bound;
+
+#pragma hls_pipeline_init_interval 1
+#pragma hls_pipeline_stall_mode flush
+      for (int i = 0; i < total_loops; i++) {
+        for (int weight_count = 0; weight_count < NRows; weight_count++) {
+          Pack1D<PEWeight<Weight>, NCols> weights;
+          auto bits = weightsChannel.Pop();
+
+#pragma hls_unroll yes
+          for (int i = 0; i < NCols; i++) {
+            auto data =
+                bits.template slc<WEIGHT_DTYPE_WIDTH>(i * WEIGHT_DTYPE_WIDTH);
+
+#if SUPPORT_CODEBOOK_QUANT
+            if (params.use_weight_codebook) {
+              auto value = params.weight_code[data];
+              weights[i].data.set_bits(value);
+            } else
+#endif
+            {
+              bool success = (decode_type<WeightTypes, Weight,
+                                          WEIGHT_DTYPE_WIDTH, WeightTypes...>(
+                                  params.weight_dtype, data, weights[i].data) ||
+                              ...);
+#ifndef __SYNTHESIS__
+              if (!success) {
+                std::cerr << "Error: matrix weight dtype '"
+                          << params.weight_dtype << "' is not valid"
+                          << std::endl;
+              }
+#endif
+            }
+            weights[i].tag = weight_count;
+          }
+
+          weightSkewerDin.Push(weights);
+        }
       }
     }
   }
@@ -177,9 +251,9 @@ SC_MODULE(MatrixProcessor) {
   void push_inputs() {
     paramsIn.ResetRead();
     inputsChannel.Reset();
-    inputsToSkewer.ResetWrite();
-
-    accumulationBufferParams.ResetWrite();
+    psumOutSkewerDout.ResetRead();
+    push_weights_params.ResetWrite();
+    accumulation_buffer_params.ResetWrite();
     inputSkewerDin.ResetWrite();
 
     startSignal.Reset();
@@ -188,8 +262,8 @@ SC_MODULE(MatrixProcessor) {
 
     while (true) {
       const MatrixParams params = paramsIn.Pop();
-
-      accumulationBufferParams.Push(params);
+      push_weights_params.Push(params);
+      accumulation_buffer_params.Push(params);
 
       startSignal.SyncPush();
 
@@ -207,72 +281,64 @@ SC_MODULE(MatrixProcessor) {
         }
       }
 
-      ac_int<32, false> totalOps = params.loops[0][0] * params.loops[0][1] *
-                                   params.loops[0][2] * params.loops[0][3] *
-                                   params.loops[1][0] * params.loops[1][1] *
-                                   params.loops[1][2] * params.loops[1][3] *
-                                   params.loops[1][4] * params.loops[1][5];
+      ac_int<32, false> total_ops = params.loops[0][0] * params.loops[0][1] *
+                                    params.loops[0][2] * params.loops[0][3] *
+                                    params.loops[1][0] * params.loops[1][1] *
+                                    params.loops[1][2] * params.loops[1][3] *
+                                    params.loops[1][4] * params.loops[1][5];
 
       ac_int<32, false> step = 0;
 
-      // nonAccumulatingTileSize is the number of inputs to send before we
-      // start accumulating. For example, for a loop order of (C, K, FX, FY,
-      // Y, X), the nonAccumulatingTileSize is X * Y. For a loop order of (C,
-      // K, FX, Y, FY, X), the nonAccumulatingTileSize is X.
-      int nonAccumulatingTileSize = 1;
-      int largestReductionLoopIndex =
-          max3(params.reductionLoopIndex[1], params.fxIndex, params.fyIndex);
-      for (int i = 5; i > largestReductionLoopIndex; i--) {
-        nonAccumulatingTileSize *= params.loops[1][i];
-      }
-
-      // loop indices that are used to determine when to read in a new bias
-      int biasReuseIndices[4] = {5, 5, 5, 5};
-      for (int i = 5; i > params.weightLoopIndex[1]; i--) {
-        biasReuseIndices[5 - i] = i;
-      }
-
-      // Push inputs and psums into the array
+      // Push inputs into the array
       // Pipelined across tiles
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
-      while (step < totalOps) {
+      while (step < total_ops) {
 #ifndef __SYNTHESIS__
         if (step % 1000 == 0 and step > 0) {
-          CCS_LOG("step " << step << " out of " << totalOps);
+          CCS_LOG("step " << step << " out of " << total_ops);
         }
 #endif
 
         Pack1D<PEInput<Input>, NRows> inputs;
-        bool stallInputs = false;
 
-        bool sendWeights;
+        bool swap_weights;
         if (params.weightReuseIndex[0] != params.weightReuseIndex[1]) {
-          sendWeights = (loop_counters[1][params.weightReuseIndex[1]] == 0) &&
-                        (loop_counters[1][params.weightReuseIndex[0]] == 0);
+          swap_weights = (loop_counters[1][params.weightReuseIndex[1]] == 0) &&
+                         (loop_counters[1][params.weightReuseIndex[0]] == 0);
         } else {
-          sendWeights = (loop_counters[1][params.weightReuseIndex[1]] == 0);
-        }
-        sendWeights = sendWeights || step == 0;
-
-        if (sendWeights && step < totalOps - 1) {
-#pragma hls_unroll yes
-          for (int i = 0; i < NRows; i++) {
-            inputs[i].swapWeights = true;
-          }
-        } else {
-#pragma hls_unroll yes
-          for (int i = 0; i < NRows; i++) {
-            inputs[i].swapWeights = false;
-          }
+          swap_weights = (loop_counters[1][params.weightReuseIndex[1]] == 0);
         }
 
-        if (step < totalOps && !stallInputs) {
-          auto bits = inputsChannel.Pop();
 #pragma hls_unroll yes
-          for (int i = 0; i < NRows; i++) {
-            inputs[i].data.set_bits(
-                bits.template slc<Input::width>(i * Input::width));
+        for (int i = 0; i < NRows; i++) {
+          inputs[i].swapWeights =
+              (swap_weights || step == 0) && step < total_ops - 1;
+        }
+
+        auto bits = inputsChannel.Pop();
+
+#pragma hls_unroll yes
+        for (int i = 0; i < NRows; i++) {
+          auto data =
+              bits.template slc<INPUT_DTYPE_WIDTH>(i * INPUT_DTYPE_WIDTH);
+#if SUPPORT_CODEBOOK_QUANT
+          if (params.use_input_codebook) {
+            auto value = params.input_code[data];
+            inputs[i].data.set_bits(value);
+          } else
+#endif
+          {
+            bool success = (decode_type<InputTypes, Input, INPUT_DTYPE_WIDTH,
+                                        InputTypes...>(params.input_dtype, data,
+                                                       inputs[i].data) ||
+                            ...);
+#ifndef __SYNTHESIS__
+            if (!success) {
+              std::cerr << "Error: matrix input dtype '" << params.input_dtype
+                        << "' is not valid" << std::endl;
+            }
+#endif
           }
         }
 
@@ -302,7 +368,7 @@ SC_MODULE(MatrixProcessor) {
 
   void process_accumulation() {
     biasChannel.Reset();
-    accumulationBufferParams.ResetRead();
+    accumulation_buffer_params.ResetRead();
     psumOutSkewerDout.ResetRead();
 
 #if SUPPORT_MX
@@ -329,7 +395,7 @@ SC_MODULE(MatrixProcessor) {
     wait();
 
     while (true) {
-      const MatrixParams params = accumulationBufferParams.Pop();
+      const MatrixParams params = accumulation_buffer_params.Pop();
       ac_int<LOOP_WIDTH, false> loop_counters[2][6];
       ac_int<LOOP_WIDTH, false> loop_bounds[2][6];
 #pragma hls_unroll yes
@@ -341,30 +407,30 @@ SC_MODULE(MatrixProcessor) {
         }
       }
 
-      ac_int<32, false> totalOps = params.loops[0][0] * params.loops[0][1] *
-                                   params.loops[0][2] * params.loops[0][3] *
-                                   params.loops[1][0] * params.loops[1][1] *
-                                   params.loops[1][2] * params.loops[1][3] *
-                                   params.loops[1][4] * params.loops[1][5];
+      ac_int<32, false> total_ops = params.loops[0][0] * params.loops[0][1] *
+                                    params.loops[0][2] * params.loops[0][3] *
+                                    params.loops[1][0] * params.loops[1][1] *
+                                    params.loops[1][2] * params.loops[1][3] *
+                                    params.loops[1][4] * params.loops[1][5];
 
       ac_int<32, false> step = 0;
 
       Pack1D<Buffer, NCols> bias;
 
 #if SUPPORT_MX
-      Pack1D<Scale, NCols> weightScales;
+      Pack1D<Scale, NCols> weight_scales;
 #endif
 
       // loop indices that are used to determine when to read in a new bias
-      int biasReuseIndices[4] = {5, 5, 5, 5};
+      int bias_reuse_indices[4] = {5, 5, 5, 5};
       for (int i = 5; i > params.weightLoopIndex[1]; i--) {
-        biasReuseIndices[5 - i] = i;
+        bias_reuse_indices[5 - i] = i;
       }
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
-      while (step < totalOps) {
-        bool firstAccumulation =
+      while (step < total_ops) {
+        bool is_non_accumulating_tile =
             loop_counters[0][params.reductionLoopIndex[0]] == 0 &&
             loop_counters[1][params.reductionLoopIndex[1]] == 0 &&
             loop_counters[1][params.fxIndex] == 0 &&
@@ -374,19 +440,17 @@ SC_MODULE(MatrixProcessor) {
 
 #pragma hls_unroll yes
         for (int i = 0; i < NCols; i++) {
-          previous_accumulation.value[i].set_zero();
+          previous_accumulation.value[i] = Buffer::zero();
         }
 
-        if (firstAccumulation) {
+        if (is_non_accumulating_tile) {
           if (params.has_bias) {
-            bool readBias = true;
-#pragma hls_unroll yes
-            for (int i = 0; i < 4; i++) {
-              readBias =
-                  readBias && (loop_counters[1][biasReuseIndices[i]] == 0);
-            }
+            bool read_bias = loop_counters[1][bias_reuse_indices[0]] == 0 &&
+                             loop_counters[1][bias_reuse_indices[1]] == 0 &&
+                             loop_counters[1][bias_reuse_indices[2]] == 0 &&
+                             loop_counters[1][bias_reuse_indices[3]] == 0;
 
-            if (readBias) {
+            if (read_bias) {
               bias = biasChannel.Pop();
             }
 
@@ -411,23 +475,24 @@ SC_MODULE(MatrixProcessor) {
         Pack1D<Psum, NCols> outputs = psumOutSkewerDout.Pop();
 
 #if SUPPORT_MX
-        Scale inputScale;
+        Scale input_scale;
         if (params.is_mx_op) {
-          inputScale.set_bits(inputScaleChannel.Pop());
+          input_scale.set_bits(inputScaleChannel.Pop());
         }
 
-        bool readNewWeights;
+        bool swap_weights;
         if (params.weightReuseIndex[0] != params.weightReuseIndex[1]) {
-          readNewWeights =
-              (loop_counters[1][params.weightReuseIndex[1]] == 0) &&
-              (loop_counters[1][params.weightReuseIndex[0]] == 0);
+          swap_weights = (loop_counters[1][params.weightReuseIndex[1]] == 0) &&
+                         (loop_counters[1][params.weightReuseIndex[0]] == 0);
         } else {
-          readNewWeights = (loop_counters[1][params.weightReuseIndex[1]] == 0);
+          swap_weights = (loop_counters[1][params.weightReuseIndex[1]] == 0);
         }
-        readNewWeights = readNewWeights || step == 0;
-        if (readNewWeights && params.is_mx_op) {
+
+        swap_weights = swap_weights || step == 0;
+
+        if (swap_weights && params.is_mx_op) {
           auto bits = weightScaleChannel.Pop();
-          weightScales = BitsToType<Pack1D<Scale, NCols>>(TypeToBits(bits));
+          weight_scales = BitsToType<Pack1D<Scale, NCols>>(TypeToBits(bits));
         }
 #endif
 
@@ -436,8 +501,8 @@ SC_MODULE(MatrixProcessor) {
 #pragma hls_unroll yes
         for (int i = 0; i < NCols; i++) {
 #if SUPPORT_MX
-          Buffer scale = static_cast<Buffer>(inputScale) *
-                         static_cast<Buffer>(weightScales[i]);
+          Buffer scale = static_cast<Buffer>(input_scale) *
+                         static_cast<Buffer>(weight_scales[i]);
           scaled_outputs[i] = static_cast<Buffer>(outputs[i]);
           if (params.is_mx_op) {
             scaled_outputs[i] = scaled_outputs[i] * scale;
@@ -464,17 +529,17 @@ SC_MODULE(MatrixProcessor) {
           // write out to vector unit directly
           matrixUnitOutputChannel.Push(previous_accumulation);
         } else {
-          int writeAddress = static_cast<ac_int<10, false>>(
-                                 loop_counters[1][params.weightLoopIndex[1]] *
-                                 params.loops[1][params.inputXLoopIndex[1]] *
-                                 params.loops[1][params.inputYLoopIndex[1]]) +
-                             static_cast<ac_int<10, false>>(
-                                 loop_counters[1][params.inputYLoopIndex[1]] *
-                                 params.loops[1][params.inputXLoopIndex[1]]) +
-                             loop_counters[1][params.inputXLoopIndex[1]];
+          int write_address = static_cast<ac_int<10, false>>(
+                                  loop_counters[1][params.weightLoopIndex[1]] *
+                                  params.loops[1][params.inputXLoopIndex[1]] *
+                                  params.loops[1][params.inputYLoopIndex[1]]) +
+                              static_cast<ac_int<10, false>>(
+                                  loop_counters[1][params.inputYLoopIndex[1]] *
+                                  params.loops[1][params.inputXLoopIndex[1]]) +
+                              loop_counters[1][params.inputXLoopIndex[1]];
 
           BufferWriteRequest<Pack1D<Buffer, NCols>> req;
-          req.address = writeAddress;
+          req.address = write_address;
           req.data = previous_accumulation;
           accumulation_buffer_write_request[accumulation_buffer_bank].Push(req);
         }

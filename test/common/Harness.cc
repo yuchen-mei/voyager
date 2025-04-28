@@ -172,7 +172,7 @@ void Harness::readMemoryRequest(
 
     uint64_t base_address = request.address;
     int total_bytes = request.burst_size;
-    int num_words = total_bytes / num_bytes;
+    int num_words = (total_bytes + num_bytes - 1) / num_bytes;
 
     accessCounter->increment(std::string(name()), total_bytes);
 

@@ -11,7 +11,7 @@
 
 class ArrayMemory : public MemoryInterface {
  public:
-  ArrayMemory(std::vector<long long>);
+  ArrayMemory(std::vector<uint64_t>);
   ~ArrayMemory();
 
   std::vector<char*> memories;
