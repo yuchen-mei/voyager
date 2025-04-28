@@ -138,15 +138,37 @@ SC_MODULE(OutputController) {
         }
       }
 
+      // If the output is padded, we need to adjust the loop bounds
+      // to account for the extra iteration
+      if (params.output_pad_dimension) {
+        loop_bounds[0][params.output_pad_dim_idx[0]] =
+            loop_bounds[0][params.output_pad_dim_idx[0]] + 1;
+      }
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
       for (loop_counters[0][0] = 0; loop_counters[0][0] <= loop_bounds[0][0];
            loop_counters[0][0]++) {
+        if (params.output_pad_dimension && params.output_pad_dim_idx[0] == 0 &&
+            loop_counters[0][0] == loop_bounds[0][0] - 1) {
+          loop_bounds[1][params.output_pad_dim_idx[1]] =
+              params.output_pad_dim_size;
+        }
         for (loop_counters[0][1] = 0; loop_counters[0][1] <= loop_bounds[0][1];
              loop_counters[0][1]++) {
-          for (loop_counters[0][2] = 0;
-               loop_counters[0][2] <= loop_bounds[0][2];
+          if (params.output_pad_dimension &&
+              params.output_pad_dim_idx[0] == 1 &&
+              loop_counters[0][1] == loop_bounds[0][1] - 1) {
+            loop_bounds[1][params.output_pad_dim_idx[1]] =
+                params.output_pad_dim_size;
+          }
+          for (loop_counters[0][2] = 0; loop_counters[0][2] <= loop_bounds[0][2];
                loop_counters[0][2]++) {
+            if (params.output_pad_dimension &&
+                params.output_pad_dim_idx[0] == 2 &&
+                loop_counters[0][2] == loop_bounds[0][2] - 1) {
+              loop_bounds[1][params.output_pad_dim_idx[1]] =
+                  params.output_pad_dim_size;
+            }
             for (loop_counters[1][0] = 0;
                  loop_counters[1][0] <= loop_bounds[1][0];
                  loop_counters[1][0]++) {

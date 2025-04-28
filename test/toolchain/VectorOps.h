@@ -175,14 +175,6 @@ void MapVectorOperations(const codegen::Operation &param,
         throw std::invalid_argument("Unsupported input shape dimension!");
       }
     }
-
-    if (input_shape.back() % OC_DIMENSION != 0) {
-      spdlog::error(
-          "ERROR: input last dimension is not a multiple of "
-          "OC_DIMENSION: ");
-      print_shape(input_shape);
-      throw std::invalid_argument("Unsupported input shape dimension!");
-    }
   } else {
     input_shape = split_loops(input_shape, 1024);
     input_shape = adjust_loop_indices(input_shape, OC_DIMENSION);
@@ -299,6 +291,14 @@ void MapVectorOperations(const codegen::Operation &param,
     input_shape = squeeze_shape(input_shape);
     int padded_dims = pad_shape_to_ndim(input_shape, 3);
 
+    if (input_shape.back() % OC_DIMENSION != 0) {
+      spdlog::debug("Input last dimension is not a multiple of OC_DIMENSION: ");
+      print_shape(input_shape);
+
+      vector_params->has_transpose_with_padded_dimension = true;
+      vector_params->addr_gen0_end = input_shape.back();
+    }
+
     // Transpose the input shape
     std::swap(input_shape[1], input_shape[2]);
 
@@ -348,6 +348,11 @@ void MapVectorOperations(const codegen::Operation &param,
 
     // Adjust for output loops
     tiling.loops[1][5] = BUFSIZE;
+
+    if (vector_params->has_transpose_with_padded_dimension) {
+      vector_params->output_pad_dimension = true;
+      vector_params->output_pad_dim_size = input_shape[1] % OC_DIMENSION;
+    }
   }
 
   VECTOR_DATATYPE scale = 1.0;
@@ -405,6 +410,13 @@ void MapVectorOperations(const codegen::Operation &param,
         vector_params->output_loops[1][loop_index] = tiling.loops[1][i];
         vector_params->output_k_loop_idx[1] = loop_index++;
       }
+    }
+
+    if (vector_params->has_transpose_with_padded_dimension) {
+      vector_params->output_pad_dim_idx[0] =
+          vector_params->output_x_loop_idx[0];
+      vector_params->output_pad_dim_idx[1] =
+          vector_params->output_x_loop_idx[1];
     }
   }
 

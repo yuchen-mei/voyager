@@ -653,6 +653,12 @@ struct VectorParams : BaseParams {
     }
     output_dtype = 0;
 
+    output_pad_dimension = false;
+    output_pad_dim_size = 0;
+    for (int i = 0; i < 2; i++) {
+      output_pad_dim_idx[i] = 0;
+    }
+
     addr_gen0_broadcast = 0;
     addr_gen1_broadcast = 0;
     addr_gen2_broadcast = 0;
@@ -669,6 +675,7 @@ struct VectorParams : BaseParams {
     }
 
     has_transpose = false;
+    has_transpose_with_padded_dimension = false;
 
     is_maxpool = false;
     for (int i = 0; i < 2; i++) {
@@ -732,6 +739,11 @@ struct VectorParams : BaseParams {
   ac_int<3, false> output_k_loop_idx[2];
   ac_int<4, false> output_dtype;
 
+  // support for shapes that need to be padded up
+  bool output_pad_dimension;
+  ac_int<11, false> output_pad_dim_size;
+  ac_int<3, false> output_pad_dim_idx[2];
+
   ac_int<6, false> addr_gen0_broadcast;
   ac_int<3, false> addr_gen1_broadcast;
   ac_int<3, false> addr_gen2_broadcast;
@@ -747,6 +759,7 @@ struct VectorParams : BaseParams {
   ac_int<3, false> addr_gen0_dims[6];
 
   bool has_transpose;
+  bool has_transpose_with_padded_dimension;
 
   bool is_maxpool;
   ac_int<8, false> stride[2];
@@ -774,10 +787,11 @@ struct VectorParams : BaseParams {
       1 + (NUM_CODEBOOK_ENTRIES - 1) * (MAX_DECODED_DTYPE_WIDTH + 1);
 
   // There are 4 address generators in total + 12-bit broadcasting flag + 36-bit
-  // slicing params + 32-bit pooling param + 18-bit reshape params + 4-bit head
-  // size + 7 boolean flags + 64-bit scale offset
+  // slicing params + 32-bit pooling param + 18-bit reshape params + 19-bit
+  // padded transpose params + 4-bit head size + 7 boolean flags + 64-bit scale
+  // offset
   static const unsigned int width = 4 * address_gen_width + 12 + 36 + 32 + 18 +
-                                    4 + 7 + ADDRESS_WIDTH - 16 +
+                                    19 + 4 + 7 + ADDRESS_WIDTH - 16 +
                                     codebook_params_width;
 
 #ifndef NO_SYSC
@@ -861,6 +875,11 @@ struct VectorParams : BaseParams {
       m& output_k_loop_idx[i];
     }
     m & output_dtype;
+    m & output_pad_dimension;
+    m & output_pad_dim_size;
+    for (int i = 0; i < 2; i++) {
+      m& output_pad_dim_idx[i];
+    }
 
     m & addr_gen0_broadcast;
     m & addr_gen1_broadcast;
@@ -879,6 +898,7 @@ struct VectorParams : BaseParams {
     }
 
     m & has_transpose;
+    m & has_transpose_with_padded_dimension;
 
     m & is_maxpool;
     for (int i = 0; i < 2; i++) {
@@ -1001,6 +1021,13 @@ struct VectorParams : BaseParams {
     }
     os << "output_dtype: " << params.output_dtype << std::endl;
 
+    os << "output_pad_dimension: " << params.output_pad_dimension << std::endl;
+    os << "output_pad_dim_size: " << params.output_pad_dim_size << std::endl;
+    for (int i = 0; i < 2; i++) {
+      os << "output_pad_dim_idx[" << i << "]: " << params.output_pad_dim_idx[i]
+         << std::endl;
+    }
+
     os << "addr_gen0_broadcast: " << params.addr_gen0_broadcast << std::endl;
     os << "addr_gen1_broadcast: " << params.addr_gen1_broadcast << std::endl;
     os << "addr_gen2_broadcast: " << params.addr_gen2_broadcast << std::endl;
@@ -1018,6 +1045,8 @@ struct VectorParams : BaseParams {
     }
 
     os << "has_transpose: " << params.has_transpose << std::endl;
+    os << "has_transpose_with_padded_dimension: "
+       << params.has_transpose_with_padded_dimension << std::endl;
 
     os << "is_maxpool: " << params.is_maxpool << std::endl;
     for (int i = 0; i < 2; i++) {
@@ -1121,6 +1150,12 @@ struct VectorParams : BaseParams {
     }
     if (lhs.output_dtype != rhs.output_dtype) return false;
 
+    if (lhs.output_pad_dimension != rhs.output_pad_dimension) return false;
+    if (lhs.output_pad_dim_size != rhs.output_pad_dim_size) return false;
+    for (int i = 0; i < 2; i++) {
+      if (lhs.output_pad_dim_idx[i] != rhs.output_pad_dim_idx[i]) return false;
+    }
+
     if (lhs.addr_gen0_broadcast != rhs.addr_gen0_broadcast) return false;
     if (lhs.addr_gen1_broadcast != rhs.addr_gen1_broadcast) return false;
     if (lhs.addr_gen2_broadcast != rhs.addr_gen2_broadcast) return false;
@@ -1137,6 +1172,9 @@ struct VectorParams : BaseParams {
     }
 
     if (lhs.has_transpose != rhs.has_transpose) return false;
+    if (lhs.has_transpose_with_padded_dimension !=
+        rhs.has_transpose_with_padded_dimension)
+      return false;
 
     if (lhs.is_maxpool != rhs.is_maxpool) return false;
     for (int i = 0; i < 2; i++) {

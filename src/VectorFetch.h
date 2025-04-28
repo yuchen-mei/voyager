@@ -179,6 +179,10 @@ SC_MODULE(VectorFetchUnit) {
         }
       }
 
+      if (params.has_transpose_with_padded_dimension) {
+        loop_ends[0][1] = loop_ends[0][1] + 1;
+      }
+
 #pragma hls_pipeline_init_interval 1
       for (loop_counters[0][0] = loop_starts[0][0];
            loop_counters[0][0] < loop_ends[0][0];
@@ -254,6 +258,9 @@ SC_MODULE(VectorFetchUnit) {
                       y = y - y_min_offset;
                     }
                     if (params.has_transpose) {
+                      if (params.has_transpose_with_padded_dimension) {
+                        X = params.addr_gen0_end;
+                      }
                       address = y * K * X + (k + x0) * X + x1 * BUFSIZE;
                     } else {
                       address = y * X * K + x * K + k;
@@ -477,6 +484,10 @@ SC_MODULE(VectorFetchUnit) {
       if (params.has_transpose) {
         VectorType buffer[BUFSIZE][Width];
 
+        if (params.has_transpose_with_padded_dimension) {
+          loop_ends[0][1] = loop_ends[0][1] + 1;
+        }
+
         assert(loop_ends[1][2] == Width);
 
 #pragma hls_pipeline_init_interval 1
@@ -528,6 +539,13 @@ SC_MODULE(VectorFetchUnit) {
                       buffer[row][col] = dequantized[row];
                     }
                   }
+                  ac_int<11, false> X0 =
+                      params.addr_gen0_loops[1][params.addr_gen0_x_loop_idx[1]];
+                  ac_int<11, false> x0 =
+                      loop_counters[1][params.addr_gen0_x_loop_idx[1]];
+                  ac_int<11, false> x1 =
+                      loop_counters[0][params.addr_gen0_x_loop_idx[0]];
+                  ac_int<16, false> x = x1 * X0 + x0;
 
                   // Write out from transpose buffer
                   for (int row = 0; row < BUFSIZE; row++) {
@@ -538,6 +556,11 @@ SC_MODULE(VectorFetchUnit) {
                     }
 
                     vector_fetch_0_data.Push(transposed);
+                    if (params.has_transpose_with_padded_dimension) {
+                      if (x + row == params.addr_gen0_end - 1) {
+                        break;
+                      }
+                    }
                   }
                 }
               }
