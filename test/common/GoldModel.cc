@@ -106,37 +106,46 @@ std::vector<std::any> run_operation(const Operation &operation,
       bias_ptr = kwargs[bias.node()];
     }
 
-    float *input_code = nullptr;
-    if (first_op.kwargs().contains("input_code")) {
-      const auto code = first_op.kwargs().at("input_code").tensor();
-      input_code = read_constant_param(code);
-    }
+    const auto input_shape = get_shape(input);
+    int input_dim = get_size(input_shape) / input_shape.back();
+    bool is_fc = input_dim == 1;
 
-    float *weight_code = nullptr;
-    if (first_op.kwargs().contains("weight_code")) {
-      const auto code = first_op.kwargs().at("weight_code").tensor();
-      weight_code = read_constant_param(code);
-    }
+#if !SUPPORT_SIMD_MATRIX_UNIT
+    if (!is_fc)
+#endif
+    {
+      float *input_code = nullptr;
+      if (first_op.kwargs().contains("input_code")) {
+        const auto code = first_op.kwargs().at("input_code").tensor();
+        input_code = read_constant_param(code);
+      }
 
-    // Cast input and weight to systolic array compute types
-    cast_input<SaInput, SUPPORTED_TYPES>(input_ptr, input_code, input);
-    cast_input<SaWeight, SUPPORTED_TYPES>(weight_ptr, weight_code, weight);
+      float *weight_code = nullptr;
+      if (first_op.kwargs().contains("weight_code")) {
+        const auto code = first_op.kwargs().at("weight_code").tensor();
+        weight_code = read_constant_param(code);
+      }
 
-    if (input_code != nullptr) {
-      delete[] input_code;
-    }
+      // Cast input and weight to systolic array compute types
+      cast_input<SaInput, SUPPORTED_TYPES>(input_ptr, input_code, input);
+      cast_input<SaWeight, SUPPORTED_TYPES>(weight_ptr, weight_code, weight);
 
-    if (weight_code != nullptr) {
-      delete[] weight_code;
-    }
+      if (input_code != nullptr) {
+        delete[] input_code;
+      }
 
-    // Perform reshape if necessary
-    if (input.has_reshape()) {
-      input_ptr = reshape_if_needed<SaInput>(input_ptr, input.reshape());
-    }
+      if (weight_code != nullptr) {
+        delete[] weight_code;
+      }
 
-    if (weight.has_reshape()) {
-      weight_ptr = reshape_if_needed<SaWeight>(weight_ptr, weight.reshape());
+      // Perform reshape if necessary
+      if (input.has_reshape()) {
+        input_ptr = reshape_if_needed<SaInput>(input_ptr, input.reshape());
+      }
+
+      if (weight.has_reshape()) {
+        weight_ptr = reshape_if_needed<SaWeight>(weight_ptr, weight.reshape());
+      }
     }
 
     // Fetch microscaling scales
@@ -152,14 +161,16 @@ std::vector<std::any> run_operation(const Operation &operation,
       weight_scale_ptr = kwargs[weight_scale.node()];
     }
 
-    const auto input_shape = get_shape(input);
-    int input_dim = get_size(input_shape) / input_shape.back();
-
-    if (input_dim == 1) {
+    if (is_fc) {
+#if SUPPORT_SIMD_MATRIX_UNIT
       output_ptr = simd_matrix_vector_multiply<SaInput, SaWeight, Psum,
                                                AccumBuffer, Scale, SIMD_WIDTH>(
           input_ptr, input_scale_ptr, weight_ptr, weight_scale_ptr, bias_ptr,
           operation);
+#else
+      output_ptr = matrix_vector_multiply<Vector>(input_ptr, weight_ptr,
+                                                  bias_ptr, get_shape(weight));
+#endif
     } else {
       output_ptr = gemm<SaInput, SaWeight, Psum, AccumBuffer, Scale>(
           input_ptr, input_scale_ptr, weight_ptr, weight_scale_ptr, bias_ptr,

@@ -340,7 +340,11 @@ inline Output *simd_matrix_vector_multiply(
 
   const auto input = matrix_op.kwargs().at("input").tensor();
   const auto output = get_op_outputs(operation.param).back();
-  const int block_size = matrix_op.kwargs().at("block_size").int_value();
+
+  int block_size = 1;
+  if (matrix_op.kwargs().contains("block_size")) {
+    block_size = matrix_op.kwargs().at("block_size").int_value();
+  }
 
   int C = get_size(input);
   int K = get_size(output);
