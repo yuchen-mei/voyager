@@ -159,12 +159,13 @@ SC_MODULE(Accelerator) {
     simd_matrix_unit.matrix_out(simd_matrix_unit_data);
     simd_matrix_unit.start_signal(simd_matrix_unit_start_signal);
     simd_matrix_unit.done_signal(simd_matrix_unit_done_signal);
+
+    vector_unit.simd_matrix_unit_data(simd_matrix_unit_data);
 #endif
 
     vector_unit.clk(clk);
     vector_unit.rstn(rstn);
     vector_unit.serial_params_in(serialVectorParamsIn);
-    vector_unit.simd_matrix_unit_data(simd_matrix_unit_data);
     vector_unit.vector_fetch_0_req(vector_fetch_0_req);
     vector_unit.vector_fetch_0_resp(vector_fetch_0_resp);
     vector_unit.vector_fetch_1_req(vector_fetch_1_req);

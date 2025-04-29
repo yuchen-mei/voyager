@@ -502,11 +502,14 @@ void Harness::sendParams() {
       }
 
       if (matrixParamsValid) {
+#if SUPPORT_SIMD_MATRIX_UNIT
         if (matrixParams->is_fc) {
           sendSerializedParams<MatrixParams, 64>(*matrixParams,
                                                  &serial_simd_matrix_params_in);
           simd_matrix_unit_start_signal.SyncPop();
-        } else {
+        } else
+#endif
+        {
           sendSerializedParams<MatrixParams, 64>(*matrixParams,
                                                  &serialMatrixParamsIn);
           matrixUnitStartSignal.SyncPop();
@@ -529,9 +532,12 @@ void Harness::sendParams() {
                                           << "' Started. -----");
 
       if (matrixParamsValid) {
+#if SUPPORT_SIMD_MATRIX_UNIT
         if (matrixParams->is_fc) {
           simd_matrix_unit_done_signal.SyncPop();
-        } else {
+        } else
+#endif
+        {
           matrixUnitDoneSignal.SyncPop();
         }
       }

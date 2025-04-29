@@ -16,13 +16,15 @@ SC_MODULE(VectorOpUnit) {
   sc_in<bool> CCS_INIT_S1(clk);
   sc_in<bool> CCS_INIT_S1(rstn);
 
-  Connections::In<VectorInstructions> CCS_INIT_S1(vector_op_inst_in);
-  Connections::In<VectorInstructions> CCS_INIT_S1(accumulation_inst_in);
-  Connections::In<VectorInstructions> CCS_INIT_S1(reduction_inst_in);
+  Connections::In<VectorInstructions> CCS_INIT_S1(vector_op_int);
+  Connections::In<VectorInstructions> CCS_INIT_S1(accumulation_inst);
+  Connections::In<VectorInstructions> CCS_INIT_S1(reduction_inst);
 
   Connections::In<Pack1D<BufferType, Width>> CCS_INIT_S1(
       accumulation_buffer_output);
+#if SUPPORT_SIMD_MATRIX_UNIT
   Connections::In<Pack1D<VectorType, Width>> CCS_INIT_S1(simd_matrix_unit_data);
+#endif
   Connections::In<Pack1D<VectorType, Width>> CCS_INIT_S1(vector_fetch_0_data);
   Connections::In<Pack1D<VectorType, Width>> CCS_INIT_S1(vector_fetch_1_data);
   Connections::In<Pack1D<VectorType, Width>> CCS_INIT_S1(vector_fetch_2_data);
@@ -82,9 +84,11 @@ SC_MODULE(VectorOpUnit) {
   }
 
   void run_vector_ops() {
-    vector_op_inst_in.Reset();
+    vector_op_int.Reset();
     accumulation_buffer_output.Reset();
+#if SUPPORT_SIMD_MATRIX_UNIT
     simd_matrix_unit_data.Reset();
+#endif
     vector_fetch_0_data.Reset();
     vector_fetch_1_data.Reset();
     vector_fetch_2_data.Reset();
@@ -103,7 +107,7 @@ SC_MODULE(VectorOpUnit) {
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode bubble
     while (true) {
-      VectorInstructions inst = vector_op_inst_in.Pop();
+      VectorInstructions inst = vector_op_int.Pop();
 
       Pack1D<VectorType, Width> res0;
       Pack1D<VectorType, Width> res1;
@@ -139,6 +143,7 @@ SC_MODULE(VectorOpUnit) {
         }
       }
 
+#if SUPPORT_SIMD_MATRIX_UNIT
       if (inst.vector_op0_src0 == VectorInstructions::from_simd_matrix_unit ||
           inst.vector_op0_src1 == VectorInstructions::from_simd_matrix_unit) {
         Pack1D<VectorType, Width> temp = simd_matrix_unit_data.Pop();
@@ -148,6 +153,7 @@ SC_MODULE(VectorOpUnit) {
           op0_src1 = temp;
         }
       }
+#endif
 
       if (inst.vector_op0_src0 == VectorInstructions::from_vector_fetch_0 ||
           inst.vector_op0_src1 == VectorInstructions::from_vector_fetch_0) {
@@ -329,14 +335,14 @@ SC_MODULE(VectorOpUnit) {
   }
 
   void run_accumulation() {
-    accumulation_inst_in.Reset();
+    accumulation_inst.Reset();
     accumulation_input.ResetRead();
     accumulation_output.ResetWrite();
 
     wait();
 
     while (true) {
-      VectorInstructions inst = accumulation_inst_in.Pop();
+      VectorInstructions inst = accumulation_inst.Pop();
 
       Pack1D<VectorType, Width> outputs;
 
@@ -369,7 +375,7 @@ SC_MODULE(VectorOpUnit) {
   }
 
   void run_reduction() {
-    reduction_inst_in.Reset();
+    reduction_inst.Reset();
     reduction_input.ResetRead();
     broadcast_input_0.ResetWrite();
     broadcast_count_0.ResetWrite();
@@ -379,7 +385,7 @@ SC_MODULE(VectorOpUnit) {
     wait();
 
     while (true) {
-      VectorInstructions inst = reduction_inst_in.Pop();
+      VectorInstructions inst = reduction_inst.Pop();
 
       Pack1D<VectorType, Width> res;
       VectorType output;
@@ -451,7 +457,9 @@ SC_MODULE(VectorUnit) {
   Connections::Combinational<Pack1D<BufferType, Width>>
       accumulation_buffer_output;
 
+#if SUPPORT_SIMD_MATRIX_UNIT
   Connections::In<Pack1D<VectorType, Width>> CCS_INIT_S1(simd_matrix_unit_data);
+#endif
 
   Connections::In<ac_int<64, false>> CCS_INIT_S1(serial_params_in);
   Connections::Combinational<VectorParams> CCS_INIT_S1(vector_params);
@@ -461,10 +469,9 @@ SC_MODULE(VectorUnit) {
   VectorOpUnit<VectorType, BufferType, ScaleType, Width> CCS_INIT_S1(
       vector_op_unit);
 
-  Connections::Combinational<VectorInstructions> CCS_INIT_S1(vector_op_insts);
-  Connections::Combinational<VectorInstructions> CCS_INIT_S1(
-      accumulation_insts);
-  Connections::Combinational<VectorInstructions> CCS_INIT_S1(reduction_insts);
+  Connections::Combinational<VectorInstructions> CCS_INIT_S1(vector_op_inst);
+  Connections::Combinational<VectorInstructions> CCS_INIT_S1(accumulation_inst);
+  Connections::Combinational<VectorInstructions> CCS_INIT_S1(reduction_inst);
 
   Connections::Out<MemoryRequest> CCS_INIT_S1(vector_fetch_0_req);
   Connections::In<ac_int<OC_PORT_WIDTH, false>> CCS_INIT_S1(
@@ -546,11 +553,13 @@ SC_MODULE(VectorUnit) {
 
     vector_op_unit.clk(clk);
     vector_op_unit.rstn(rstn);
-    vector_op_unit.vector_op_inst_in(vector_op_insts);
-    vector_op_unit.accumulation_inst_in(accumulation_insts);
-    vector_op_unit.reduction_inst_in(reduction_insts);
+    vector_op_unit.vector_op_int(vector_op_inst);
+    vector_op_unit.accumulation_inst(accumulation_inst);
+    vector_op_unit.reduction_inst(reduction_inst);
     vector_op_unit.accumulation_buffer_output(accumulation_buffer_output);
+#if SUPPORT_SIMD_MATRIX_UNIT
     vector_op_unit.simd_matrix_unit_data(simd_matrix_unit_data);
+#endif
     vector_op_unit.vector_fetch_0_data(vector_fetch_0_data);
     vector_op_unit.vector_fetch_1_data(vector_fetch_1_data);
     vector_op_unit.vector_fetch_2_data(vector_fetch_2_data);
@@ -596,9 +605,9 @@ SC_MODULE(VectorUnit) {
 
   void send_instructions() {
     vector_instruction.ResetRead();
-    vector_op_insts.ResetWrite();
-    reduction_insts.ResetWrite();
-    accumulation_insts.ResetWrite();
+    vector_op_inst.ResetWrite();
+    accumulation_inst.ResetWrite();
+    reduction_inst.ResetWrite();
 
     start.Reset();
 
@@ -618,11 +627,11 @@ SC_MODULE(VectorUnit) {
           for (int count = 0; count < vector_inst_config.instCount[i];
                count++) {
             if (inst.op_type == VectorInstructions::vector) {
-              vector_op_insts.Push(inst);
+              vector_op_inst.Push(inst);
             } else if (inst.op_type == VectorInstructions::accumulation) {
-              accumulation_insts.Push(inst);
+              accumulation_inst.Push(inst);
             } else {
-              reduction_insts.Push(inst);
+              reduction_inst.Push(inst);
             }
           }
 
