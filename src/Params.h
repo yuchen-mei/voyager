@@ -71,6 +71,7 @@ struct MatrixParams : BaseParams {
     is_replication = false;
     has_attn_output_permute = false;
     is_mx_op = false;
+    is_fc = false;
   }
 #endif
 
@@ -125,7 +126,7 @@ struct MatrixParams : BaseParams {
   static const unsigned int base_width =
       5 * 64 /* OFFSETS */ + (12 + 10) * LOOP_WIDTH /* Loops */ +
       19 * 3 /* Loop indices */ + 2 /* stride */ + 8 /* Head Size */ +
-      8 * 1 /* Bools */;
+      9 * 1 /* Bools */;
 
   static const unsigned int extra_width =
       2 * DTYPE_INDEX_WIDTH + NUM_CODEBOOK_ENTRIES * DECODED_INPUT_DTYPE_WIDTH +
@@ -202,6 +203,7 @@ struct MatrixParams : BaseParams {
     m & is_replication;
     m & has_attn_output_permute;
     m & is_mx_op;
+    m & is_fc;
   }
 
   inline friend void sc_trace(sc_trace_file* tf, const MatrixParams& params,
@@ -291,6 +293,7 @@ struct MatrixParams : BaseParams {
     os << "has_attn_output_permute: " << params.has_attn_output_permute
        << std::endl;
     os << "is_mx_op: " << params.is_mx_op << std::endl;
+    os << "is_fc: " << params.is_fc << std::endl;
     return os;
   }
 
@@ -354,6 +357,7 @@ struct MatrixParams : BaseParams {
     if (lhs.has_attn_output_permute != rhs.has_attn_output_permute)
       return false;
     if (lhs.is_mx_op != rhs.is_mx_op) return false;
+    if (lhs.is_fc != rhs.is_fc) return false;
 
     // If all members are equal, return true
     return true;
