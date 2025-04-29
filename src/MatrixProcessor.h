@@ -156,6 +156,7 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
 
 #pragma hls_unroll yes
       for (int i = 0; i < 2; i++) {
+#pragma hls_unroll yes
         for (int j = 0; j < 6; j++) {
           loop_bounds[i][j] = params.loops[i][j];
         }
@@ -370,6 +371,7 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
     biasChannel.Reset();
     accumulation_buffer_params.ResetRead();
     psumOutSkewerDout.ResetRead();
+    matrixUnitOutputChannel.Reset();
 
 #if SUPPORT_MX
     inputScaleChannel.Reset();
