@@ -86,12 +86,11 @@ void Simulation::load_data() {
 
   if (std::find(sims.begin(), sims.end(), "gold") != sims.end()) {
     memories["gold"] = new ArrayMemory(memory_sizes);
-    dataLoaders["gold"] = new DataLoader(memories["gold"], false, is_cnn);
+    dataLoaders["gold"] = new DataLoader(memories["gold"], false);
   }
   if (std::find(sims.begin(), sims.end(), "accelerator") != sims.end()) {
     memories["accelerator"] = new ArrayMemory(memory_sizes);
-    dataLoaders["accelerator"] =
-        new DataLoader(memories["accelerator"], true, is_cnn);
+    dataLoaders["accelerator"] = new DataLoader(memories["accelerator"], true);
   }
 
   std::string project_root = std::string(getenv("PROJECT_ROOT"));
@@ -120,13 +119,7 @@ void Simulation::load_data() {
     }
 
     for (const auto& tensor : network->model.parameters()) {
-      bool transpose_weight = true;
-#if !SUPPORT_MVM
-      transpose_weight =
-          tensor.shape(0) != num_classes &&
-          tensor.node().find("_param_constant") != std::string::npos;
-#endif
-      dataloader->load_tensor(tensor, data_dir, transpose_weight);
+      dataloader->load_tensor(tensor, data_dir, false);
     }
 
     // Load the layer's input and output last
@@ -155,7 +148,7 @@ void Simulation::print_ideal_runtime(const Operation operation) {
     const auto weight_shape = get_shape(weight);
     const auto output_shape = get_shape(output);
 
-    int K = is_matmul ? weight_shape[weight_shape.size() - 1] : weight_shape[0];
+    int K = weight_shape[weight_shape.size() - 1];
 
     // the total number of operations is X * Y * C * FX * FY * K.
     long num_macs = get_size(output) * get_size(weight) / K;

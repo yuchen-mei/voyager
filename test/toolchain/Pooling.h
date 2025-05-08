@@ -18,7 +18,7 @@ void MapPoolingOperation(const codegen::Operation &param,
   const auto input = pooling_op.kwargs().at("input").tensor();
 
   const auto output = param.output();
-  const int output_dim = output.shape(1);
+  const int output_dim = output.shape(3);
 
   // input
   const auto input_memory = input.memory();
@@ -42,10 +42,10 @@ void MapPoolingOperation(const codegen::Operation &param,
   }
 
   // striding only applied to x and y dimensions
-  vector_params->stride[1] = tiling.stride; // x
-  vector_params->stride[0] = tiling.stride; // y
-  vector_params->padding[1] = tiling.padding; // x
-  vector_params->padding[0] = tiling.padding; // y
+  vector_params->stride[1] = tiling.stride;    // x
+  vector_params->stride[0] = tiling.stride;    // y
+  vector_params->padding[1] = tiling.padding;  // x
+  vector_params->padding[0] = tiling.padding;  // y
 
   // output
   const auto output_memory = output.memory();

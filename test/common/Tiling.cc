@@ -218,33 +218,37 @@ Tiling get_conv2d_tiling(const codegen::OpOverload param) {
   const auto input_shape = get_shape(input);
   const auto weight_shape = get_shape(weight);
 
-  const int output_height = (input_shape[2] + 2 * padding[0] -
-                             dilation[0] * (weight_shape[2] - 1) - 1) /
+  const int output_height = (input_shape[1] + 2 * padding[0] -
+                             dilation[0] * (weight_shape[0] - 1) - 1) /
                                 strides[0] +
                             1;
-  const int output_width = (input_shape[3] + 2 * padding[1] -
-                            dilation[1] * (weight_shape[3] - 1) - 1) /
+  const int output_width = (input_shape[2] + 2 * padding[1] -
+                            dilation[1] * (weight_shape[1] - 1) - 1) /
                                strides[1] +
                            1;
 
-  std::vector<int> output_shape = {input_shape[0], weight_shape[0],
-                                   output_height, output_width};
+  std::vector<int> output_shape = {
+      output_height,
+      output_width,
+      input_shape[3],
+      weight_shape[3],
+  };
 
   const int oc_unroll = OC_DIMENSION;
   const int ic_unroll = IC_DIMENSION;
 
   int x1 = 1, y1 = 1, k1 = 1;
   int x0 = output_shape[2];
-  int y0 = output_shape[3];
-  int k0 = weight_shape[0] / oc_unroll;
-  int c0 = weight_shape[1] / ic_unroll;
-  int fx = weight_shape[2];
-  int fy = weight_shape[3];
+  int y0 = output_shape[1];
+  int k0 = weight_shape[3] / oc_unroll;
+  int c0 = weight_shape[2] / ic_unroll;
+  int fx = weight_shape[1];
+  int fy = weight_shape[0];
   int stride = strides[0];
 
   // conv1
-  if (input_shape[1] == 3 && input_shape[2] == 224 && input_shape[3] == 224 &&
-      weight_shape[0] == 64 && weight_shape[2] == 7 && weight_shape[3] == 7) {
+  if (input_shape[3] == 3 && input_shape[1] == 224 && input_shape[2] == 224 &&
+      weight_shape[3] == 64 && weight_shape[0] == 7 && weight_shape[1] == 7) {
     int fx;
     if (IC_DIMENSION == 4) {
       fx = 7;
@@ -462,11 +466,13 @@ Tiling get_pool2d_tiling(const codegen::OpOverload op) {
   const auto kwargs = op.kwargs();
   const auto input_shape = get_shape(kwargs.at("input").tensor());
 
-  int K = input_shape[1];
+  int Y = input_shape[1];
   int X = input_shape[2];
-  int Y = input_shape[3];
+  int K = input_shape[3];
 
-  int x0, y0, stride, padding;
+  int x0, y0, stride, padding, x1, y1, k0, actual_padding;
+
+  Tiling tiling;
 
   if (kwargs.contains("output_size")) {
     const auto output_size = kwargs.at("output_size").int_list().values();
@@ -476,23 +482,29 @@ Tiling get_pool2d_tiling(const codegen::OpOverload op) {
     stride = X / output_h;
     x0 = X - (output_h - 1) * stride;
     y0 = Y - (output_w - 1) * stride;
+
+    x1 = X / x0;
+    y1 = Y / y0;
+    k0 = K / OC_DIMENSION;
+    actual_padding = 0;
   } else {
     const auto kernel_size = kwargs.at("kernel_size").int_list().values();
     const auto strides = kwargs.at("stride").int_list().values();
     const auto paddings = kwargs.at("padding").int_list().values();
 
-    x0 = kernel_size[0];
-    y0 = kernel_size[1];
+    y0 = kernel_size[0];
+    x0 = kernel_size[1];
     stride = strides[0];
     padding = paddings[0];
-  }
 
-  // calculate ouptut dimension (ignoring padding, which will be handled in hw)
-  int x1 = (X + 2 * padding - x0) / stride + 1;
-  int y1 = (Y + 2 * padding - y0) / stride + 1;
-  // pytorch assumes padding on all direction, not all of the values are used
-  int actual_padding = (x1 - 1) * stride + x0 - X;
-  int k0 = K / OC_DIMENSION;
+    // calculate ouptut dimension (ignoring padding, which will be handled in
+    // hw)
+    x1 = (X + 2 * padding - x0) / stride + 1;
+    y1 = (Y + 2 * padding - y0) / stride + 1;
+    // pytorch assumes padding on all direction, not all of the values are used
+    actual_padding = (x1 - 1) * stride + x0 - X;
+    k0 = K / OC_DIMENSION;
+  }
 
   return {
       .loops = {{x1, y1, 1, 1, 1, 1}, {1, k0, 1, 1, y0, x0}},

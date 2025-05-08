@@ -597,6 +597,8 @@ def run_accuracy(model, dataset, num_processes, output_folder):
                 model,
                 "--model_name_or_path",
                 model_path,
+                "--transpose_weight",
+                "--weight_persistent",
                 *quantization_args,
                 "--output_dir",
                 "test/compiler/networks/" + model + "/" + env_vars["DATATYPE"],
