@@ -433,18 +433,18 @@ def run_rtl_tests(
 
 ACCURACY_RESULTS = {
     "resnet18": {
-        "E4M3": 70.8,
-        "CFLOAT": 70.8,
-        "INT8": 69.7,
-        "MXINT8": 71.0,
-        "P8_1": 70.5,
+        "E4M3": 69.2,
+        "CFLOAT": 71.5,
+        "INT8": 71.5,
+        "MXINT8": 70.7,
+        "P8_1": 69.1,
     },
     "resnet50": {
-        "E4M3": 67.7,
-        "CFLOAT": 71.2,
-        "INT8": 69.1,
-        "MXINT8": 69.5,
-        "P8_1": 69.6,
+        "E4M3": 78.8,
+        "CFLOAT": 80.4,
+        "INT8": 78.7,
+        "MXINT8": 79.8,
+        "P8_1": 79.4,
     },
     "mobilebert": {
         "E4M3": 90.6,
@@ -535,9 +535,9 @@ def run_accuracy(model, dataset, num_processes, output_folder):
 
     # Dump model parameters
     if model == "resnet18":
-        model_path = "models/resnet/resnet18_mp2_p8_qat.pth"
+        model_path = "IMAGENET1K_V1"
     elif model == "resnet50":
-        model_path = "models/resnet/resnet50.pth"
+        model_path = "IMAGENET1K_V2"
     elif model == "mobilebert" and dataset == "sst2":
         model_path = "models/mobilebert/mobilebert-tiny-sst2-bf16/"
     elif model == "mobilebert" and dataset == "squad":
@@ -602,8 +602,6 @@ def run_accuracy(model, dataset, num_processes, output_folder):
                 *quantization_args,
                 "--output_dir",
                 "test/compiler/networks/" + model + "/" + env_vars["DATATYPE"],
-                "--weight_persistent",
-                "--use_maxpool_2x2",
             ],
             stdout=stdout_file,
             stderr=subprocess.STDOUT,
