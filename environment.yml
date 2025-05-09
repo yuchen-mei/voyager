@@ -3,10 +3,6 @@ channels:
   - conda-forge
 dependencies:
   - libprotobuf<6
-  - llvmdev
-  - llvm-tools
-  - clang
-  - clangdev
   - python>=3.9,<3.11
   - pip
   - pip:
