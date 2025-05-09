@@ -40,6 +40,16 @@ void vdiv(const Pack1D<T, Width>& op0, const Pack1D<T, Width>& op1,
 }
 
 #pragma hls_design ccore
+template <typename T1, typename T2, typename T3, int Width>
+void vfma(const Pack1D<T1, Width>& op0, const Pack1D<T2, Width>& op1,
+          Pack1D<T3, Width>& res) {
+#pragma hls_unroll yes
+  for (int i = 0; i < Width; i++) {
+    res[i] = op0[i].fma(op1[i], res[i]);
+  }
+}
+
+#pragma hls_design ccore
 template <typename T, int Width>
 void vexp(const Pack1D<T, Width>& op0, Pack1D<T, Width>& res) {
 #pragma hls_unroll yes

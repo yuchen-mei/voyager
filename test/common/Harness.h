@@ -209,18 +209,18 @@ SC_MODULE(Harness) {
   void readRequestBias();
   void sendResponseBias();
 
-  void readRequestSIMDMatrixInput();
-  void sendResponseSIMDMatrixInput();
-  void readRequestSIMDMatrixWeight();
-  void sendResponseSIMDMatrixWeight();
-  void readRequestSIMDMatrixBias();
-  void sendResponseSIMDMatrixBias();
+  void readRequestMatrixVectorInput();
+  void sendResponseMatrixVectorInput();
+  void readRequestMatrixVectorWeight();
+  void sendResponseMatrixVectorWeight();
+  void readRequestMatrixVectorBias();
+  void sendResponseMatrixVectorBias();
 
 #if SUPPORT_MX
-  void readRequestSIMDMatrixInputScale();
-  void sendResponseSIMDMatrixInputScale();
-  void readRequestSIMDMatrixWeightScale();
-  void sendResponseSIMDMatrixWeightScale();
+  void readRequestMatrixVectorInputScale();
+  void sendResponseMatrixVectorInputScale();
+  void readRequestMatrixVectorWeightScale();
+  void sendResponseMatrixVectorWeightScale();
 #endif
 
   void readRequestVector0();

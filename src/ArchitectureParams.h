@@ -131,7 +131,7 @@ using F9 = StdFloat<3, 5>;
 #define IC_PORT_WIDTH (IC_DIMENSION * 4)
 #define OC_PORT_WIDTH (OC_DIMENSION * 4)
 
-#define MV_UNIT_WIDTH 128
+#define MV_UNIT_WIDTH 32
 
 #define SUPPORT_MX true
 #define SUPPORT_CODEBOOK_QUANT true

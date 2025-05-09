@@ -23,7 +23,14 @@ Harness::Harness(sc_module_name name, std::vector<Operation> operations,
       biasDataResponse_fifo("biasDataResponse_fifo", 1024),
       vectorFetch0DataResponse_fifo("vectorFetch0DataResponse_fifo", 1024),
       vectorFetch1DataResponse_fifo("vectorFetch1DataResponse_fifo", 1024),
-      vectorFetch2DataResponse_fifo("vectorFetch2DataResponse_fifo", 1024) {
+      vectorFetch2DataResponse_fifo("vectorFetch2DataResponse_fifo", 1024)
+#if SUPPORT_MVM
+      ,
+      matrix_vector_input_resp_fifo("matrix_vector_input_resp_fifo", 1024),
+      matrix_vector_weight_resp_fifo("matrix_vector_weight_resp_fifo", 1024),
+      matrix_vector_bias_resp_fifo("matrix_vector_bias_resp_fifo", 1024)
+#endif
+{
   accelerator.clk(clk);
   accelerator.rstn(rstn);
   accelerator.serialMatrixParamsIn(serialMatrixParamsIn);
@@ -123,44 +130,44 @@ Harness::Harness(sc_module_name name, std::vector<Operation> operations,
   async_reset_signal_is(rstn, false);
 
 #if SUPPORT_MVM
-  SC_THREAD(readRequestSIMDMatrixInput);
+  SC_THREAD(readRequestMatrixVectorInput);
   sensitive << clk.posedge_event();
   async_reset_signal_is(rstn, false);
 
-  SC_THREAD(sendResponseSIMDMatrixInput);
+  SC_THREAD(sendResponseMatrixVectorInput);
   sensitive << clk.posedge_event();
   async_reset_signal_is(rstn, false);
 
-  SC_THREAD(readRequestSIMDMatrixWeight);
+  SC_THREAD(readRequestMatrixVectorWeight);
   sensitive << clk.posedge_event();
   async_reset_signal_is(rstn, false);
 
-  SC_THREAD(sendResponseSIMDMatrixWeight);
+  SC_THREAD(sendResponseMatrixVectorWeight);
   sensitive << clk.posedge_event();
   async_reset_signal_is(rstn, false);
 
-  SC_THREAD(readRequestSIMDMatrixBias);
+  SC_THREAD(readRequestMatrixVectorBias);
   sensitive << clk.posedge_event();
   async_reset_signal_is(rstn, false);
 
-  SC_THREAD(sendResponseSIMDMatrixBias);
+  SC_THREAD(sendResponseMatrixVectorBias);
   sensitive << clk.posedge_event();
   async_reset_signal_is(rstn, false);
 
 #if SUPPORT_MX
-  SC_THREAD(readRequestSIMDMatrixInputScale);
+  SC_THREAD(readRequestMatrixVectorInputScale);
   sensitive << clk.posedge_event();
   async_reset_signal_is(rstn, false);
 
-  SC_THREAD(sendResponseSIMDMatrixInputScale);
+  SC_THREAD(sendResponseMatrixVectorInputScale);
   sensitive << clk.posedge_event();
   async_reset_signal_is(rstn, false);
 
-  SC_THREAD(readRequestSIMDMatrixWeightScale);
+  SC_THREAD(readRequestMatrixVectorWeightScale);
   sensitive << clk.posedge_event();
   async_reset_signal_is(rstn, false);
 
-  SC_THREAD(sendResponseSIMDMatrixWeightScale);
+  SC_THREAD(sendResponseMatrixVectorWeightScale);
   sensitive << clk.posedge_event();
   async_reset_signal_is(rstn, false);
 #endif
@@ -338,48 +345,48 @@ void Harness::sendResponseBias() {
 }
 
 #if SUPPORT_MVM
-void Harness::readRequestSIMDMatrixInput() {
+void Harness::readRequestMatrixVectorInput() {
   readMemoryRequest(&matrix_vector_input_req, &matrix_vector_input_resp_fifo);
 }
 
-void Harness::sendResponseSIMDMatrixInput() {
+void Harness::sendResponseMatrixVectorInput() {
   sendMemoryResponse(&matrix_vector_input_resp_fifo, &matrix_vector_input_resp);
 }
 
-void Harness::readRequestSIMDMatrixWeight() {
+void Harness::readRequestMatrixVectorWeight() {
   readMemoryRequest(&matrix_vector_weight_req, &matrix_vector_weight_resp_fifo);
 }
 
-void Harness::sendResponseSIMDMatrixWeight() {
+void Harness::sendResponseMatrixVectorWeight() {
   sendMemoryResponse(&matrix_vector_weight_resp_fifo,
                      &matrix_vector_weight_resp);
 }
 
-void Harness::readRequestSIMDMatrixBias() {
+void Harness::readRequestMatrixVectorBias() {
   readMemoryRequest(&matrix_vector_bias_req, &matrix_vector_bias_resp_fifo);
 }
 
-void Harness::sendResponseSIMDMatrixBias() {
+void Harness::sendResponseMatrixVectorBias() {
   sendMemoryResponse(&matrix_vector_bias_resp_fifo, &matrix_vector_bias_resp);
 }
 
 #if SUPPORT_MX
-void Harness::readRequestSIMDMatrixInputScale() {
+void Harness::readRequestMatrixVectorInputScale() {
   readMemoryRequest(&matrix_vector_input_scale_req,
                     &matrix_vector_input_scale_resp_fifo);
 }
 
-void Harness::sendResponseSIMDMatrixInputScale() {
+void Harness::sendResponseMatrixVectorInputScale() {
   sendMemoryResponse(&matrix_vector_input_scale_resp_fifo,
                      &matrix_vector_input_scale_resp);
 }
 
-void Harness::readRequestSIMDMatrixWeightScale() {
+void Harness::readRequestMatrixVectorWeightScale() {
   readMemoryRequest(&matrix_vector_weight_scale_req,
                     &matrix_vector_weight_scale_resp_fifo);
 }
 
-void Harness::sendResponseSIMDMatrixWeightScale() {
+void Harness::sendResponseMatrixVectorWeightScale() {
   sendMemoryResponse(&matrix_vector_weight_scale_resp_fifo,
                      &matrix_vector_weight_scale_resp);
 }
