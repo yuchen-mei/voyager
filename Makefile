@@ -72,6 +72,12 @@ else
 	override BASE_FLAGS += -DDOUBLE_BUFFERED_ACCUM_BUFFER=$(DOUBLE_BUFFERED_ACCUM_BUFFER)
 endif
 
+ifndef SUPPORT_MVM
+	export SUPPORT_MVM = false
+else
+	override BASE_FLAGS += -DSUPPORT_MVM=$(SUPPORT_MVM)
+endif
+
 ifeq ($(DEBUG), 1)
 	override BASE_FLAGS += -DDEBUG -g -O0 -ggdb
 else
@@ -127,7 +133,7 @@ PROTOS_DEPENDENCY += test/compiler/proto/tiling.pb.cc
 endif
 
 RTL_DEPENDENCIES =
-ifdef SUPPORT_MVM
+ifeq ($(SUPPORT_MVM), true)
 RTL_DEPENDENCIES += $(CATAPULT_BUILD_DIR)/MatrixVectorUnit/MatrixVectorUnit.v1/concat_rtl.v
 endif
 

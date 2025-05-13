@@ -131,11 +131,10 @@ using F9 = StdFloat<3, 5>;
 #define IC_PORT_WIDTH (IC_DIMENSION * 4)
 #define OC_PORT_WIDTH (OC_DIMENSION * 4)
 
-#define MV_UNIT_WIDTH 32
+#define MV_UNIT_WIDTH (OC_DIMENSION * 2)
 
 #define SUPPORT_MX true
 #define SUPPORT_CODEBOOK_QUANT true
-#define SUPPORT_MVM true
 
 #elif defined(CFLOAT)
 

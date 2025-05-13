@@ -160,8 +160,7 @@ if { $DATATYPE == "P8_1" } {
   set IC_PORT_WIDTH [expr {$IC_DIMENSION * 4}]
   set OC_PORT_WIDTH [expr {$OC_DIMENSION * 4}]
 
-  set SUPPORT_MVM true
-  set MV_UNIT_WIDTH 32
+  set MV_UNIT_WIDTH [expr {$IC_DIMENSION * 2}]
 } else {
   puts "Invalid DATATYPE"
   exit 1
