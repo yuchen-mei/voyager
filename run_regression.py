@@ -14,6 +14,18 @@ from google.protobuf import text_format
 from google.protobuf.json_format import MessageToDict
 from quantized_training.codegen import param_pb2
 
+# Dictionary mapping model names to lists of layers that should be skipped
+# Using defaultdict to return empty list for any model not in the dictionary
+SKIP_LAYERS = defaultdict(
+    list,
+    {
+        "resnet18": [],  # Add layers to skip for resnet18
+        "resnet50": [],  # Add layers to skip for resnet50
+        "mobilebert": [],  # Add layers to skip for mobilebert
+        "bert": [],  # Add layers to skip for bert
+    },
+)
+
 
 def print_test_results(test_results, layers, output_folder):
     columns = ["Model", "Layer", "Status", "Runtime", "Ideal", "RuntimeType", "Count"]
@@ -693,7 +705,11 @@ def add_layers(network, layers, layer_counts, uniquify):
             f"test/compiler/networks/{network}/{os.environ['DATATYPE']}/layers.txt",
             "r",
         ) as f:
-            layers[network] = f.read().splitlines()
+            all_layers = f.read().splitlines()
+            # Filter out layers that should be skipped - SKIP_LAYERS[network] will return empty list if network not found
+            layers[network] = [
+                layer for layer in all_layers if layer not in SKIP_LAYERS[network]
+            ]
             layer_counts[network] = {layer: 1 for layer in layers[network]}
     else:
         # open the proto file
@@ -731,6 +747,10 @@ def add_layers(network, layers, layer_counts, uniquify):
                 continue
 
             name = op["op"]["name"] if "op" in op else op["fused_op"]["name"]
+
+            # Skip layers that are in the skip list - SKIP_LAYERS[network] will return empty list if network not found
+            if name in SKIP_LAYERS[network]:
+                continue
 
             # remove the name, memory, and node fields from the op
             delete_nested_keys(op, "name")
