@@ -48,13 +48,14 @@ def print_test_results(test_results, layers, output_folder):
     for model in models:
         print("=" * 10 + f" {model} " + "=" * 10)
 
-        model_df = df[df["Model"] == model]
+        # Create an explicit copy of the DataFrame
+        model_df = df[df["Model"] == model].copy()
 
         # sort according to order in layers
-        model_df["Layer"] = pd.Categorical(model_df["Layer"], layers[model])
+        model_df.loc[:, "Layer"] = pd.Categorical(model_df["Layer"], layers[model])
         model_df.sort_values("Layer", inplace=True)
         # turn categorial back to string
-        model_df["Layer"] = model_df["Layer"].astype(str)
+        model_df.loc[:, "Layer"] = model_df["Layer"].astype(str)
         sorted_df.append(model_df)
 
         passed = model_df[model_df["Status"] == True]
