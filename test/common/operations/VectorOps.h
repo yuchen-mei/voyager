@@ -178,7 +178,11 @@ inline T *perform_vector_operation(const T *input1,
       result[i] = input1[flat_idx_a] * input2[flat_idx_b];
     } else if (opcode == "div" || opcode == "div_") {
       T immediate = 1.0 / input2[flat_idx_b];
-      result[i] = input1[flat_idx_a] * immediate;
+      if (input2[flat_idx_b] == T::zero()) {
+        result[i] = T::zero();
+      } else {
+        result[i] = input1[flat_idx_a] * immediate;
+      }
     } else {
       throw std::invalid_argument("Invalid opcode: " + opcode);
     }
