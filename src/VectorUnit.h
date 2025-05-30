@@ -433,7 +433,7 @@ SC_MODULE(VectorOpUnit) {
           Pack1D<VectorType, Width> op = reduction_input.Pop();
 
           if (inst.reduce_op == VectorInstructions::radd) {
-            VectorType sum = treeadd(op);
+            VectorType sum = adder_tree(op);
             output = (j == 0) ? sum : output + sum;
           } else if (inst.reduce_op == VectorInstructions::rmax) {
             VectorType max = treemax(op);

@@ -140,6 +140,55 @@ T treeadd(const Pack1D<T, Width>& op) {
 
 #pragma hls_design ccore
 template <typename T, size_t Width>
+T adder_tree(const Pack1D<T, Width>& op) {
+  T acc = T::zero();
+
+#pragma hls_unroll yes
+  for (int i = 0; i != Width; i++) {
+    acc += op[i];
+  }
+  return acc;
+}
+
+template <int N>
+struct max_s {
+  template <typename T>
+  static T max(Pack1D<T, N> a) {
+    Pack1D<T, N / 2> a0;
+    Pack1D<T, N - N / 2> a1;
+
+#pragma hls_unroll yes
+    for (int i = 0; i < N / 2; i++) {
+      a0[i] = a[i * 2];
+    }
+
+#pragma hls_unroll yes
+    for (int i = N / 2; i < N; i++) {
+      a1[i] = a[i * 2 + 1];
+    }
+
+    T m0 = max_s<N / 2>::max(a0);
+    T m1 = max_s<N - N / 2>::max(a1);
+    return m0 > m1 ? m0 : m1;
+  }
+};
+
+// terminate template recursion
+template <>
+struct max_s<1> {
+  template <typename T>
+  static T max(Pack1D<T, 1> a) {
+    return a[0];
+  }
+};
+
+template <int N, typename T>
+T max(Pack1D<T, N> a) {
+  return max_s<N>::max(a);
+}
+
+#pragma hls_design ccore
+template <typename T, size_t Width>
 T treemax(const Pack1D<T, Width>& op) {
   constexpr int num_stage = constexpr_log2(Width);
   Pack1D<T, Width> temp[num_stage + 1];
