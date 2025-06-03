@@ -5,7 +5,7 @@
 
 #include "VectorOps.h"
 
-template <typename VectorType, size_t Width>
+template <typename VectorType, int Width>
 SC_MODULE(VectorAccumulator) {
   sc_in<bool> clk;
   sc_in<bool> rstn;
@@ -17,10 +17,13 @@ SC_MODULE(VectorAccumulator) {
   // Outputs
   Connections::Out<Pack1D<VectorType, Width>> output;
 
-  static constexpr int N = 2;
-  static constexpr int last = N - 1;
+  static constexpr int sum_n = 4;
+  static constexpr int sum_last = sum_n - 1;
+  static constexpr int max_n = 1;
+  static constexpr int max_last = max_n - 1;
 
-  static_assert(N > 0, "Pipeline size N must be greater than 0");
+  static_assert(sum_n > 0, "Pipeline size sum_n must be greater than 0");
+  static_assert(max_n > 0, "Pipeline size max_n must be greater than 0");
 
   SC_CTOR(VectorAccumulator) {
     SC_THREAD(run_accumulation);
@@ -38,61 +41,91 @@ SC_MODULE(VectorAccumulator) {
     while (true) {
       VectorInstructions inst = instr.Pop();
 
-      Pack1D<VectorType, Width> acc_old[N];
+      Pack1D<VectorType, Width> outputs;
+
+      if (inst.reduce_op == VectorInstructions::radd) {
+        Pack1D<VectorType, Width> acc_old[sum_n];
 
 #pragma hls_unroll yes
-      for (int i = 0; i < N; i++) {
+        for (int i = 0; i < sum_n; i++) {
 #pragma hls_unroll yes
-        for (int j = 0; j < Width; j++) {
-          if (inst.reduce_op == VectorInstructions::radd) {
+          for (int j = 0; j < Width; j++) {
             acc_old[i][j] = VectorType::zero();
-          } else if (inst.reduce_op == VectorInstructions::rmax) {
-            acc_old[i][j] = VectorType::min();
           }
         }
-      }
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
-      for (decltype(inst.reduce_count) i = 0;; i++) {
-        Pack1D<VectorType, Width> reduce_input = input.Pop();
+        for (decltype(inst.reduce_count) i = 0;; i++) {
+          Pack1D<VectorType, Width> reduce_input = input.Pop();
 
-        Pack1D<VectorType, Width> acc;
-        if (inst.reduce_op == VectorInstructions::radd) {
-          acc = i < N ? reduce_input : vadd(acc_old[last], reduce_input);
-        } else if (inst.reduce_op == VectorInstructions::rmax) {
-          acc = i < N ? reduce_input : vmax(acc_old[last], reduce_input);
-        }
-
-        for (int k = last; k > 0; k--) {
-          acc_old[k] = acc_old[k - 1];
-        }
-
-        acc_old[0] = acc;
-
-        if (i == inst.reduce_count - 1) {
-          break;
-        }
-      }
-
-      Pack1D<VectorType, Width> outputs;
+          Pack1D<VectorType, Width> acc =
+              i < sum_n ? reduce_input : vadd(acc_old[sum_last], reduce_input);
 
 #pragma hls_unroll yes
-      for (int i = 0; i < Width; i++) {
-        Pack1D<VectorType, N> col;
-#pragma hls_unroll yes
-        for (int j = 0; j < N; j++) {
-          col[j] = acc_old[j][i];
+          for (int k = sum_last; k > 0; k--) {
+            acc_old[k] = acc_old[k - 1];
+          }
+
+          acc_old[0] = acc;
+
+          if (i == inst.reduce_count - 1) {
+            break;
+          }
         }
 
-        if (inst.reduce_op == VectorInstructions::radd) {
+#pragma hls_unroll yes
+        for (int i = 0; i < Width; i++) {
+          Pack1D<VectorType, sum_n> col;
+#pragma hls_unroll yes
+          for (int j = 0; j < sum_n; j++) {
+            col[j] = acc_old[j][i];
+          }
           outputs[i] = tree_sum(col);
-        } else if (inst.reduce_op == VectorInstructions::rmax) {
+        }
+
+      } else if (inst.reduce_op == VectorInstructions::rmax) {
+        Pack1D<VectorType, Width> acc_old[max_n];
+
+#pragma hls_unroll yes
+        for (int i = 0; i < max_n; i++) {
+#pragma hls_unroll yes
+          for (int j = 0; j < Width; j++) {
+            acc_old[i][j] = VectorType::min();
+          }
+        }
+
+#pragma hls_pipeline_init_interval 1
+#pragma hls_pipeline_stall_mode flush
+        for (decltype(inst.reduce_count) i = 0;; i++) {
+          Pack1D<VectorType, Width> reduce_input = input.Pop();
+
+          Pack1D<VectorType, Width> acc =
+              i < max_n ? reduce_input : vmax(acc_old[max_last], reduce_input);
+
+#pragma hls_unroll yes
+          for (int k = max_last; k > 0; k--) {
+            acc_old[k] = acc_old[k - 1];
+          }
+
+          acc_old[0] = acc;
+
+          if (i == inst.reduce_count - 1) {
+            break;
+          }
+        }
+
+#pragma hls_unroll yes
+        for (int i = 0; i < Width; i++) {
+          Pack1D<VectorType, max_n> col;
+#pragma hls_unroll yes
+          for (int j = 0; j < max_n; j++) {
+            col[j] = acc_old[j][i];
+          }
           outputs[i] = tree_max(col);
         }
       }
 
-      DLOG("accumulation finished: " << outputs);
       output.Push(outputs);
     }
   }

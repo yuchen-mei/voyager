@@ -105,14 +105,14 @@ struct InputController<std::tuple<InputTypes...>, NRows, PortWidth, BufferWidth>
       loop_bounds[1][params.fxIndex] = 1;
       loop_bounds[1][params.fyIndex] = 1;
 
-      ac_int<LOOP_WIDTH, false> X1 = params.loops[0][params.inputXLoopIndex[0]];
-      ac_int<16, false> X0 = params.loops[1][params.inputXLoopIndex[1]];
       ac_int<LOOP_WIDTH, false> Y1 = params.loops[0][params.inputYLoopIndex[0]];
-      ac_int<16, false> Y0 = params.loops[1][params.inputYLoopIndex[1]];
+      ac_int<LOOP_WIDTH, false> X1 = params.loops[0][params.inputXLoopIndex[0]];
       ac_int<LOOP_WIDTH, false> C2 =
           params.loops[0][params.reductionLoopIndex[0]];
       ac_int<LOOP_WIDTH, false> C1 =
           params.loops[1][params.reductionLoopIndex[1]];
+      ac_int<16, false> Y0 = params.loops[1][params.inputYLoopIndex[1]];
+      ac_int<16, false> X0 = params.loops[1][params.inputXLoopIndex[1]];
       ac_int<4, false> FX = params.loops[1][params.fxIndex];
       ac_int<4, false> FY = params.loops[1][params.fyIndex];
       ac_int<2, false> STRIDE = params.stride;
@@ -145,8 +145,9 @@ struct InputController<std::tuple<InputTypes...>, NRows, PortWidth, BufferWidth>
 
       loop_bounds[1][params.inputYLoopIndex[1]] = y_bound + FY - 1;
 
-      ac_int<16, false> IX = X1 * IX0;
-      ac_int<16, false> IY = Y1 * IY0;
+      ac_int<16, false> Y = Y1 * IY0;
+      ac_int<16, false> X = X1 * IX0;
+      ac_int<16, false> C = C2 * C1 * NRows;
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
@@ -189,15 +190,10 @@ struct InputController<std::tuple<InputTypes...>, NRows, PortWidth, BufferWidth>
                           }
 
                           ac_int<16, false> y = y1 * IY0 + y0 - y_padding;
-                          ac_int<16, false> Y = Y1 * IY0;
-
                           ac_int<16, false> x = x1 * IX0 + x0 - x_padding;
-                          ac_int<16, false> X = X1 * IX0;
-
                           ac_int<16, false> c = c2 * C1 * NRows + c1 * NRows;
-                          ac_int<16, false> C = C2 * C1 * NRows;
 
-                          if ((x >= 0) && (y >= 0) && (x < IX) && (y < IY)) {
+                          if ((x >= 0) && (y >= 0) && (x < X) && (y < Y)) {
                             ac_int<32, false> address = y * X * C + x * C + c;
 
                             if (params.is_replication) {
@@ -298,12 +294,12 @@ struct InputController<std::tuple<InputTypes...>, NRows, PortWidth, BufferWidth>
       loop_bounds[1][params.fxIndex] = 1;
       loop_bounds[1][params.fyIndex] = 1;
 
-      ac_int<LOOP_WIDTH, false> X1 = params.loops[0][params.inputXLoopIndex[0]];
-      ac_int<16, false> X0 = params.loops[1][params.inputXLoopIndex[1]];
       ac_int<LOOP_WIDTH, false> Y1 = params.loops[0][params.inputYLoopIndex[0]];
-      ac_int<16, false> Y0 = params.loops[1][params.inputYLoopIndex[1]];
+      ac_int<LOOP_WIDTH, false> X1 = params.loops[0][params.inputXLoopIndex[0]];
       ac_int<LOOP_WIDTH, false> C1 =
           params.loops[1][params.reductionLoopIndex[1]];
+      ac_int<16, false> Y0 = params.loops[1][params.inputYLoopIndex[1]];
+      ac_int<16, false> X0 = params.loops[1][params.inputXLoopIndex[1]];
       ac_int<4, false> FX = params.loops[1][params.fxIndex];
       ac_int<4, false> FY = params.loops[1][params.fyIndex];
       ac_int<2, false> STRIDE = params.stride;
@@ -330,15 +326,16 @@ struct InputController<std::tuple<InputTypes...>, NRows, PortWidth, BufferWidth>
         x_bound /= packing_factor;
       }
 
-      ac_int<LOOP_WIDTH, false> x_boundary =
-          params.is_replication ? ac_int<4, false>(2 * boundary_words)
-                                : ac_int<4, false>(FX - 1);
+      ac_int<4, false> x_boundary = params.is_replication
+                                        ? ac_int<4, false>(2 * boundary_words)
+                                        : ac_int<4, false>(FX - 1);
       loop_bounds[1][params.inputXLoopIndex[1]] = x_bound + x_boundary;
       loop_bounds[1][params.inputYLoopIndex[1]] = IY0 + FY - 1;
 
-      ac_int<16, false> IX = X1 * IX0;
-      ac_int<16, false> IY = Y1 * IY0;
-      ac_int<16, false> IX0_C1 = loop_bounds[1][params.inputXLoopIndex[1]] * C1;
+      ac_int<16, false> X = X1 * IX0;
+      ac_int<16, false> Y = Y1 * IY0;
+      ac_int<16, false> y_stride =
+          loop_bounds[1][params.inputXLoopIndex[1]] * C1;
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
@@ -373,7 +370,7 @@ struct InputController<std::tuple<InputTypes...>, NRows, PortWidth, BufferWidth>
 
                           ac_int<BufferWidth, false> data;
 
-                          if ((x < 0) || (y < 0) || (x >= IX) || (y >= IY)) {
+                          if ((x < 0) || (y < 0) || (x >= X) || (y >= Y)) {
                             (set_zero<InputTypes, NRows, BufferWidth,
                                       InputTypes...>(params.input_dtype, data),
                              ...);
@@ -383,8 +380,8 @@ struct InputController<std::tuple<InputTypes...>, NRows, PortWidth, BufferWidth>
 
                           ac_int<LOOP_WIDTH> orig_x0 =
                               loop_counters[1][params.inputXLoopIndex[1]];
-                          ac_int<32, false> address =
-                              y0 * IX0_C1 + orig_x0 * C1 + c1;
+                          ac_int<16, false> address =
+                              y0 * y_stride + orig_x0 * C1 + c1;
 
                           bool is_last =
                               loop_counters[1][5] == loop_bounds[1][5] - 1 &&
@@ -480,8 +477,8 @@ struct InputController<std::tuple<InputTypes...>, NRows, PortWidth, BufferWidth>
             1;
       }
 
-      ac_int<LOOP_WIDTH, false> X0 = params.loops[1][params.inputXLoopIndex[1]];
       ac_int<LOOP_WIDTH, false> Y0 = params.loops[1][params.inputYLoopIndex[1]];
+      ac_int<LOOP_WIDTH, false> X0 = params.loops[1][params.inputXLoopIndex[1]];
       ac_int<LOOP_WIDTH, false> C1 =
           params.loops[1][params.reductionLoopIndex[1]];
       ac_int<4, false> FX = params.loops[1][params.fxIndex];
@@ -495,11 +492,11 @@ struct InputController<std::tuple<InputTypes...>, NRows, PortWidth, BufferWidth>
       }
 
       ac_int<16, false> IX0 = X0 * STRIDE;
-      ac_int<16, false> IX0_C1 = C1;
+      ac_int<16, false> y_stride = C1;
       if (params.is_replication) {
-        IX0_C1 *= IX0 / packing_factor + 2 * boundary_words;
+        y_stride *= IX0 / packing_factor + 2 * boundary_words;
       } else {
-        IX0_C1 *= IX0 + FX - 1;
+        y_stride *= IX0 + FX - 1;
       }
 
 #pragma hls_pipeline_init_interval 1
@@ -529,11 +526,11 @@ struct InputController<std::tuple<InputTypes...>, NRows, PortWidth, BufferWidth>
                           ac_int<16, false> y = STRIDE * y0 + fy;
                           ac_int<16, false> address;
                           if (params.is_replication && NRows >= 8) {
-                            address = y * IX0_C1 + (x0 + fx) * C1 + c1;
+                            address = y * y_stride + (x0 + fx) * C1 + c1;
                           } else if (is_downsample) {
                             address = y0 * X0 * C1 + x0 * C1 + c1;
                           } else {
-                            address = y * IX0_C1 + x * C1 + c1;
+                            address = y * y_stride + x * C1 + c1;
                           }
 
                           bool is_last =

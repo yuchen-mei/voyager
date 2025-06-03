@@ -3,7 +3,7 @@
 #include <mc_connections.h>
 #include <systemc.h>
 
-template <typename VectorType, size_t Width>
+template <typename VectorType, int Width>
 SC_MODULE(VectorReducer) {
   sc_in<bool> clk;
   sc_in<bool> rstn;
@@ -71,6 +71,7 @@ SC_MODULE(VectorReducer) {
             acc = j < N ? max : std::max(acc_old[last], max);
           }
 
+#pragma hls_unroll yes
           for (int k = last; k > 0; k--) {
             acc_old[k] = acc_old[k - 1];
           }

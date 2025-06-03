@@ -37,7 +37,7 @@ proc pre_assembly {} {
   directive set /$full_block_name_stripped/$vector_quantizer_name_stripped -MAP_TO_MODULE {[Block] VectorQuantizer.v1}
 
   set output_controller_name "OutputController<$VECTOR_DATATYPE,$SCALE_DATATYPE,$OC_DIMENSION,$OUTPUT_DATATYPES>"
-  set output_controller_name_stripped [string map {" " ""} $vector_output_name]
+  set output_controller_name_stripped [string map {" " ""} $output_controller_name]
   directive set /$full_block_name_stripped/$output_controller_name_stripped -MAP_TO_MODULE {[Block] OutputController.v1}
 
   directive set /$full_block_name_stripped/VectorParamsDeserializer -MAP_TO_MODULE {[Block] VectorParamsDeserializer.v1}

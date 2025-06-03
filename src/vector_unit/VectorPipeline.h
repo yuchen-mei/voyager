@@ -258,21 +258,21 @@ SC_MODULE(VectorPipeline) {
         res1 = vabs<VectorType, Width>(res0);
       } else if (inst.vector_op1 == VectorInstructions::vrelu) {
         res1 = vrelu<VectorType, Width>(res0);
-      } else if (inst.vector_op1 == VectorInstructions::vgelu) {
-        res1 = vgelu<VectorType, Width>(res0);
+      // } else if (inst.vector_op1 == VectorInstructions::vgelu) {
+      //   res1 = vgelu<VectorType, Width>(res0);
       } else if (inst.vector_op1 == VectorInstructions::vsilu) {
         res1 = vsilu<VectorType, Width>(res0);
-      } else if (inst.vector_op1 == VectorInstructions::vmap) {
-        for (int i = 0; i < Width; i++) {
-          DataTypes::bfloat16 value = res0[i];
+      // } else if (inst.vector_op1 == VectorInstructions::vmap) {
+      //   for (int i = 0; i < Width; i++) {
+      //     DataTypes::bfloat16 value = res0[i];
 
-          ac_int<32, false> address = value.bits_rep() * 2;
-          MemoryRequest request = {inst.VMAP_OFFSET + address, 2};
-          vector_fetch_3_req.Push(request);
+      //     ac_int<32, false> address = value.bits_rep() * 2;
+      //     MemoryRequest request = {inst.VMAP_OFFSET + address, 2};
+      //     vector_fetch_3_req.Push(request);
 
-          value.set_bits(vector_fetch_3_resp.Pop());
-          res1[i] = value;
-        }
+      //     value.set_bits(vector_fetch_3_resp.Pop());
+      //     res1[i] = value;
+      //   }
       } else {
         res1 = res0;
       }
