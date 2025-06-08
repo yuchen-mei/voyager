@@ -411,7 +411,7 @@ struct VectorInstructions {
   static const unsigned int reduction = 1;
   static const unsigned int accumulation = 2;
 
-  ac_int<16, false> inst_count;
+  ac_int<24, false> inst_count;
 
   ac_int<4, false> vector_op0_src0;
   ac_int<4, false> vector_op0_src1;
@@ -483,7 +483,7 @@ struct VectorInstructions {
   ac_int<16, false> immediate2;
   ac_int<64, false> VMAP_OFFSET;
 
-  static const unsigned int width = 193;
+  static const unsigned int width = 201;
 
 #ifndef NO_SYSC
   template <unsigned int Size>
