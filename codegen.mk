@@ -50,7 +50,7 @@ $(CODEGEN_DIR)/networks/llama_decode_mp/%/model.txt: quantized-training/test/tes
 
 $(CODEGEN_DIR)/networks/vit/%/model.txt: quantized-training/test/test_codegen.py
 	mkdir -p $(dir $@)
-	python quantized-training/test/test_codegen.py vit $($(notdir $(patsubst %/,%,$(dir $@)))_FLAGS) $(EXTRA_COMPILER_FLAGS) --model_model_output_dir $(dir $@) $(COMMON_FLAGS) &> $(dir $@)codegen.log
+	python quantized-training/test/test_codegen.py vit $($(notdir $(patsubst %/,%,$(dir $@)))_FLAGS) $(EXTRA_COMPILER_FLAGS) --model_output_dir $(dir $@) $(COMMON_FLAGS) &> $(dir $@)codegen.log
 
 $(CODEGEN_DIR)/networks/segformer/%/model.txt: quantized-training/test/test_codegen.py
 	mkdir -p $(dir $@)

@@ -840,7 +840,7 @@ def main():
         for network in all_models:
             env_vars = os.environ.copy()
             env_vars["NETWORK"] = network
-        if args.sims != "accuracy":
+            if args.sims != "accuracy":
                 subprocess.run(["make", "network-proto"], env=env_vars)
                 add_layers(network, layers, layer_counts, args.uniquify_layers)
     else:
