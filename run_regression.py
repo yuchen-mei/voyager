@@ -588,9 +588,14 @@ def run_accuracy(model, dataset, num_processes, output_folder):
         ]
     else:
         raise ValueError("Invalid datatype")
-    
+
     subprocess.run(
-        ["mkdir", "-p", f"{env_vars['CODEGEN_DIR']}/networks/{model}/{env_vars['DATATYPE']}"])
+        [
+            "mkdir",
+            "-p",
+            f"{env_vars['CODEGEN_DIR']}/networks/{model}/{env_vars['DATATYPE']}",
+        ]
+    )
 
     with open(f"{output_folder}/{model}_{dataset}_compiler.log", "w") as stdout_file:
         subprocess.run(
@@ -618,7 +623,7 @@ def run_accuracy(model, dataset, num_processes, output_folder):
         [
             "mkdir",
             "-p",
-            f"{env_vars['CODEGEN_DIR']}/networks/{model}/{env_vars['DATATYPE']}/{env_vars['IC_DIMENSION']}x{env_vars['OC_DIMENSION']}_{env_vars['INPUT_BUFFER_SIZE']}x{env_vars['WEIGHT_BUFFER_SIZE']}x{env_vars['ACCUM_BUFFER_SIZE']}_{env_vars['DOUBLE_BUFFERED_ACCUM_BUFFER']}"
+            f"{env_vars['CODEGEN_DIR']}/networks/{model}/{env_vars['DATATYPE']}/{env_vars['IC_DIMENSION']}x{env_vars['OC_DIMENSION']}_{env_vars['INPUT_BUFFER_SIZE']}x{env_vars['WEIGHT_BUFFER_SIZE']}x{env_vars['ACCUM_BUFFER_SIZE']}_{env_vars['DOUBLE_BUFFERED_ACCUM_BUFFER']}",
         ]
     )
 
