@@ -114,7 +114,12 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
               .weightAddressGenLoops[1]
                                     [params.weightAddressGenWeightLoopIndex[1]];
 
-      ac_int<24, false> c_stride = K2 * K1 * NCols;
+      // reduce the number of iterations by packing factor
+      K1 = K1 >> params.weight_packing_shift;
+      loop_bounds[1][params.weightAddressGenWeightLoopIndex[1]] = K1 - 1;
+
+      ac_int<16, false> k_stride = NCols << params.weight_packing_shift;
+      ac_int<24, false> c_stride = K2 * K1 * k_stride;
       ac_int<24, false> fx_stride = C2 * C1 * C0 * c_stride;
       ac_int<24, false> fy_stride = FX * fx_stride;
 
@@ -145,7 +150,7 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
                         ac_int<LOOP_WIDTH, false> k1 = loop_counters
                             [1][params.weightAddressGenWeightLoopIndex[1]];
 
-                        ac_int<16, false> k = (k2 * K1 + k1) * NCols;
+                        ac_int<16, false> k = (k2 * K1 + k1) * k_stride;
                         ac_int<16, false> c = (c2 * C1 + c1) * C0 + c0;
                         ac_int<32, false> address =
                             fy * fy_stride + fx * fx_stride + c * c_stride + k;
@@ -154,10 +159,9 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
                           address = ((k + c0) * C2 * C1 + c2 * C1 + c1) * NCols;
                         }
 
-                        (fetch_matrix_input<WeightTypes, NCols, WeightTypes...>(
-                             params.weight_dtype, params.WEIGHT_OFFSET, address,
-                             weight_req),
-                         ...);
+                        send_packed_request<WeightTypes...>(
+                            params.weight_dtype, params.WEIGHT_OFFSET, address,
+                            params.weight_fetch_width, weight_req);
 
                         if (loop_counters[1][4] == loop_bounds[1][4]) {
                           break;
@@ -241,6 +245,11 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
               .weightAddressGenLoops[1]
                                     [params.weightAddressGenWeightLoopIndex[1]];
 
+      // reduce the number of iterations by packing factor
+      K1 = K1 >> params.weight_packing_shift;
+      loop_bounds[1][params.weightAddressGenWeightLoopIndex[1]] = K1 - 1;
+      ac_int<4, false> pf_bound = (1 << params.weight_packing_shift) - 1;
+
       ac_int<24, false> fx_stride = C1 * C0 * K1;
       ac_int<24, false> fy_stride = FX * fx_stride;
 
@@ -255,36 +264,43 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
                   for (loop_counters[1][2] = 0;; loop_counters[1][2]++) {
                     for (loop_counters[1][3] = 0;; loop_counters[1][3]++) {
                       for (loop_counters[1][4] = 0;; loop_counters[1][4]++) {
-                        ac_int<LOOP_WIDTH, false> k2 = loop_counters
-                            [0][params.weightAddressGenWeightLoopIndex[0]];
-                        ac_int<LOOP_WIDTH, false> c1 = loop_counters
-                            [1][params.weightAddressGenReductionLoopIndex[1]];
-                        ac_int<LOOP_WIDTH, false> c0 = loop_counters
-                            [1][params.weightAddressGenReductionLoopIndex[2]];
-                        ac_int<LOOP_WIDTH, false> fx =
-                            loop_counters[1][params.weightAddressGenFxIndex];
-                        ac_int<LOOP_WIDTH, false> fy =
-                            loop_counters[1][params.weightAddressGenFyIndex];
-                        ac_int<LOOP_WIDTH, false> k1 = loop_counters
-                            [1][params.weightAddressGenWeightLoopIndex[1]];
+                        for (int pf = 0;; pf++) {
+                          ac_int<LOOP_WIDTH, false> k2 = loop_counters
+                              [0][params.weightAddressGenWeightLoopIndex[0]];
+                          ac_int<LOOP_WIDTH, false> c1 = loop_counters
+                              [1][params.weightAddressGenReductionLoopIndex[1]];
+                          ac_int<LOOP_WIDTH, false> c0 = loop_counters
+                              [1][params.weightAddressGenReductionLoopIndex[2]];
+                          ac_int<LOOP_WIDTH, false> fx =
+                              loop_counters[1][params.weightAddressGenFxIndex];
+                          ac_int<LOOP_WIDTH, false> fy =
+                              loop_counters[1][params.weightAddressGenFyIndex];
+                          ac_int<LOOP_WIDTH, false> k1 = loop_counters
+                              [1][params.weightAddressGenWeightLoopIndex[1]];
 
-                        ac_int<BufferWidth, false> data = transpose_out.Pop();
+                          ac_int<BufferWidth, false> data = transpose_out.Pop();
 
-                        ac_int<16, false> k = (k2 * K1 + k1) * NCols;
-                        ac_int<16, false> c = c1 * C0 + c0;
-                        ac_int<16, false> address =
-                            fy * fy_stride + fx * fx_stride + c * K1 + k1;
+                          ac_int<16, false> c = c1 * C0 + c0;
+                          ac_int<16, false> address =
+                              fy * fy_stride + fx * fx_stride + c * K1 + k1;
+                          address =
+                              (address << params.weight_packing_shift) + pf;
 
-                        BufferWriteRequest<ac_int<BufferWidth, false>> req;
-                        req.address = address;
-                        req.data = data;
-                        req.last = loop_counters[1][4] == loop_bounds[1][4] &&
-                                   loop_counters[1][3] == loop_bounds[1][3] &&
-                                   loop_counters[1][2] == loop_bounds[1][2] &&
-                                   loop_counters[1][1] == loop_bounds[1][1] &&
-                                   loop_counters[1][0] == loop_bounds[1][0];
-                        write_request[bankSel].Push(req);
+                          BufferWriteRequest<ac_int<BufferWidth, false>> req;
+                          req.address = address;
+                          req.data = data;
+                          req.last = loop_counters[1][4] == loop_bounds[1][4] &&
+                                     loop_counters[1][3] == loop_bounds[1][3] &&
+                                     loop_counters[1][2] == loop_bounds[1][2] &&
+                                     loop_counters[1][1] == loop_bounds[1][1] &&
+                                     loop_counters[1][0] == loop_bounds[1][0] &&
+                                     pf == pf_bound;
+                          write_request[bankSel].Push(req);
 
+                          if (pf == pf_bound) {
+                            break;
+                          }
+                        }
                         if (loop_counters[1][4] == loop_bounds[1][4]) {
                           break;
                         }
@@ -703,25 +719,16 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
         }
       } else {  // passthrough
         total_values *= loop_bounds[1][4];
+        total_values >>= params.weight_packing_shift;
+        ac_int<4, false> packing_factor = 1 << params.weight_packing_shift;
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
         for (int i = 0; i < total_values; i++) {
-          ac_int<BufferWidth, false> bits = 0;
-
-          bool success = (process_matrix_input<WeightTypes, NCols, PortWidth,
-                                               BufferWidth, WeightTypes...>(
-                              params.weight_dtype, weight_resp, bits) ||
-                          ...);
-
-#ifndef __SYNTHESIS__
-          if (!success) {
-            std::cerr << "Error: matrix weight dtype '" << params.weight_dtype
-                      << "' is not valid" << std::endl;
-          }
-#endif
-
-          transpose_out.Push(bits);
+          process_packed_response<NCols, PortWidth, BufferWidth,
+                                  WeightTypes...>(
+              params.weight_dtype, params.weight_num_fetches, packing_factor,
+              weight_resp, transpose_out);
         }
       }
     }
