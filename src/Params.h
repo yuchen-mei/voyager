@@ -382,6 +382,7 @@ struct VectorInstructions {
 #ifndef __SYNTHESIS__
   VectorInstructions() {
     op_type = 0;
+    inst_count = 1;
     vector_op0_src0 = 0;
     vector_op0_src1 = 0;
     vector_op2_src1 = 0;
@@ -409,6 +410,8 @@ struct VectorInstructions {
   static const unsigned int vector = 0;
   static const unsigned int reduction = 1;
   static const unsigned int accumulation = 2;
+
+  ac_int<24, false> inst_count;
 
   ac_int<4, false> vector_op0_src0;
   ac_int<4, false> vector_op0_src1;
@@ -465,9 +468,10 @@ struct VectorInstructions {
   ac_int<1, false> rduplicate;
   ac_int<1, false> rbroadcast;  // broadcast by immediate0
 
-  ac_int<1, false> rdest;
-  static const unsigned int to_op0 = 0;
-  static const unsigned int to_op2 = 1;
+  ac_int<2, false> rdest;
+  static const unsigned int to_op0 = 1;
+  static const unsigned int to_op2 = 2;
+  static const unsigned int to_memory = 3;
 
   ac_int<2, false> vdest;
   static const unsigned int to_output = 1;
@@ -479,12 +483,13 @@ struct VectorInstructions {
   ac_int<16, false> immediate2;
   ac_int<64, false> VMAP_OFFSET;
 
-  static const unsigned int width = 176;
+  static const unsigned int width = 201;
 
 #ifndef NO_SYSC
   template <unsigned int Size>
   void Marshall(Marshaller<Size>& m) {
     m & op_type;
+    m & inst_count;
     m & vector_op0_src0;
     m & vector_op0_src1;
     m & vector_op2_src1;
@@ -519,6 +524,7 @@ struct VectorInstructions {
   inline friend std::ostream& operator<<(ostream& os,
                                          const VectorInstructions& params) {
     os << "op_type: " << params.op_type << std::endl;
+    os << "inst_count: " << params.inst_count << std::endl;
     os << "vector_op0_src0: " << params.vector_op0_src0 << std::endl;
     os << "vector_op0_src1: " << params.vector_op0_src1 << std::endl;
     os << "vector_op2_src1: " << params.vector_op2_src1 << std::endl;
@@ -546,7 +552,7 @@ struct VectorInstructions {
 
   inline friend bool operator==(const VectorInstructions& lhs,
                                 const VectorInstructions& rhs) {
-    return lhs.op_type == rhs.op_type &&
+    return lhs.op_type == rhs.op_type && lhs.inst_count == rhs.inst_count &&
            lhs.vector_op0_src0 == rhs.vector_op0_src0 &&
            lhs.vector_op0_src1 == rhs.vector_op0_src1 &&
            lhs.vector_op2_src1 == rhs.vector_op2_src1 &&
@@ -658,7 +664,6 @@ struct VectorParams : BaseParams {
 
     head_size_power_of_two = 32;
     has_attn_head_permute = false;
-    has_output_permute = false;
 
     quantize_output_mx = false;
     SCALE_OFFSET = 0;
@@ -733,7 +738,6 @@ struct VectorParams : BaseParams {
   // Transformer head permutation
   ac_int<4, false> head_size_power_of_two;
   bool has_attn_head_permute;
-  bool has_output_permute;
 
   bool quantize_output_mx;
   ac_int<ADDRESS_WIDTH, false> SCALE_OFFSET;
@@ -753,9 +757,9 @@ struct VectorParams : BaseParams {
 
   // There are 4 address generators in total + 12-bit broadcasting flag + 36-bit
   // slicing params + 32-bit pooling param + 18-bit reshape params + 4-bit head
-  // size + 7 boolean flags + 64-bit scale offset
+  // size + 6 boolean flags + 64-bit scale offset
   static const unsigned int width = 4 * address_gen_width + 12 + 36 + 32 + 18 +
-                                    4 + 7 + ADDRESS_WIDTH - 16 +
+                                    4 + 6 + ADDRESS_WIDTH - 16 +
                                     codebook_params_width;
 
 #ifndef NO_SYSC
@@ -869,7 +873,6 @@ struct VectorParams : BaseParams {
     // Transformer head permutation flags
     m & head_size_power_of_two;
     m & has_attn_head_permute;
-    m & has_output_permute;
 
     m & quantize_output_mx;
     m & SCALE_OFFSET;
@@ -1009,7 +1012,6 @@ struct VectorParams : BaseParams {
        << std::endl;
     os << "has_attn_head_permute: " << params.has_attn_head_permute
        << std::endl;
-    os << "has_output_permute: " << params.has_output_permute << std::endl;
 
     os << "quantize_output_mx: " << params.quantize_output_mx << std::endl;
     os << "SCALE_OFFSET: " << params.SCALE_OFFSET << std::endl;
@@ -1126,7 +1128,6 @@ struct VectorParams : BaseParams {
 
     if (lhs.head_size_power_of_two != rhs.head_size_power_of_two) return false;
     if (lhs.has_attn_head_permute != rhs.has_attn_head_permute) return false;
-    if (lhs.has_output_permute != rhs.has_output_permute) return false;
 
     if (lhs.quantize_output_mx != rhs.quantize_output_mx) return false;
     if (lhs.SCALE_OFFSET != rhs.SCALE_OFFSET) return false;
@@ -1164,6 +1165,9 @@ struct VectorInstructionConfig : BaseParams {
   void Marshall(Marshaller<Size>& m) {
     for (int j = 0; j < 8; j++) {
       m& inst[j].op_type;
+    }
+    for (int j = 0; j < 8; j++) {
+      m& inst[j].inst_count;
     }
     for (int j = 0; j < 8; j++) {
       m& inst[j].vector_op0_src0;
