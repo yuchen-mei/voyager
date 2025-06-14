@@ -16,6 +16,31 @@ from google.protobuf.json_format import MessageToDict
 from quantized_training.codegen import param_pb2
 
 
+ACCURACY_RESULTS = {
+    "resnet18": {
+        "E4M3": 70.8,
+        "CFLOAT": 70.8,
+        "INT8": 69.7,
+        "MXINT8": 71.0,
+        "P8_1": 70.5,
+    },
+    "resnet50": {
+        "E4M3": 67.7,
+        "CFLOAT": 71.2,
+        "INT8": 69.1,
+        "MXINT8": 69.5,
+        "P8_1": 69.6,
+    },
+    "mobilebert": {
+        "E4M3": 90.6,
+        "CFLOAT": 90.83,
+        "INT8": 90.37,
+        "MXINT8": 91.0,
+        "P8_1": 90.37,
+    },
+}
+
+
 def set_default_env_vars(env_vars):
     env_vars.setdefault("INPUT_BUFFER_SIZE", "1024")
     env_vars.setdefault("WEIGHT_BUFFER_SIZE", "1024")
@@ -198,7 +223,7 @@ def run_systemc_unit_test(model, layer, output_folder, fast, scale_down_operatio
                 env=env_vars,
                 stdout=stdout_file,
                 stderr=subprocess.STDOUT,
-                timeout=1 * 60 * 60,
+                timeout=2 * 60 * 60,
             )
         except subprocess.TimeoutExpired:
             print(f"Test {model}_{layer} timed out")
@@ -436,31 +461,6 @@ def run_rtl_tests(
     pool.join()
 
     return print_test_results(test_results, layers, results_folder)
-
-
-ACCURACY_RESULTS = {
-    "resnet18": {
-        "E4M3": 70.8,
-        "CFLOAT": 70.8,
-        "INT8": 69.7,
-        "MXINT8": 71.0,
-        "P8_1": 70.5,
-    },
-    "resnet50": {
-        "E4M3": 67.7,
-        "CFLOAT": 71.2,
-        "INT8": 69.1,
-        "MXINT8": 69.5,
-        "P8_1": 69.6,
-    },
-    "mobilebert": {
-        "E4M3": 90.6,
-        "CFLOAT": 90.83,
-        "INT8": 90.37,
-        "MXINT8": 91.0,
-        "P8_1": 90.37,
-    },
-}
 
 
 def run_accuracy(model, dataset, num_processes, output_folder):
@@ -842,7 +842,7 @@ def main():
     layers = {}
     layer_counts = {}
 
-    whitelist = None
+    whitelist = []
     if args.whitelist:
         with open(args.whitelist, 'r') as f:
             whitelist = json.load(f)

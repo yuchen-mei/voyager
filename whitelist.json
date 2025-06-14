@@ -3,8 +3,7 @@
         "datatype": "MXNF4",
         "model": [
             "llama_prefill",
-            "llama_prefill_mp",
-            "llama_decode"
+            "llama_prefill_mp"
         ],
         "sim_type": [
             "systemc",
@@ -23,8 +22,7 @@
         "datatype": "MXNF4",
         "model": [
             "llama_prefill",
-            "llama_prefill_mp",
-            "llama_decode"
+            "llama_prefill_mp"
         ],
         "sim_type": [
             "systemc",
@@ -33,11 +31,50 @@
         ],
         "block_size": 64,
         "layers": [
+            "linear_mx_default_7",
             "submodule_3",
             "submodule_4",
             "submodule_5",
-            "submodule_6",
-            "linear_mx_default_7"
+            "submodule_6"
+        ]
+    },
+    {
+        "datatype": "MXNF4",
+        "model": "llama_decode",
+        "sim_type": [
+            "systemc",
+            "fast-systemc",
+            "rtl"
+        ],
+        "block_size": [
+            16,
+            32
+        ],
+        "layers": [
+            "calculate_mx_qparam_default",
+            "calculate_mx_qparam_default_1",
+            "index_copy_"
+        ]
+    },
+    {
+        "datatype": "MXNF4",
+        "model": "llama_decode",
+        "sim_type": [
+            "systemc",
+            "fast-systemc",
+            "rtl"
+        ],
+        "block_size": 64,
+        "layers": [
+            "calculate_mx_qparam_default",
+            "calculate_mx_qparam_default_1",
+            "index_copy_",
+            "slice_1",
+            "slice_3",
+            "submodule_2",
+            "submodule_3",
+            "submodule_4",
+            "submodule_5"
         ]
     }
 ]
