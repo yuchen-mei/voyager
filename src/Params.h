@@ -456,6 +456,8 @@ struct VectorInstructions {
     vector_op0_src1 = 0;
     vector_op2_src1 = 0;
     vector_op3_src1 = 0;
+    vdequantize = 0;
+    vector_dq_scale = 0;
     vector_op0 = 0;
     vector_op1 = 0;
     vector_op2 = 0;
