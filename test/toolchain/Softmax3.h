@@ -39,7 +39,7 @@ void MapSoftmax(const codegen::Operation &param,
   const int reduced_size = get_size(non_reduction_loops);
 
   const auto output_memory = output.memory();
-  const int max_scratch_memory = output_memory.address() + 2 * output_size;
+  const int max_scratch_memory = get_address(output) + 2 * output_size;
   const int sum_scratch_memory = max_scratch_memory + 2 * output_size;
 
   // ----------------------------------------------------------------------------
@@ -49,7 +49,7 @@ void MapSoftmax(const codegen::Operation &param,
   // Address generator 0: Input tensor.
   const auto input_memory = input.memory();
   accelerator_memory_map["vector0"] = get_partition(input_memory.partition());
-  vector_params->ADDRESS_GEN0_OFFSET = input_memory.address();
+  vector_params->ADDRESS_GEN0_OFFSET = get_address(input);
   vector_params->addr_gen0_mode = 2;
   vector_params->addr_gen0_dtype =
       get_index_from_type_name<VU_INPUT_TYPES>(input.dtype());
@@ -109,7 +109,7 @@ void MapSoftmax(const codegen::Operation &param,
 
   // Address generator 0: Input tensor.
   accelerator_memory_map["vector0"] = get_partition(input_memory.partition());
-  vector_params->ADDRESS_GEN0_OFFSET = input_memory.address();
+  vector_params->ADDRESS_GEN0_OFFSET = get_address(input);
   vector_params->addr_gen0_mode = 2;
   vector_params->addr_gen0_dtype =
       get_index_from_type_name<VU_INPUT_TYPES>(input.dtype());
@@ -186,7 +186,7 @@ void MapSoftmax(const codegen::Operation &param,
 
   // Address generator 0: Input tensor.
   accelerator_memory_map["vector0"] = get_partition(input_memory.partition());
-  vector_params->ADDRESS_GEN0_OFFSET = input_memory.address();
+  vector_params->ADDRESS_GEN0_OFFSET = get_address(input);
   vector_params->addr_gen0_mode = 2;
   vector_params->addr_gen0_dtype =
       get_index_from_type_name<VU_INPUT_TYPES>(input.dtype());
@@ -225,7 +225,7 @@ void MapSoftmax(const codegen::Operation &param,
 
   // Output
   accelerator_memory_map["outputs"] = get_partition(output_memory.partition());
-  vector_params->VECTOR_OUTPUT_OFFSET = output_memory.address();
+  vector_params->VECTOR_OUTPUT_OFFSET = get_address(output);
   vector_params->output_mode = 2;
   vector_params->output_dtype =
       get_index_from_type_name<OUTPUT_DATATYPES>(output.dtype());

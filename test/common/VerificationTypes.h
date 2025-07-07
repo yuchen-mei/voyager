@@ -17,13 +17,8 @@
 #include "test/compiler/proto/param.pb.h"
 // IWYU pragma: end_exports
 
-#ifndef NUM_SRAM_BANKS
-#define NUM_SRAM_BANKS 512
-#endif
-#define SRAM_MEMORY_SIZE (NUM_SRAM_BANKS * 1024LL * 1024LL)
-
-// Size of the reference memory used for verification in MB
-// Should be at least as large as the SRAM memory
+#define DRAM_SIZE_MB (512 * 1024LL * 1024LL)
+#define SRAM_SIZE_MB (8 * 1024LL * 1024LL)
 #define REFERENCE_MEMORY_SIZE (1024 * 1024 * 8)
 
 static const std::unordered_set<std::string> GEMM_OPS = {
@@ -129,4 +124,23 @@ inline float* read_constant_param(const codegen::Tensor& tensor) {
   input_stream.read(reinterpret_cast<char*>(data), size * sizeof(float));
 
   return data;
+}
+
+inline std::string getenv(std::string const& name,
+                          std::string const& default_value) {
+  const char* val = std::getenv(name.c_str());
+  return val == NULL ? default_value : std::string(val);
+}
+
+inline bool is_soc_sim() {
+  const char* env = std::getenv("SOC_SIM");
+  return env != nullptr && std::string(env) == "1";
+}
+
+inline uint64_t get_address(const codegen::Tensor& tensor) {
+  if (is_soc_sim() && tensor.has_scratchpad()) {
+    return tensor.scratchpad().offset();
+  } else {
+    return tensor.memory().address();
+  }
 }
