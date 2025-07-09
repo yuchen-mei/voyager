@@ -1,6 +1,8 @@
 #pragma once
 
 #include "test/toolchain/Common.h"
+#include "ApproximationConstants.h"
+#include "ArchitectureParams.h"
 
 inline bool are_broadcastable(const std::vector<int> &shape1,
                               const std::vector<int> &shape2) {
@@ -152,6 +154,7 @@ void MapVectorOperations(const codegen::Operation &param,
                          std::deque<AcceleratorMemoryMap> &opMemoryMaps) {
   VectorParams *vector_params = new VectorParams;
   AcceleratorMemoryMap accelerator_memory_map;
+  VectorInstructionConfig *vector_instruction_config = new VectorInstructionConfig;
 
   auto op_list = get_op_list(param);
 
@@ -524,6 +527,18 @@ void MapVectorOperations(const codegen::Operation &param,
       vector_params->quantize_output_mx = true;
       vector_params->SCALE_OFFSET =
           param.outputs().tensors(0).memory().address();
+    } else if (opcode == "hardtanh_") {
+      // Copy coefficients from ApproximationConstants.h
+      for (int i = 0; i < NUM_MAXES; i++) {
+        vector_instruction_config->approx.maxes[i] = HARDTANH_MAXES[i];
+      }
+      for (int i = 0; i < NUM_RANGES; i++) {
+        for (int j = 0; j < NUM_COEFFS; j++) {
+          vector_instruction_config->approx.ranges[i][j] = HARDTANH_RANGES[i][j];
+        }
+      }
+      vector_instruction_config->approx.clamp_min = HARDTANH_CLAMP_MIN;
+      vector_instruction_config->approx.clamp_max = HARDTANH_CLAMP_MAX;
     } else if (op.kwargs().contains("other") || opcode == "quantize") {
       std::string other_key = opcode == "quantize" ? "scale" : "other";
       const auto other = op.kwargs().at(other_key);
@@ -594,8 +609,6 @@ void MapVectorOperations(const codegen::Operation &param,
   }
 
   // total output count
-  VectorInstructionConfig *vector_instruction_config =
-      new VectorInstructionConfig;
   vector_instruction_config->inst[0] = inst;
   vector_instruction_config->instCount[0] = 1;
   vector_instruction_config->instLen = 1;

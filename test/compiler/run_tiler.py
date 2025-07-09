@@ -315,6 +315,12 @@ def main():
             print(f"Skipping input with {input_channels} channels")
             continue
 
+        if "groups" in matrix_op.kwargs:
+            group = matrix_op.kwargs["groups"].int_value
+            if group == output_channels and group != 1:
+                print("Skipping DwC")
+                continue
+
         if len(output_shape) == 4:
             if output_shape[0] == 1 and output_shape[1] == 1:
                 width = output_shape[2]

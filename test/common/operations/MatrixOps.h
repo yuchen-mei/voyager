@@ -637,3 +637,206 @@ inline Vector *matrix_vector_multiply(std::any input_ptr, std::any weight_ptr,
 
   return outputs;
 }
+
+// arb kernel size model based on 3*3 kernel 
+template <typename Input, typename Psum, typename Buffer>
+// Input: quantized input/weight type
+// Psum: accumulation type 
+// Buffer: output type 
+inline Buffer *DwC(std::any input_ptr, std::any weight_ptr,
+                   std::any bias_ptr, const Operation &operation) {
+  std::vector<int> BUFFER_DIM = {2, 9, 9}; // IC, X, Y
+               
+  const auto param = operation.param;
+  const auto op_list = get_op_list(param);
+  const auto first_op = op_list.front();
+  const auto out_tensor = get_op_outputs(param).front();
+
+  const auto &stride_vals = first_op.kwargs().at("stride").int_list().values();
+  int stride_y = stride_vals[0];
+  int stride_x = stride_vals[1];
+  spdlog::info("stride_x: {}\n", stride_x);
+  spdlog::info("stride_y: {}\n", stride_y);
+
+  int ibatch = first_op.kwargs().at("input").tensor().shape(0);
+  int ic     = first_op.kwargs().at("input").tensor().shape(3);
+  int iy     = first_op.kwargs().at("input").tensor().shape(1);  // input height
+  int ix     = first_op.kwargs().at("input").tensor().shape(2);  // input weight
+
+  int obatch = out_tensor.shape(0);
+  int oc     = out_tensor.shape(3);
+  int oy     = out_tensor.shape(1);
+  int ox     = out_tensor.shape(2);
+  int k_h    = first_op.kwargs().at("weight").tensor().shape(2);
+  int k_w    = first_op.kwargs().at("weight").tensor().shape(3);
+  int kernel_size = 3;
+
+  int x_pad  = first_op.kwargs().at("padding").int_list().values()[1];
+  int y_pad  = first_op.kwargs().at("padding").int_list().values()[0];
+
+  Buffer *outputs = new Buffer[obatch * oc * ox * oy];
+  Input *inputs    = std::any_cast<Input *>(input_ptr);
+  Input *weights   = std::any_cast<Input *>(weight_ptr);
+  Buffer *biases = std::any_cast<Buffer *>(bias_ptr);
+
+  // spdlog::info("Input shape: [{} {} {} {}], Weight shape: [{} {} {} {}], Output shape: [{} {} {} {}]",
+  //              ibatch, ic, ix, iy, oc, 1, k_w, k_h, obatch, oc, ox, oy);
+
+  // // Print input as matrix for debugging (YXC layout)
+  // spdlog::info("=== INPUT MATRICES ===");
+  // for (int c = 0; c < ic && c < 4; ++c) {  // Limit to first 4 channels to avoid spam
+  //   spdlog::info("Channel {}:", c);
+  //   for (int y = 0; y < iy; ++y) {
+  //     std::ostringstream row_stream;
+  //     row_stream << "  [";
+  //     for (int x = 0; x < ix; ++x) {
+  //       int input_addr = (y * ix + x) * ic + c;
+  //       Input val = inputs[input_addr];
+  //       row_stream << std::setw(4) << static_cast<int>(val);
+  //       if (x < ix - 1) row_stream << ", ";
+  //     }
+  //     row_stream << "]";
+  //     spdlog::info("{}", row_stream.str());
+  //   }
+  //   spdlog::info("");
+  // }
+
+
+  // Create padded weights (pad smaller kernels to 3x3 with zeros)
+  Input *padded_weights = new Input[ic * kernel_size * kernel_size];
+  
+  // Explicitly zero-initialize the entire padded weights array
+  std::memset(padded_weights, 0, ic * kernel_size * kernel_size * sizeof(Input));
+
+  int pad_offset_h = (kernel_size - k_h) / 2;
+  int pad_offset_w = (kernel_size - k_w) / 2;
+
+  //Copy original weights to center of padded weights (CYX layout)
+  for (int c = 0; c < ic; ++c) {
+    for (int ky = 0; ky < k_h; ++ky) {
+      for (int kx = 0; kx < k_w; ++kx) {
+        // YXC layout: (y * width + x) * channels + c
+        // int src_idx = (ky * k_w + kx) * ic + c;
+        int src_idx = (c * k_h * k_w) + (ky * k_w + kx);
+        
+        // Destination still uses CYX layout for padded weights
+        int dst_idx = (c * kernel_size + ky) * kernel_size + kx;
+        // int dst_idx = (c * kernel_size * kernel_size) + (ky * kernel_size + kx);
+        
+        padded_weights[dst_idx] = weights[src_idx];
+        // spdlog::info("src_idx: {}, dst_idx: {}", src_idx, dst_idx);
+        // spdlog::info("src weight: {}, dst weight: {}", 
+        //             static_cast<int>(weights[src_idx]), static_cast<int>(padded_weights[dst_idx]));
+        // spdlog::info("Padded weight at index {}: {}", dst_idx, static_cast<int>(padded_weights[dst_idx]));
+      }
+    }
+  }
+
+  int IC1 = (ic + BUFFER_DIM[0] - 1) / BUFFER_DIM[0];
+  int IC0 = BUFFER_DIM[0];
+  int OX1 = (ox + BUFFER_DIM[1] - 1) / BUFFER_DIM[1];
+  int OX0 = BUFFER_DIM[1];
+  int OY1 = (oy + BUFFER_DIM[2] - 1) / BUFFER_DIM[2];
+  int OY0 = BUFFER_DIM[2];
+
+  int counter[2][3] = {0};
+  for (counter[0][0] = 0; counter[0][0] < IC1; counter[0][0]++) {
+    for (counter[0][1] = 0; counter[0][1] < OX1; counter[0][1]++) {
+      for (counter[0][2] = 0; counter[0][2] < OY1; counter[0][2]++) {
+        int ic1 = counter[0][0];
+        int ox1 = counter[0][1];
+        int oy1 = counter[0][2];
+        
+        for (counter[1][0] = 0; counter[1][0] < IC0; counter[1][0]++) {
+          for (counter[1][1] = 0; counter[1][1] < OX0; counter[1][1]++) {
+            for (counter[1][2] = 0; counter[1][2] < OY0; counter[1][2]++) {
+              int ic0 = counter[1][0];
+              int ox0 = counter[1][1];
+              int oy0 = counter[1][2];
+
+              int ic_g = ic1 * IC0 + ic0;
+              int x = ox1 * OX0 + ox0;
+              int y = oy1 * OY0 + oy0;
+
+              if (x >= ox || y >= oy || ic_g >= ic) continue;
+
+              // For pad=0 (no padding), start from actual stride position
+              int x_start = x * stride_x;
+              int y_start = y * stride_y;
+
+              Psum psum(0.0);
+              
+              // if (ic_g == 0 && x < 3 && y < 3) {
+              //   spdlog::info("Channel 0: Computing output({}, {}, {})", ic_g, x, y);
+              //   spdlog::info("Channel 0: x_start = {} * {} = {}, y_start = {} * {} = {}", 
+              //                x, stride_x, x_start, y, stride_y, y_start);
+              // }
+
+              // Apply 3x3 kernel directly on input (pad=0 behavior)
+              for (int ky = 0; ky < kernel_size; ky++) {
+                for (int kx = 0; kx < kernel_size; kx++) {
+                  int input_x = x_start + kx - x_pad;
+                  int input_y = y_start + ky - y_pad;
+                  
+                  // Check bounds to prevent core dump
+                  if (input_x >= 0 && input_x < ix && input_y >= 0 && input_y < iy) {
+                    int input_addr = (input_y * ix + input_x) * ic + ic_g;
+                    Input input = inputs[input_addr];
+                    int weight_addr = ic_g * kernel_size * kernel_size + ky * kernel_size + kx;
+                    Input weight = padded_weights[weight_addr];  // Use padded_weights
+                    
+                    // if (ic_g == 2 && x == 0 && y == 0) {
+                    //   spdlog::info("Channel 2: kernel[{}][{}] -> input[{}][{}] = {}, weight = {}, product = {}", 
+                    //                ky, kx, input_y, input_x, static_cast<float>(input), 
+                    //                static_cast<float>(weight), static_cast<float>(input) * static_cast<float>(weight));
+                    //   spdlog::info("\n"); // Empty line before next computation
+                    //               }
+                    
+                    psum += static_cast<Psum>(input) * static_cast<Psum>(weight);
+                  }
+                }
+              }
+
+              // if (ic_g == 0 && x < 3 && y < 3) {
+              //   spdlog::info("Channel 0: Final sum for output({},{}) = {}, {}\n", x, y, static_cast<float>(psum), 
+              //                static_cast<float>(biases[ic_g]));
+              // }
+              
+              int output_addr = (y * ox + x) * oc + ic_g;
+              outputs[output_addr] = static_cast<Buffer>(psum) + biases[ic_g];
+              // outputs[output_addr] = static_cast<Buffer>(psum);
+
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Print output matrix for debugging
+  // spdlog::info("=== OUTPUT MATRICES ===");
+  // for (int c = 0; c < oc && c < 4; ++c) {  // Limit to first 4 channels
+  //   spdlog::info("Channel {} output:", c);
+  //   for (int y = 0; y < oy; ++y) {
+  //     std::ostringstream row_stream;
+  //     row_stream << "  [";
+  //     for (int x = 0; x < ox; ++x) {
+  //       int output_addr = (y * ox + x) * oc + c;
+  //       Buffer val = outputs[output_addr];
+  //       row_stream << std::setw(6) << std::fixed << std::setprecision(1) << static_cast<float>(val);
+  //       if (x < ox - 1) row_stream << ", ";
+  //     }
+  //     row_stream << "]";
+  //     spdlog::info("{}", row_stream.str());
+  //   }
+  //   spdlog::info("");
+  // }
+
+  delete[] inputs;
+  delete[] weights;
+  delete[] padded_weights;  // Clean up padded weights
+  delete[] biases;
+
+  spdlog::info("Done with DwC\n");
+  return outputs;
+}

@@ -82,11 +82,11 @@ Simulation::~Simulation() {
 void Simulation::load_data() {
   std::vector<uint64_t> memory_sizes{SRAM_MEMORY_SIZE, REFERENCE_MEMORY_SIZE};
 
-  bool is_cnn = model == "resnet18" || model == "resnet50";
+  bool is_cnn = model == "resnet18" || model == "resnet50" || model == "mobilenet_v2";
   int num_classes;
   if (model == "mobilebert" || model == "bert") {
     num_classes = 2;
-  } else if (model == "resnet18" || model == "resnet50") {
+  } else if (model == "resnet18" || model == "resnet50" || model == "mobilenet_v2") {
     num_classes = 1000;
   }
 

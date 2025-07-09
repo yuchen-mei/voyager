@@ -1,10 +1,12 @@
 #pragma once
 
 #include "test/common/operations/Common.h"
+#include "ApproximationConstants.h"
+#include "ApproximationUnit.h"
 
 const std::set<std::string> unary_ops = {"relu", "relu_", "gelu", "gelu_",
                                          "tanh", "tanh_", "silu", "silu_",
-                                         "sqrt", "sqrt_", "neg",  "neg_"};
+                                         "sqrt", "sqrt_", "neg",  "neg_", "hardtanh_"};
 const std::set<std::string> arithmetics = {"add", "add_", "sub", "sub_",
                                            "mul", "mul_", "div", "div_"};
 
@@ -23,6 +25,12 @@ inline T *perform_unary_operation(T *input, const std::vector<int> shape,
       result[i] = input[i].tanh();
     } else if (opcode == "silu" || opcode == "silu_") {
       result[i] = input[i].silu();
+    } else if (opcode == "hardtanh_") {
+      result[i] = poly_approx(input[i],
+          HARDTANH_MAXES,
+          HARDTANH_RANGES,
+          HARDTANH_CLAMP_MIN,
+          HARDTANH_CLAMP_MAX);
     } else if (opcode == "sqrt" || opcode == "sqrt_") {
       result[i] = input[i].sqrt();
     } else if (opcode == "neg" || opcode == "neg_") {

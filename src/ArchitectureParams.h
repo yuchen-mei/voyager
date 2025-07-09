@@ -4,6 +4,11 @@
 // IWYU thinks that this header is not used, even though it is.
 #include "datatypes/DataTypes.h"  // IWYU pragma: keep
 
+// Constants for Approximation Unit
+constexpr int NUM_MAXES = 6;
+constexpr int NUM_RANGES = 7;
+constexpr int NUM_COEFFS = 4;
+
 #if defined(P8_1)
 
 #define INPUT_DATATYPE DataTypes::posit8
@@ -90,6 +95,8 @@ using F9 = StdFloat<3, 5>;
 #define WEIGHT_DATATYPE DataTypes::int8
 #define ACCUM_DATATYPE DataTypes::int24
 #define VECTOR_DATATYPE DataTypes::bfloat16
+#define DWC_DATATYPE DataTypes::int8
+#define DWC_PSUM DataTypes::int24
 
 #elif defined(INT8_32)
 
@@ -106,6 +113,8 @@ using F9 = StdFloat<3, 5>;
 #define ACCUM_BUFFER_DATATYPE DataTypes::bfloat16
 #define VECTOR_DATATYPE DataTypes::bfloat16
 #define SCALE_DATATYPE DataTypes::fp8_e8m0
+#define DWC_DATATYPE DataTypes::int8
+#define DWC_PSUM DataTypes::int24
 
 #define SUPPORT_MX true
 
@@ -200,7 +209,7 @@ using F9 = StdFloat<3, 5>;
 
 #ifndef VU_INPUT_TYPES
 #if SUPPORT_MX
-#define VU_INPUT_TYPES VECTOR_DATATYPE, SCALE_DATATYPE
+#define VU_INPUT_TYPES VECTOR_DATATYPE, SCALE_DATATYPE, INPUT_DATATYPE
 #else
 #define VU_INPUT_TYPES INPUT_DATATYPE, VECTOR_DATATYPE
 #endif
@@ -296,4 +305,25 @@ using WeightTypeList = std::tuple<WEIGHT_DATATYPE>;
 
 #ifndef ACCUM_BUFFER_SIZE
 #define ACCUM_BUFFER_SIZE 1024
+#endif
+
+#ifndef DWC_WIDTH
+#define DWC_WIDTH 40
+#endif
+
+#ifndef UNROLLFACTOR
+#define UNROLLFACTOR (OC_PORT_WIDTH / VECTOR_DATATYPE::width)
+#endif
+
+#ifndef DWC_KERNEL_DIM
+#define DWC_KERNEL_DIM 3
+#endif
+#define DWC_KERNEL_SIZE (DWC_KERNEL_DIM * DWC_KERNEL_DIM)
+
+#ifndef DWC_DATATYPE
+#define DWC_DATATYPE DataTypes::int8
+#endif
+
+#ifndef DWC_PSUM
+#define DWC_PSUM DataTypes::int24
 #endif

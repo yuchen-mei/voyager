@@ -326,7 +326,7 @@ Tiling get_conv2d_tiling(const codegen::OpOverload param) {
   }
   // conv1
   else if (input_shape[3] == 3 && input_shape[1] == 224 &&
-           input_shape[2] == 224 && weight_shape[3] == 64 &&
+           input_shape[2] == 224 && (weight_shape[3] == 64 || weight_shape[3] == 32) &&
            weight_shape[0] == 7 && weight_shape[1] == 7) {
     int fx;
     if (IC_DIMENSION == 4) {
@@ -342,8 +342,9 @@ Tiling get_conv2d_tiling(const codegen::OpOverload param) {
                                std::to_string(IC_DIMENSION));
     }
 
+    int K1 = weight_shape[3] / 32;
     Tiling tiling = {
-        .loops = {{7, 7, 2, 1, 1, 1}, {1, 2, 7, fx, 16, 16}},
+        .loops = {{7, 7, K1, 1, 1, 1}, {1, 2, 7, fx, 16, 16}},
         .x_loop_index = {0, 5},
         .y_loop_index = {1, 4},
         .reduction_loop_index = {3, 0},

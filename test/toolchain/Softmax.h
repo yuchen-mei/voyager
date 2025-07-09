@@ -1,6 +1,8 @@
 #pragma once
 
 #include "test/toolchain/Common.h"
+#include "ApproximationConstants.h"
+#include "ArchitectureParams.h"
 
 void MapSoftmax(const codegen::Operation &param,
                 std::deque<BaseParams *> &mappedParams,
@@ -107,7 +109,7 @@ void MapSoftmax(const codegen::Operation &param,
   vinst3.vector_op0_src0 = VectorInstructions::from_vector_fetch_0;
   vinst3.vector_op0_src1 = VectorInstructions::from_reduction_0;
   vinst3.vector_op0 = VectorInstructions::vsub;
-  vinst3.vector_op1 = VectorInstructions::vexp;
+  vinst3.vector_op1 = VectorInstructions::vpoly;
   vinst3.vdest = VectorInstructions::to_reduce;
   vector_instruction_config->inst[3] = vinst3;
   vector_instruction_config->instCount[3] = outer_dim / OC_DIMENSION;
@@ -119,7 +121,7 @@ void MapSoftmax(const codegen::Operation &param,
   inst4.vector_op0_src1 = VectorInstructions::from_reduction_0;
   inst4.vector_op2_src1 = VectorInstructions::from_reduction_1;
   inst4.vector_op0 = VectorInstructions::vsub;
-  inst4.vector_op1 = VectorInstructions::vexp;
+  inst4.vector_op1 = VectorInstructions::vpoly;
   inst4.vector_op2 = VectorInstructions::vmult;
   inst4.vdest = VectorInstructions::to_output;
 
@@ -130,6 +132,18 @@ void MapSoftmax(const codegen::Operation &param,
 
   vector_instruction_config->instLen = 5;
   vector_instruction_config->instLoopCount = inner_dim;
+
+  // Copy coefficients from ApproximationConstants.h
+  for (int i = 0; i < NUM_MAXES; i++) {
+    vector_instruction_config->approx.maxes[i] = EXP_MAXES[i];
+  }
+  for (int i = 0; i < NUM_RANGES; i++) {
+    for (int j = 0; j < NUM_COEFFS; j++) {
+      vector_instruction_config->approx.ranges[i][j] = EXP_RANGES[i][j];
+    }
+  }
+  vector_instruction_config->approx.clamp_min = EXP_CLAMP_MIN;
+  vector_instruction_config->approx.clamp_max = EXP_CLAMP_MAX;
 
   mappedParams.push_back(vector_params);
   mappedParams.push_back(vector_instruction_config);

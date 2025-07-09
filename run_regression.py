@@ -504,6 +504,8 @@ def run_accuracy(model, dataset, num_processes, output_folder):
         model_path = "IMAGENET1K_V1"
     elif model == "resnet50":
         model_path = "IMAGENET1K_V2"
+    elif model == "mobilenet_v2":
+        model_path = "IMAGENET1K_V2"
     elif model == "mobilebert" and dataset == "sst2":
         model_path = "models/mobilebert/mobilebert-tiny-sst2-bf16/"
     elif model == "mobilebert" and dataset == "squad":
