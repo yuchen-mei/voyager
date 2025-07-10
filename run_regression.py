@@ -25,8 +25,8 @@ ACCURACY_RESULTS = {
     "resnet50": {
         "E4M3": 78.8,
         "CFLOAT": 80.4,
-        "INT8": 78.7,
-        "MXINT8": 79.8,
+        "INT8": 79.2,
+        "MXINT8": 81.1,
         "P8_1": 79.4,
     },
     "mobilebert": {
