@@ -224,10 +224,11 @@ void MapMatrixOperation(const Operation &operation,
         .reduction_loop_index = {3, 0},
         .weight_loop_index = {2, 1},
         .fx_index = 3,
-        .fy_index = 2,
+        .fy_index = {4, 2},
         .weight_reuse_index = {4, 5},
         .stride = 1,
-        .replication = false,
+        .resnet_replication = false,
+        .generic_replication = false,
     };
   } else {
     tiling = get_tiling(operation);
@@ -300,9 +301,9 @@ void MapMatrixOperation(const Operation &operation,
     matrix_params->reductionLoopIndex[i] = tiling.reduction_loop_index[i];
     matrix_params->weightLoopIndex[i] = tiling.weight_loop_index[i];
     matrix_params->weightReuseIndex[i] = tiling.weight_reuse_index[i];
+    matrix_params->fyIndex[i] = tiling.fy_index[i];
   }
   matrix_params->fxIndex = tiling.fx_index;
-  matrix_params->fyIndex = tiling.fy_index;
 
   // set outer loop values
   for (int j = 0; j < 5; j++) {
@@ -312,6 +313,7 @@ void MapMatrixOperation(const Operation &operation,
       tiling.weight_loop_index[0];
   matrix_params->weightAddressGenReductionLoopIndex[0] =
       tiling.reduction_loop_index[0];
+  matrix_params->weightAddressGenFyIndex[0] = tiling.fy_index[0];
 
   // if OX and OY loops are the innermost L2 loops, they are irrelevant for
   // weight address generation
@@ -342,8 +344,8 @@ void MapMatrixOperation(const Operation &operation,
 
     // FY loop
     matrix_params->weightAddressGenLoops[1][2] =
-        tiling.loops[1][tiling.fy_index];
-    matrix_params->weightAddressGenFyIndex = 2;
+        tiling.loops[1][tiling.fy_index[1]];
+    matrix_params->weightAddressGenFyIndex[1] = 2;
 
     // K loop
     matrix_params->weightAddressGenLoops[1][1] =
@@ -379,20 +381,24 @@ void MapMatrixOperation(const Operation &operation,
 
     // FY loop
     matrix_params->weightAddressGenLoops[1][3] =
-        tiling.loops[1][tiling.fy_index];
-    matrix_params->weightAddressGenFyIndex = 3;
+        tiling.loops[1][tiling.fy_index[1]];
+    matrix_params->weightAddressGenFyIndex[1] = 3;
 
     // FX loop
     matrix_params->weightAddressGenLoops[1][2] =
         tiling.loops[1][tiling.fx_index];
-    if (tiling.replication) {
+    if (tiling.resnet_replication) {
       matrix_params->weightAddressGenLoops[1][2] = 7;
+    } else if (tiling.generic_replication) {
+      matrix_params->weightAddressGenLoops[1][2] *= tiling.fx_unrolling;
     }
     matrix_params->weightAddressGenFxIndex = 2;
 
     // C0 loop
-    if (tiling.replication) {
+    if (tiling.resnet_replication) {
       matrix_params->weightAddressGenLoops[1][1] = 3;
+    } else if (tiling.generic_replication) {
+      matrix_params->weightAddressGenLoops[1][1] = tiling.num_channels;
     } else {
       matrix_params->weightAddressGenLoops[1][1] = IC_DIMENSION;
     }
@@ -405,7 +411,11 @@ void MapMatrixOperation(const Operation &operation,
   }
 
   matrix_params->stride = tiling.stride;
-  matrix_params->is_replication = tiling.replication;
+  matrix_params->padding = tiling.padding;
+  matrix_params->is_resnet_replication = tiling.resnet_replication;
+  matrix_params->is_generic_replication = tiling.generic_replication;
+  matrix_params->num_channels = tiling.num_channels;
+  matrix_params->fx_unrolling_lg2 = std::log2(tiling.fx_unrolling);
 
   // Permute input for transformer attention outputs
   if (input.has_reshape()) {
@@ -451,7 +461,7 @@ void MapMatrixOperation(const Operation &operation,
   }
 
   int c_bound =
-      tiling.replication ? 1 : tiling.loops[1][tiling.reduction_loop_index[1]];
+      tiling.resnet_replication ? 1 : tiling.loops[1][tiling.reduction_loop_index[1]];
   int input_effective_fw;
   int input_pf =
       get_packing_factor<IC_DIMENSION, IC_PORT_WIDTH, INPUT_DATATYPE>(

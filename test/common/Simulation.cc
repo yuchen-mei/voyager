@@ -83,15 +83,20 @@ void Simulation::load_data() {
   std::vector<uint64_t> memory_sizes{SRAM_MEMORY_SIZE, REFERENCE_MEMORY_SIZE};
 
   bool is_cnn = model == "resnet18" || model == "resnet50";
+  int num_classes;
+  if (model == "mobilebert" || model == "bert") {
+    num_classes = 2;
+  } else if (model == "resnet18" || model == "resnet50") {
+    num_classes = 1000;
+  }
 
   if (std::find(sims.begin(), sims.end(), "gold") != sims.end()) {
     memories["gold"] = new ArrayMemory(memory_sizes);
-    dataLoaders["gold"] = new DataLoader(memories["gold"], false, is_cnn);
+    dataLoaders["gold"] = new DataLoader(memories["gold"], false);
   }
   if (std::find(sims.begin(), sims.end(), "accelerator") != sims.end()) {
     memories["accelerator"] = new ArrayMemory(memory_sizes);
-    dataLoaders["accelerator"] =
-        new DataLoader(memories["accelerator"], true, is_cnn);
+    dataLoaders["accelerator"] = new DataLoader(memories["accelerator"], true);
   }
 
   std::string project_root = std::string(getenv("PROJECT_ROOT"));
@@ -99,17 +104,6 @@ void Simulation::load_data() {
   std::string data_dir = project_root + "/" +
                          std::string(getenv("CODEGEN_DIR")) + "/networks/" +
                          model + "/" + datatype + "/tensor_files";
-
-  // Fully connected layer, or linear ops with input of a 1D tensor, is run on
-  // the vector unit. Its weight does not need to be transposed. We check if an
-  // op is a FC by checking its output dimension. This should be improved in the
-  // future.
-  int num_classes;
-  if (model == "mobilebert" || model == "bert") {
-    num_classes = 2;
-  } else if (model == "resnet18" || model == "resnet50") {
-    num_classes = 1000;
-  }
 
   const auto operations = network->get_operations(tests, false);
 
@@ -119,18 +113,8 @@ void Simulation::load_data() {
       dataloader->load_tensor(tensor, data_dir);
     }
 
-    for (const auto& tensor : network->model.parameters()) {
-#ifdef LLM_DECODE
-      bool transpose_weight = false;
-#else
-      bool transpose_weight = true;
-#if !SUPPORT_MVM
-      transpose_weight =
-          tensor.shape(0) != num_classes &&
-          tensor.node().find("_param_constant") != std::string::npos;
-#endif
-#endif
-      dataloader->load_tensor(tensor, data_dir, transpose_weight);
+    for (const auto& operation : operations) {
+      dataloader->load_parameters(operation.param, data_dir);
     }
 
     // Load the layer's input and output last
@@ -159,7 +143,7 @@ void Simulation::print_ideal_runtime(const Operation operation) {
     const auto weight_shape = get_shape(weight);
     const auto output_shape = get_shape(output);
 
-    int K = is_matmul ? weight_shape[weight_shape.size() - 1] : weight_shape[0];
+    int K = weight_shape[weight_shape.size() - 1];
 
     // the total number of operations is X * Y * C * FX * FY * K.
     long num_macs = get_size(output) * get_size(weight) / K;

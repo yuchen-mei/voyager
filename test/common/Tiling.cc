@@ -21,12 +21,13 @@ std::ostream& operator<<(std::ostream& os, const Tiling& tiling) {
   os << "Weight Loop Index: " << tiling.weight_loop_index[0] << " "
      << tiling.weight_loop_index[1] << std::endl;
   os << "FX Index: " << tiling.fx_index << std::endl;
-  os << "FY Index: " << tiling.fy_index << std::endl;
+  os << "FY Index: " << tiling.fy_index[0] << " " << tiling.fy_index[1]
+     << std::endl;
   os << "Weight Reuse Index: " << tiling.weight_reuse_index[0] << " "
      << tiling.weight_reuse_index[1] << std::endl;
   os << "Stride: " << tiling.stride << std::endl;
   os << "Padding: " << tiling.padding << std::endl;
-  os << "Replication: " << tiling.replication << std::endl;
+  os << "Resnet Replication: " << tiling.resnet_replication << std::endl;
   return os;
 }
 
@@ -56,6 +57,13 @@ Tiling get_tiling(const Operation& operation) {
     } else {
       tiling.stride = 1;
     }
+
+    if (first_op.kwargs().contains("padding")) {
+      auto padding = first_op.kwargs().at("padding").int_list().values();
+      tiling.padding = padding[0];
+    } else {
+      tiling.padding = 0;
+    }
   }
 
   return tiling;
@@ -65,7 +73,9 @@ Tiling get_interstellar_tiling(const voyager::Tiling& tiling) {
   Tiling accelerator_tiling;
 
   // Interstellar does not emit tilings with replication
-  accelerator_tiling.replication = false;
+  accelerator_tiling.resnet_replication = false;
+  accelerator_tiling.generic_replication = false;
+  accelerator_tiling.fx_unrolling = 1;
 
   for (int i = 0; i < 2; i++) {
     for (int j = 0; j < 6; j++) {
@@ -74,8 +84,8 @@ Tiling get_interstellar_tiling(const voyager::Tiling& tiling) {
   }
 
   accelerator_tiling.fx_index = -1;
-  accelerator_tiling.fy_index = -1;
   for (int i = 0; i < 2; i++) {
+    accelerator_tiling.fy_index[i] = -1;
     accelerator_tiling.x_loop_index[i] = -1;
     accelerator_tiling.y_loop_index[i] = -1;
     accelerator_tiling.reduction_loop_index[i] = -1;
@@ -98,7 +108,7 @@ Tiling get_interstellar_tiling(const voyager::Tiling& tiling) {
         accelerator_tiling.fx_index = loop_index;
       } else if (tiling.level_tilings(0).loop_bounds(i).loop() ==
                  voyager::Loop::FY) {
-        accelerator_tiling.fy_index = loop_index;
+        accelerator_tiling.fy_index[1] = loop_index;
       } else if (tiling.level_tilings(0).loop_bounds(i).loop() ==
                  voyager::Loop::OC) {
         accelerator_tiling.weight_loop_index[1] = loop_index;
@@ -118,8 +128,8 @@ Tiling get_interstellar_tiling(const voyager::Tiling& tiling) {
   while (loop_index >= 1) {
     if (accelerator_tiling.fx_index == -1) {
       accelerator_tiling.fx_index = loop_index;
-    } else if (accelerator_tiling.fy_index == -1) {
-      accelerator_tiling.fy_index = loop_index;
+    } else if (accelerator_tiling.fy_index[1] == -1) {
+      accelerator_tiling.fy_index[1] = loop_index;
     } else if (accelerator_tiling.weight_loop_index[1] == -1) {
       accelerator_tiling.weight_loop_index[1] = loop_index;
     } else if (accelerator_tiling.x_loop_index[1] == -1) {
@@ -138,8 +148,8 @@ Tiling get_interstellar_tiling(const voyager::Tiling& tiling) {
   for (int i = loop_index; i < 6; i++) {
     if (accelerator_tiling.fx_index == -1) {
       accelerator_tiling.fx_index = 5 - i;
-    } else if (accelerator_tiling.fy_index == -1) {
-      accelerator_tiling.fy_index = 5 - i;
+    } else if (accelerator_tiling.fy_index[1] == -1) {
+      accelerator_tiling.fy_index[1] = 5 - i;
     } else if (accelerator_tiling.weight_loop_index[1] == -1) {
       accelerator_tiling.weight_loop_index[1] = 5 - i;
     } else if (accelerator_tiling.x_loop_index[1] == -1) {
@@ -163,45 +173,50 @@ Tiling get_interstellar_tiling(const voyager::Tiling& tiling) {
   }
 
   // L2 level
-  int offset = 0;
+  accelerator_tiling.loops[0][4] = 1;
+  accelerator_tiling.fy_index[0] = 4;
+
+  int offset = 1;
   if (tiling.level_tilings(1).loop_bounds_size() > 0 &&
       tiling.level_tilings(1).loop_bounds(0).loop() != voyager::Loop::IC) {
     // if the first loop is not IC, then we need to manually set the IC loop to
     // 1
     accelerator_tiling.loops[0][3] = 1;
     accelerator_tiling.reduction_loop_index[0] = 3;
-    offset = 1;
+    offset++;
   }
 
   for (int i = 0; i < tiling.level_tilings(1).loop_bounds_size(); i++) {
-    accelerator_tiling.loops[0][3 - offset - i] =
+    accelerator_tiling.loops[0][4 - offset - i] =
         tiling.level_tilings(1).loop_bounds(i).bound();
     if (tiling.level_tilings(1).loop_bounds(i).loop() == voyager::Loop::OC) {
-      accelerator_tiling.weight_loop_index[0] = 3 - offset - i;
+      accelerator_tiling.weight_loop_index[0] = 4 - offset - i;
     } else if (tiling.level_tilings(1).loop_bounds(i).loop() ==
                voyager::Loop::OX) {
-      accelerator_tiling.x_loop_index[0] = 3 - offset - i;
+      accelerator_tiling.x_loop_index[0] = 4 - offset - i;
     } else if (tiling.level_tilings(1).loop_bounds(i).loop() ==
                voyager::Loop::OY) {
-      accelerator_tiling.y_loop_index[0] = 3 - offset - i;
+      accelerator_tiling.y_loop_index[0] = 4 - offset - i;
     } else if (tiling.level_tilings(1).loop_bounds(i).loop() ==
                voyager::Loop::IC) {
-      accelerator_tiling.reduction_loop_index[0] = 3 - offset - i;
+      accelerator_tiling.reduction_loop_index[0] = 4 - offset - i;
     }
   }
 
   // set any unset loop indices
-  for (int i = tiling.level_tilings(1).loop_bounds_size() - 1; i < 3 - offset;
+  for (int i = tiling.level_tilings(1).loop_bounds_size() - 1; i < 4 - offset;
        i++) {
-    accelerator_tiling.loops[0][2 - i - offset] = 1;
+    accelerator_tiling.loops[0][3 - i - offset] = 1;
     if (accelerator_tiling.weight_loop_index[0] == -1) {
-      accelerator_tiling.weight_loop_index[0] = 2 - i - offset;
+      accelerator_tiling.weight_loop_index[0] = 3 - i - offset;
     } else if (accelerator_tiling.x_loop_index[0] == -1) {
-      accelerator_tiling.x_loop_index[0] = 2 - i - offset;
+      accelerator_tiling.x_loop_index[0] = 3 - i - offset;
     } else if (accelerator_tiling.y_loop_index[0] == -1) {
-      accelerator_tiling.y_loop_index[0] = 2 - i - offset;
+      accelerator_tiling.y_loop_index[0] = 3 - i - offset;
     } else if (accelerator_tiling.reduction_loop_index[0] == -1) {
-      accelerator_tiling.reduction_loop_index[0] = 2 - i - offset;
+      accelerator_tiling.reduction_loop_index[0] = 3 - i - offset;
+    } else if (accelerator_tiling.fy_index[0] == -1) {
+      accelerator_tiling.fy_index[0] = 3 - i - offset;
     }
   }
 
@@ -213,37 +228,106 @@ Tiling get_conv2d_tiling(const codegen::OpOverload param) {
 
   const auto input = kwargs.at("input").tensor();
   const auto weight = kwargs.at("weight").tensor();
-  const auto padding = kwargs.at("padding").int_list().values();
+  const auto paddings = kwargs.at("padding").int_list().values();
   const auto dilation = kwargs.at("dilation").int_list().values();
   const auto strides = kwargs.at("stride").int_list().values();
 
   const auto input_shape = get_shape(input);
   const auto weight_shape = get_shape(weight);
 
-  const int output_height = (input_shape[2] + 2 * padding[0] -
-                             dilation[0] * (weight_shape[2] - 1) - 1) /
+  const int output_height = (input_shape[1] + 2 * paddings[0] -
+                             dilation[0] * (weight_shape[0] - 1) - 1) /
                                 strides[0] +
                             1;
-  const int output_width = (input_shape[3] + 2 * padding[1] -
-                            dilation[1] * (weight_shape[3] - 1) - 1) /
+  const int output_width = (input_shape[2] + 2 * paddings[1] -
+                            dilation[1] * (weight_shape[1] - 1) - 1) /
                                strides[1] +
                            1;
 
-  std::vector<int> output_shape = {input_shape[0], weight_shape[0],
-                                   output_height, output_width};
+  std::vector<int> output_shape = {
+      output_height,
+      output_width,
+      input_shape[3],
+      weight_shape[3],
+  };
 
   int x1 = 1, y1 = 1, k1 = 1;
   int x0 = output_shape[2];
-  int y0 = output_shape[3];
-  int k0 = weight_shape[0] / OC_DIMENSION;
-  int c0 = weight_shape[1] / IC_DIMENSION;
-  int fx = weight_shape[2];
-  int fy = weight_shape[3];
+  int y0 = output_shape[1];
+  int k0 = weight_shape[3] / OC_DIMENSION;
+  int c0 = weight_shape[2] / IC_DIMENSION;
+  int fx = weight_shape[1];
+  int fy = weight_shape[0];
   int stride = strides[0];
+  int padding = paddings[0];
 
+  // conv2d (vit)
+  if (input_shape[3] == 3 && input_shape[1] == 224 && input_shape[2] == 224 &&
+      weight_shape[3] == 768 && weight_shape[0] == 16 &&
+      weight_shape[1] == 16) {
+    int fx_unrolling;
+    if (IC_DIMENSION == 4) {
+      fx_unrolling = 1;
+    } else if (IC_DIMENSION == 8) {
+      fx_unrolling = 2;
+    } else if (IC_DIMENSION == 16) {
+      fx_unrolling = 4;
+    } else if (IC_DIMENSION == 32) {
+      fx_unrolling = 8;
+    } else {
+      throw std::runtime_error("replication not supported for IC_DIMENSION=" +
+                               std::to_string(IC_DIMENSION));
+    }
+
+    Tiling tiling = {
+        .loops = {{7, 1, 24, 1, fy, 1}, {1, 2, 1, fx / fx_unrolling, 2, 14}},
+        .x_loop_index = {1, 5},
+        .y_loop_index = {0, 4},
+        .reduction_loop_index = {3, 0},
+        .weight_loop_index = {2, 1},
+        .fx_index = 3,
+        .fy_index = {4, 2},
+        .weight_reuse_index = {4, 5},
+        .stride = stride,
+        .padding = 0,
+        .resnet_replication = false,
+        .generic_replication = true,
+        .num_channels = 3,
+        .fx_unrolling = fx_unrolling,
+    };
+
+    if (IC_DIMENSION < 16) {
+      tiling.loops[1][5] /= 2;
+      tiling.loops[0][0] *= 2;
+    }
+
+    if (OC_DIMENSION < 16) {
+      tiling.loops[0][tiling.weight_loop_index[0]] *= (16 / OC_DIMENSION);
+    } else if (OC_DIMENSION > 16) {
+      int div_factor = OC_DIMENSION / 16;
+      while (tiling.loops[0][tiling.weight_loop_index[0]] > 1 &&
+             div_factor > 1) {
+        tiling.loops[0][tiling.weight_loop_index[0]] /= 2;
+        div_factor /= 2;
+      }
+      while (tiling.loops[1][tiling.weight_loop_index[1]] > 1 &&
+             div_factor > 1) {
+        tiling.loops[1][tiling.weight_loop_index[1]] /= 2;
+        div_factor /= 2;
+      }
+
+      if (div_factor > 1) {
+        spdlog::error("OC_DIMENSION is not a multiple of 16\n");
+        exit(1);
+      }
+    }
+
+    return tiling;
+  }
   // conv1
-  if (input_shape[1] == 3 && input_shape[2] == 224 && input_shape[3] == 224 &&
-      weight_shape[0] == 64 && weight_shape[2] == 7 && weight_shape[3] == 7) {
+  else if (input_shape[3] == 3 && input_shape[1] == 224 &&
+           input_shape[2] == 224 && weight_shape[3] == 64 &&
+           weight_shape[0] == 7 && weight_shape[1] == 7) {
     int fx;
     if (IC_DIMENSION == 4) {
       fx = 7;
@@ -265,10 +349,13 @@ Tiling get_conv2d_tiling(const codegen::OpOverload param) {
         .reduction_loop_index = {3, 0},
         .weight_loop_index = {2, 1},
         .fx_index = 3,
-        .fy_index = 2,
+        .fy_index = {4, 2},
         .weight_reuse_index = {4, 5},
         .stride = stride,
-        .replication = true,
+        .padding = 3,
+        .resnet_replication = true,
+        .generic_replication = false,
+        .num_channels = 3,
     };
 
     if (IC_DIMENSION < 16) {
@@ -372,9 +459,10 @@ Tiling get_conv2d_tiling(const codegen::OpOverload param) {
       .reduction_loop_index = {3, 0},
       .weight_loop_index = {2, 1},
       .fx_index = 3,
-      .fy_index = 2,
+      .fy_index = {4, 2},
       .weight_reuse_index = {4, 5},
       .stride = stride,
+      .padding = padding,
   };
 }
 
@@ -400,10 +488,10 @@ Tiling get_linear_tiling(const codegen::OpOverload op) {
         .reduction_loop_index = {3, 0},
         .weight_loop_index = {1, 2},
         .fx_index = 4,
-        .fy_index = 3,
+        .fy_index = {4, 3},
         .weight_reuse_index = {5, 5},
         .stride = 1,
-        .replication = false,
+        .resnet_replication = false,
     };
   }
 
@@ -462,10 +550,11 @@ Tiling get_linear_tiling(const codegen::OpOverload op) {
       .reduction_loop_index = {3, 0},
       .weight_loop_index = {2, 1},
       .fx_index = 3,
-      .fy_index = 2,
+      .fy_index = {4, 2},
       .weight_reuse_index = {4, 5},
       .stride = 1,
-      .replication = false,
+      .padding = 0,
+      .resnet_replication = false,
   };
 }
 
@@ -473,11 +562,13 @@ Tiling get_pool2d_tiling(const codegen::OpOverload op) {
   const auto kwargs = op.kwargs();
   const auto input_shape = get_shape(kwargs.at("input").tensor());
 
-  int K = input_shape[1];
+  int Y = input_shape[1];
   int X = input_shape[2];
-  int Y = input_shape[3];
+  int K = input_shape[3];
 
-  int x0, y0, stride, padding;
+  int x0, y0, stride, padding, x1, y1, k0, actual_padding;
+
+  Tiling tiling;
 
   if (kwargs.contains("output_size")) {
     const auto output_size = kwargs.at("output_size").int_list().values();
@@ -487,23 +578,29 @@ Tiling get_pool2d_tiling(const codegen::OpOverload op) {
     stride = X / output_h;
     x0 = X - (output_h - 1) * stride;
     y0 = Y - (output_w - 1) * stride;
+
+    x1 = X / x0;
+    y1 = Y / y0;
+    k0 = K / OC_DIMENSION;
+    actual_padding = 0;
   } else {
     const auto kernel_size = kwargs.at("kernel_size").int_list().values();
     const auto strides = kwargs.at("stride").int_list().values();
     const auto paddings = kwargs.at("padding").int_list().values();
 
-    x0 = kernel_size[0];
-    y0 = kernel_size[1];
+    y0 = kernel_size[0];
+    x0 = kernel_size[1];
     stride = strides[0];
     padding = paddings[0];
-  }
 
-  // calculate ouptut dimension (ignoring padding, which will be handled in hw)
-  int x1 = (X + 2 * padding - x0) / stride + 1;
-  int y1 = (Y + 2 * padding - y0) / stride + 1;
-  // pytorch assumes padding on all direction, not all of the values are used
-  int actual_padding = (x1 - 1) * stride + x0 - X;
-  int k0 = K / OC_DIMENSION;
+    // calculate ouptut dimension (ignoring padding, which will be handled in
+    // hw)
+    x1 = (X + 2 * padding - x0) / stride + 1;
+    y1 = (Y + 2 * padding - y0) / stride + 1;
+    // pytorch assumes padding on all direction, not all of the values are used
+    actual_padding = (x1 - 1) * stride + x0 - X;
+    k0 = K / OC_DIMENSION;
+  }
 
   return {
       .loops = {{x1, y1, 1, 1, 1, 1}, {1, k0, 1, 1, y0, x0}},
@@ -512,10 +609,10 @@ Tiling get_pool2d_tiling(const codegen::OpOverload op) {
       .reduction_loop_index = {3, 0},
       .weight_loop_index = {2, 1},
       .fx_index = 3,
-      .fy_index = 2,
+      .fy_index = {4, 2},
       .weight_reuse_index = {4, 5},
       .stride = stride,
       .padding = actual_padding,
-      .replication = false,
+      .resnet_replication = false,
   };
 }

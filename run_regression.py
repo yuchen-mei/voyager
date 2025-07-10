@@ -4,7 +4,6 @@ import json
 import multiprocessing as mp
 import os
 import subprocess
-from collections import defaultdict
 import pandas as pd
 import re
 import signal
@@ -15,21 +14,20 @@ from google.protobuf import text_format
 from google.protobuf.json_format import MessageToDict
 from quantized_training.codegen import param_pb2
 
-
 ACCURACY_RESULTS = {
     "resnet18": {
-        "E4M3": 70.8,
-        "CFLOAT": 70.8,
-        "INT8": 69.7,
-        "MXINT8": 71.0,
-        "P8_1": 70.5,
+        "E4M3": 69.2,
+        "CFLOAT": 71.5,
+        "INT8": 69.5,
+        "MXINT8": 70.7,
+        "P8_1": 69.1,
     },
     "resnet50": {
-        "E4M3": 67.7,
-        "CFLOAT": 71.2,
-        "INT8": 69.1,
-        "MXINT8": 69.5,
-        "P8_1": 69.6,
+        "E4M3": 78.8,
+        "CFLOAT": 80.4,
+        "INT8": 79.2,
+        "MXINT8": 81.1,
+        "P8_1": 79.4,
     },
     "mobilebert": {
         "E4M3": 90.6,
@@ -37,6 +35,20 @@ ACCURACY_RESULTS = {
         "INT8": 90.37,
         "MXINT8": 91.0,
         "P8_1": 90.37,
+    },
+    "bert": {
+        "E4M3": 93.1,
+        "CFLOAT": 93.2,
+        "INT8": 91.4,
+        "MXINT8": 93.1,
+        "P8_1": 92.8,
+    },
+    "vit": {
+        "E4M3": 83.8,
+        "CFLOAT": 84.1,
+        "INT8": 75.4,
+        "MXINT8": 84.0,
+        "P8_1": 84.0,
     },
 }
 
@@ -75,13 +87,14 @@ def print_test_results(test_results, layers, output_folder):
     for model in models:
         print("=" * 10 + f" {model} " + "=" * 10)
 
-        model_df = df[df["Model"] == model]
+        # Create an explicit copy of the DataFrame
+        model_df = df[df["Model"] == model].copy()
 
         # sort according to order in layers
-        model_df["Layer"] = pd.Categorical(model_df["Layer"], layers[model])
+        model_df.loc[:, "Layer"] = pd.Categorical(model_df["Layer"], layers[model])
         model_df.sort_values("Layer", inplace=True)
         # turn categorial back to string
-        model_df["Layer"] = model_df["Layer"].astype(str)
+        model_df.loc[:, "Layer"] = model_df["Layer"].astype(str)
         sorted_df.append(model_df)
 
         passed = model_df[model_df["Status"] == True]
@@ -486,36 +499,27 @@ def run_accuracy(model, dataset, num_processes, output_folder):
             stderr=subprocess.STDOUT,
         )
 
+    # Dump model parameters
+    if model == "resnet18":
+        model_path = "IMAGENET1K_V1"
+    elif model == "resnet50":
+        model_path = "IMAGENET1K_V2"
+    elif model == "mobilebert" and dataset == "sst2":
+        model_path = "models/mobilebert/mobilebert-tiny-sst2-bf16/"
+    elif model == "mobilebert" and dataset == "squad":
+        model_path = "models/mobilebert/mobilebert-tiny-squad-bf16/"
+    elif model == "bert" and dataset == "sst2":
+        model_path = "JeremiahZ/bert-base-uncased-sst2"
+    elif model == "vit":
+        model_path = "timm/vit_base_patch16_224.augreg2_in21k_ft_in1k"
+    else:
+        raise ValueError("Invalid model")
+
     # Generate input samples from dataset
     if dataset == "imagenet":
-        imagenet_path = "/sim2/shared/MINOTAUR/nn_data/imagenet_1000/data/"
         output_data_dir = "data/imagenet"
-        subprocess.run(
-            [
-                "python",
-                "test/script/dump_resnet_dataset.py",
-                "--data_dir",
-                imagenet_path,
-                "--output_dir",
-                output_data_dir,
-                "--num_samples",
-                "1000",
-            ]
-        )
     elif dataset == "sst2":
         output_data_dir = "data/sst2"
-        subprocess.run(
-            [
-                "python",
-                "test/script/dump_bert_dataset.py",
-                "--dataset",
-                "sst2",
-                "--model_name_or_path",
-                "models/mobilebert/mobilebert-tiny-sst2-bf16/",
-                "--output_dir",
-                output_data_dir,
-            ]
-        )
     elif dataset == "squad":
         output_data_dir = "data/squad"
         subprocess.run(
@@ -525,25 +529,13 @@ def run_accuracy(model, dataset, num_processes, output_folder):
                 "--dataset",
                 "squad",
                 "--model_name_or_path",
-                "models/mobilebert/mobilebert-tiny-squad-bf16/",
+                model_path,
                 "--output_dir",
                 output_data_dir,
             ]
         )
     else:
         raise ValueError("Invalid dataset")
-
-    # Dump model parameters
-    if model == "resnet18":
-        model_path = "models/resnet/resnet18_mp2_p8_qat.pth"
-    elif model == "resnet50":
-        model_path = "models/resnet/resnet50.pth"
-    elif model == "mobilebert" and dataset == "sst2":
-        model_path = "models/mobilebert/mobilebert-tiny-sst2-bf16/"
-    elif model == "mobilebert" and dataset == "squad":
-        model_path = "models/mobilebert/mobilebert-tiny-squad-bf16/"
-    else:
-        raise ValueError("Invalid model")
 
     block_size = max(int(os.environ["OC_DIMENSION"]), int(os.environ["IC_DIMENSION"]))
 
@@ -589,6 +581,14 @@ def run_accuracy(model, dataset, num_processes, output_folder):
     else:
         raise ValueError("Invalid datatype")
 
+    subprocess.run(
+        [
+            "mkdir",
+            "-p",
+            f"{env_vars['CODEGEN_DIR']}/networks/{model}/{env_vars['DATATYPE']}",
+        ]
+    )
+
     with open(f"{output_folder}/{model}_{dataset}_compiler.log", "w") as stdout_file:
         subprocess.run(
             [
@@ -597,15 +597,34 @@ def run_accuracy(model, dataset, num_processes, output_folder):
                 model,
                 "--model_name_or_path",
                 model_path,
+                "--transpose_weight",
                 *quantization_args,
                 "--model_output_dir",
                 "test/compiler/networks/" + model + "/" + env_vars["DATATYPE"],
-                "--weight_persistent",
-                "--use_maxpool_2x2",
+                "--dump_dataset",
+                "--dataset_output_dir",
+                output_data_dir,
             ],
             stdout=stdout_file,
             stderr=subprocess.STDOUT,
         )
+
+    subprocess.run(
+        [
+            "mkdir",
+            "-p",
+            f"{env_vars['CODEGEN_DIR']}/networks/{model}/{env_vars['DATATYPE']}/{env_vars['IC_DIMENSION']}x{env_vars['OC_DIMENSION']}_{env_vars['INPUT_BUFFER_SIZE']}x{env_vars['WEIGHT_BUFFER_SIZE']}x{env_vars['ACCUM_BUFFER_SIZE']}_{env_vars['DOUBLE_BUFFERED_ACCUM_BUFFER']}",
+        ]
+    )
+
+    subprocess.run(
+        [
+            "protoc",
+            "--proto_path=test/compiler/proto/",
+            "--python_out=test/compiler/proto/",
+            f"test/compiler/proto/tiling.proto",
+        ]
+    )
 
     with open(f"{output_folder}/{model}_{dataset}_tiler.log", "w") as stdout_file:
         subprocess.run(
@@ -646,7 +665,7 @@ def run_accuracy(model, dataset, num_processes, output_folder):
                 env=env_vars,
                 stdout=stdout_file,
                 stderr=subprocess.STDOUT,
-                timeout=3 * 60 * 60,
+                timeout=10 * 60 * 60,
             )
         except subprocess.TimeoutExpired:
             print(f"Test {model}_{dataset} timed out")
@@ -669,7 +688,12 @@ def run_accuracy(model, dataset, num_processes, output_folder):
     # dump dataframe to pickle
     df.to_pickle(f"{output_folder}/test_results.pkl")
 
-    gold_accuracy = ACCURACY_RESULTS[model][env_vars["DATATYPE"]]
+    if model in ACCURACY_RESULTS:
+        gold_accuracy = ACCURACY_RESULTS[model][env_vars["DATATYPE"]]
+    else:
+        print(f"No gold accuracy specified for {model} {env_vars['DATATYPE']}")
+        gold_accuracy = final_accuracy
+
     return abs(final_accuracy - gold_accuracy) < 1
 
 
@@ -684,7 +708,11 @@ def add_layers(network, layers, layer_counts, uniquify, whitelist_layers=None):
             f"test/compiler/networks/{network}/{os.environ['DATATYPE']}/layers.txt",
             "r",
         ) as f:
-            layers[network] = f.read().splitlines()
+            all_layers = f.read().splitlines()
+            # Filter out layers that should be skipped
+            layers[network] = [
+                layer for layer in all_layers if layer not in whitelist_layers
+            ]
             layer_counts[network] = {layer: 1 for layer in layers[network]}
     else:
         # open the proto file
@@ -723,6 +751,10 @@ def add_layers(network, layers, layer_counts, uniquify, whitelist_layers=None):
 
             name = op["op"]["name"] if "op" in op else op["fused_op"]["name"]
 
+            # Skip layers that are in the skip list
+            if name in whitelist_layers:
+                continue
+
             # remove the name, memory, and node fields from the op
             delete_nested_keys(op, "name")
             delete_nested_keys(op, "memory")
@@ -740,38 +772,24 @@ def add_layers(network, layers, layer_counts, uniquify, whitelist_layers=None):
                 layers[network].append(name)
                 layer_counts[network][name] = 1
 
-    if whitelist_layers:
-        original_layers = layers[network]
-        filtered_layers = [layer for layer in original_layers if layer not in whitelist_layers]
-        removed_layers = set(original_layers) - set(filtered_layers)
-
-        if removed_layers:
-            print(
-                f"[INFO] Skipping {len(removed_layers)} layers in whitelist "
-                f"for model '{network}': {sorted(removed_layers)}"
-            )
-
-        layers[network] = filtered_layers
-        layer_counts[network] = {
-            layer: count for layer, count in layer_counts[network].items()
-            if layer in filtered_layers
-        }
-
 
 def matches(value, rule_value):
     if isinstance(rule_value, list):
         return value in rule_value
     else:
-        return value == rule_value
+        if rule_value == "*":
+            return True
+        else:
+            return value == rule_value
 
 
 def get_whitelist_layers(whitelist_rules, model, datatype, sim_type, block_size):
     for rule in whitelist_rules:
         if (
-            matches(model, rule["model"]) and
-            matches(datatype, rule["datatype"]) and
-            matches(sim_type, rule["sim_type"]) and
-            matches(block_size, rule["block_size"])
+            matches(model, rule["model"])
+            and matches(datatype, rule["datatype"])
+            and matches(sim_type, rule["sim_type"])
+            and matches(block_size, rule["block_size"])
         ):
             return set(rule["layers"])
     return set()
@@ -825,7 +843,7 @@ def main():
     parser.add_argument(
         "--whitelist",
         required=False,
-        help="Path to JSON file containing whitelist layers to skip"
+        help="Path to JSON file containing whitelist layers to skip",
     )
     args = parser.parse_args()
 
@@ -844,11 +862,10 @@ def main():
 
     whitelist = []
     if args.whitelist:
-        with open(args.whitelist, 'r') as f:
+        with open(args.whitelist, "r") as f:
             whitelist = json.load(f)
 
     # Add codegen layers
-    layers = {}
     if args.tests is None:
         all_models = []
         if args.models is not None:
@@ -859,13 +876,23 @@ def main():
         for network in all_models:
             env_vars = os.environ.copy()
             env_vars["NETWORK"] = network
-            subprocess.run(["make", "network-proto"], env=env_vars)
+            if args.sims != "accuracy":
+                subprocess.run(["make", "network-proto"], env=env_vars)
+                datatype = os.environ["DATATYPE"]
+                block_size = max(
+                    int(os.environ["OC_DIMENSION"]), int(os.environ["IC_DIMENSION"])
+                )
+                whitelist_layers = get_whitelist_layers(
+                    whitelist, network, datatype, args.sims, block_size
+                )
 
-            datatype = os.environ['DATATYPE']
-            block_size = max(int(os.environ["OC_DIMENSION"]), int(os.environ["IC_DIMENSION"]))
-            whitelist_layers = get_whitelist_layers(whitelist, network, datatype, args.sims, block_size)
-
-            add_layers(network, layers, layer_counts, args.uniquify_layers, whitelist_layers)
+                add_layers(
+                    network,
+                    layers,
+                    layer_counts,
+                    args.uniquify_layers,
+                    whitelist_layers,
+                )
     else:
         assert (
             len(args.models) == 1

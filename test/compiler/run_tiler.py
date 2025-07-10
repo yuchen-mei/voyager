@@ -201,6 +201,9 @@ def main():
     )
     args = parser.parse_args()
 
+    # Define a cache dictionary
+    cache = {}
+
     # Create an accelerator configuration
     architecture = interstellar.Resource(
         buf_capacity_list=[
@@ -269,6 +272,7 @@ def main():
             "linear_mx",
             "matmul_mx",
         ]:
+            print(f"Unsupported operation: {matrix_op.target}, skipping")
             continue
 
         # FC doesn't need tiling
@@ -293,14 +297,14 @@ def main():
 
         if len(weights_shape) == 4:
             # convolution
-            output_channels = weights_shape[0]
-            input_channels = weights_shape[1]
-            kernel_height = weights_shape[2]
-            kernel_width = weights_shape[3]
+            output_channels = weights_shape[3]
+            input_channels = weights_shape[2]
+            kernel_height = weights_shape[1]
+            kernel_width = weights_shape[0]
         elif len(weights_shape) == 2:
             # matrix multiplication
-            output_channels = weights_shape[0] if not is_matmul else weights_shape[1]
-            input_channels = weights_shape[1] if not is_matmul else weights_shape[0]
+            output_channels = weights_shape[1] if not is_matmul else weights_shape[0]
+            input_channels = weights_shape[0] if not is_matmul else weights_shape[1]
             kernel_height = 1
             kernel_width = 1
         else:
@@ -320,8 +324,8 @@ def main():
                     input_channels = output_channels
                     output_channels = output_shape[3]
             else:
-                height = output_shape[2]
-                width = output_shape[3]
+                height = output_shape[1]
+                width = output_shape[2]
         elif len(output_shape) == 3:
             assert output_shape[0] == 1
             width = output_shape[1]
@@ -334,6 +338,13 @@ def main():
             height = 1
         elif len(output_shape) == 2:
             width = output_shape[0]
+
+            if output_shape[1] != output_channels:
+                # the input channels and output channels need to be switched.
+                # not sure why this the compiler produces this shape.
+                input_channels = output_channels
+                output_channels = output_shape[1]
+
             height = 1
             if width == 1:
                 print("Fully-connected layer, skipping")
@@ -352,6 +363,14 @@ def main():
             width = input_shape[1]
             height = 1
 
+        print(f"Input channels: {input_channels}")
+        print(f"Output channels: {output_channels}")
+        print(f"Input height: {height}")
+        print(f"Input width: {width}")
+        print(f"Kernel height: {kernel_height}")
+        print(f"Kernel width: {kernel_width}")
+        print(f"Stride: {stride}")
+
         layer = interstellar.Layer(
             nifm=input_channels,
             nofm=output_channels,
@@ -365,15 +384,49 @@ def main():
 
         print(f"Finding tiling for {param_name}")
 
-        runtime_calculator = RuntimeCalculator(param, args.double_buffered_accum_buffer)
-
-        cost, runtime, mapping, perf = interstellar.optimizer.opt_optimizer(
-            architecture, layer, schedule, runtime_calculator.calculate_runtime, True
+        # check if the layer is already in the cache
+        layer_key = (
+            layer.nifm,
+            layer.nofm,
+            layer.wofm,
+            layer.hofm,
+            layer.wfil,
+            layer.hfil,
+            layer.wstd,
+            layer.hstd,
         )
+        if layer_key in cache:
+            print("Layer already in cache")
+            cost, runtime, mapping, perf, total_cost, total_access_cost, access_list = (
+                cache[layer_key]
+            )
+        else:
+            print("Layer not in cache, calling Interstellar optimizer")
+            runtime_calculator = RuntimeCalculator(
+                param, args.double_buffered_accum_buffer
+            )
 
-        total_cost, total_access_cost, access_list = interstellar.cost_model.get_cost(
-            architecture, mapping, layer
-        )
+            cost, runtime, mapping, perf = interstellar.optimizer.opt_optimizer(
+                architecture,
+                layer,
+                schedule,
+                runtime_calculator.calculate_runtime,
+                True,
+            )
+
+            total_cost, total_access_cost, access_list = (
+                interstellar.cost_model.get_cost(architecture, mapping, layer)
+            )
+
+            cache[layer_key] = (
+                cost,
+                runtime,
+                mapping,
+                perf,
+                total_cost,
+                total_access_cost,
+                access_list,
+            )
 
         interstellar.utils.print_tiling(mapping)
         print(f"Runtime: {runtime}")

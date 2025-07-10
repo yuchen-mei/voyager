@@ -179,6 +179,11 @@ std::vector<std::any> run_operation(const Operation &operation,
     }
   }
 
+  if (first_op.target() == "pad") {
+    const auto input = first_op.kwargs().at("input").tensor();
+    output_ptr = pad_tensor<Vector>(kwargs[input.node()], first_op);
+  }
+
   if (first_op.target() == "layer_norm") {
     output_ptr = layer_norm<Vector>(kwargs, first_op);
   }
@@ -272,7 +277,7 @@ std::vector<std::any> run_operation(const Operation &operation,
         auto operand2 = op.kwargs().at("other").tensor();
 
         // input comes from outputs of previous operations
-        if (!operand2.has_memory()) {
+        if (!operand2.has_memory() && get_size(operand2) != 1) {
           std::swap(operand1, operand2);
         }
 

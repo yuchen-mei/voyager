@@ -3,8 +3,8 @@
 #include "test/common/operations/Common.h"
 
 const std::set<std::string> unary_ops = {"relu", "relu_", "gelu", "gelu_",
-                                         "silu", "silu_", "sqrt", "sqrt_",
-                                         "neg",  "neg_"};
+                                         "tanh", "tanh_", "silu", "silu_",
+                                         "sqrt", "sqrt_", "neg",  "neg_"};
 const std::set<std::string> arithmetics = {"add", "add_", "sub", "sub_",
                                            "mul", "mul_", "div", "div_"};
 
@@ -19,6 +19,8 @@ inline T *perform_unary_operation(T *input, const std::vector<int> shape,
       result[i] = input[i].relu();
     } else if (opcode == "gelu" || opcode == "gelu_") {
       result[i] = input[i].gelu();
+    } else if (opcode == "tanh" || opcode == "tanh_") {
+      result[i] = input[i].tanh();
     } else if (opcode == "silu" || opcode == "silu_") {
       result[i] = input[i].silu();
     } else if (opcode == "sqrt" || opcode == "sqrt_") {
@@ -145,7 +147,11 @@ inline T *perform_vector_operation(const T *input1,
       result[i] = input1[flat_idx_a] * input2[flat_idx_b];
     } else if (opcode == "div" || opcode == "div_") {
       T immediate = 1.0 / input2[flat_idx_b];
-      result[i] = input1[flat_idx_a] * immediate;
+      if (input2[flat_idx_b] == T::zero()) {
+        result[i] = T::zero();
+      } else {
+        result[i] = input1[flat_idx_a] * immediate;
+      }
     } else {
       throw std::invalid_argument("Invalid opcode: " + opcode);
     }

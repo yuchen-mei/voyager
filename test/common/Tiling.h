@@ -13,11 +13,14 @@ struct Tiling {
   int reduction_loop_index[2];
   int weight_loop_index[2];
   int fx_index;
-  int fy_index;
+  int fy_index[2];
   int weight_reuse_index[2];
   int stride;
   int padding;
-  bool replication;
+  bool resnet_replication;
+  bool generic_replication;
+  int num_channels;
+  int fx_unrolling;
 };
 
 std::ostream& operator<<(std::ostream& os, const Tiling& tiling);

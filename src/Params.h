@@ -33,10 +33,11 @@ struct MatrixParams : BaseParams {
       reductionLoopIndex[i] = 0;
       weightLoopIndex[i] = 0;
       weightReuseIndex[i] = 0;
+      fyIndex[i] = 0;
     }
     fxIndex = 0;
-    fyIndex = 0;
     stride = 1;
+    padding = 0;
 
     for (int i = 0; i < 2; i++) {
       for (int j = 0; j < 5; j++) {
@@ -49,8 +50,10 @@ struct MatrixParams : BaseParams {
     for (int i = 0; i < 2; i++) {
       weightAddressGenWeightLoopIndex[i] = 0;
     }
+    for (int i = 0; i < 2; i++) {
+      weightAddressGenFyIndex[i] = 0;
+    }
     weightAddressGenFxIndex = 0;
-    weightAddressGenFyIndex = 0;
 
     input_dtype = 0;
     use_input_codebook = false;
@@ -74,7 +77,12 @@ struct MatrixParams : BaseParams {
     has_bias = false;
     has_input_transpose = false;
     has_weight_transpose = false;
-    is_replication = false;
+
+    is_resnet_replication = false;
+    is_generic_replication = false;
+    num_channels = 0;
+    fx_unrolling_lg2 = 0;
+
     has_attn_output_permute = false;
     is_mx_op = false;
     is_fc = false;
@@ -96,10 +104,11 @@ struct MatrixParams : BaseParams {
   ac_int<3, false> inputYLoopIndex[2];
   ac_int<3, false> reductionLoopIndex[2];
   ac_int<3, false> weightLoopIndex[2];
+  ac_int<3, false> fyIndex[2];
   ac_int<3, false> fxIndex;
-  ac_int<3, false> fyIndex;
   ac_int<3, false> weightReuseIndex[2];
-  ac_int<2, false> stride;
+  ac_int<5, false> stride;
+  ac_int<2, false> padding;
 
   // weight address generator loop
   ac_int<LOOP_WIDTH, false> weightAddressGenLoops[2][5];
@@ -108,8 +117,8 @@ struct MatrixParams : BaseParams {
   // the systolic array
   ac_int<3, false> weightAddressGenReductionLoopIndex[3];
   ac_int<3, false> weightAddressGenWeightLoopIndex[2];
+  ac_int<3, false> weightAddressGenFyIndex[2];
   ac_int<3, false> weightAddressGenFxIndex;
-  ac_int<3, false> weightAddressGenFyIndex;
 
   ac_int<DTYPE_INDEX_WIDTH, false> input_dtype;
   bool use_input_codebook;
@@ -131,7 +140,12 @@ struct MatrixParams : BaseParams {
   bool has_bias;
   bool has_input_transpose;
   bool has_weight_transpose;
-  bool is_replication;
+
+  bool is_resnet_replication;
+  bool is_generic_replication;
+  ac_int<2, false> num_channels;
+  ac_int<3, false> fx_unrolling_lg2;
+
   bool has_attn_output_permute;
   bool is_mx_op;
   bool is_fc;
@@ -139,8 +153,9 @@ struct MatrixParams : BaseParams {
 
   static const unsigned int base_width =
       5 * 64 /* OFFSETS */ + (12 + 10) * LOOP_WIDTH /* Loops */ +
-      19 * 3 /* Loop indices */ + 2 /* stride */ + 8 /* Head Size */ +
-      10 * 1 /* Bools */;
+      21 * 3 /* Loop indices */ + 5 /* stride */ + 2 /* padding */ +
+      8 /* Head Size */ + 2 /* num_channels */ + 3 /*fx_unrolling_lg2*/ +
+      11 * 1 /* Bools */;
 
   static const unsigned int extra_width =
       2 * DTYPE_INDEX_WIDTH + 36 +
@@ -175,12 +190,15 @@ struct MatrixParams : BaseParams {
     for (int i = 0; i < 2; i++) {
       m& weightLoopIndex[i];
     }
+    for (int i = 0; i < 2; i++) {
+      m& fyIndex[i];
+    }
     m & fxIndex;
-    m & fyIndex;
     for (int i = 0; i < 2; i++) {
       m& weightReuseIndex[i];
     }
     m & stride;
+    m & padding;
 
     for (int i = 0; i < 2; i++) {
       for (int j = 0; j < 5; j++) {
@@ -193,8 +211,10 @@ struct MatrixParams : BaseParams {
     for (int i = 0; i < 2; i++) {
       m& weightAddressGenWeightLoopIndex[i];
     }
+    for (int i = 0; i < 2; i++) {
+      m& weightAddressGenFyIndex[i];
+    }
     m & weightAddressGenFxIndex;
-    m & weightAddressGenFyIndex;
 
     m & input_dtype;
     m & use_input_codebook;
@@ -221,7 +241,10 @@ struct MatrixParams : BaseParams {
     m & has_bias;
     m & has_input_transpose;
     m & has_weight_transpose;
-    m & is_replication;
+    m & is_resnet_replication;
+    m & is_generic_replication;
+    m & num_channels;
+    m & fx_unrolling_lg2;
     m & has_attn_output_permute;
     m & is_mx_op;
     m & is_fc;
@@ -264,14 +287,16 @@ struct MatrixParams : BaseParams {
       os << "weightLoopIndex[" << i << "]: " << params.weightLoopIndex[i]
          << std::endl;
     }
+    for (int i = 0; i < 2; i++) {
+      os << "fyIndex[" << i << "]: " << params.fyIndex[i] << std::endl;
+    }
     os << "fxIndex: " << params.fxIndex << std::endl;
-    os << "fyIndex: " << params.fyIndex << std::endl;
     for (int i = 0; i < 2; i++) {
       os << "weightReuseIndex[" << i << "]: " << params.weightReuseIndex[i]
          << std::endl;
     }
     os << "stride: " << params.stride << std::endl;
-
+    os << "padding: " << params.padding << std::endl;
     for (int i = 0; i < 2; i++) {
       for (int j = 0; j < 5; j++) {
         os << "weightAddressGenLoops[" << i << "][" << j
@@ -286,9 +311,11 @@ struct MatrixParams : BaseParams {
       os << "weightAddressGenWeightLoopIndex[" << i
          << "]: " << params.weightAddressGenWeightLoopIndex[i] << std::endl;
     }
+    for (int i = 0; i < 2; i++) {
+      os << "weightAddressGenFyIndex[" << i
+         << "]: " << params.weightAddressGenFyIndex[i] << std::endl;
+    }
     os << "weightAddressGenFxIndex: " << params.weightAddressGenFxIndex
-       << std::endl;
-    os << "weightAddressGenFyIndex: " << params.weightAddressGenFyIndex
        << std::endl;
 
     os << "input_dtype: " << params.input_dtype << std::endl;
@@ -317,7 +344,12 @@ struct MatrixParams : BaseParams {
     os << "has_bias: " << params.has_bias << std::endl;
     os << "has_input_transpose: " << params.has_input_transpose << std::endl;
     os << "has_weight_transpose: " << params.has_weight_transpose << std::endl;
-    os << "is_replication: " << params.is_replication << std::endl;
+    os << "is_resnet_replication: " << params.is_resnet_replication
+       << std::endl;
+    os << "is_generic_replication: " << params.is_generic_replication
+       << std::endl;
+    os << "num_channels: " << params.num_channels << std::endl;
+    os << "fx_unrolling_lg2: " << params.fx_unrolling_lg2 << std::endl;
     os << "has_attn_output_permute: " << params.has_attn_output_permute
        << std::endl;
     os << "is_mx_op: " << params.is_mx_op << std::endl;
@@ -348,12 +380,15 @@ struct MatrixParams : BaseParams {
       if (lhs.inputYLoopIndex[i] != rhs.inputYLoopIndex[i]) return false;
       if (lhs.reductionLoopIndex[i] != rhs.reductionLoopIndex[i]) return false;
       if (lhs.weightLoopIndex[i] != rhs.weightLoopIndex[i]) return false;
+      if (lhs.fyIndex[i] != rhs.fyIndex[i]) return false;
       if (lhs.weightReuseIndex[i] != rhs.weightReuseIndex[i]) return false;
       if (lhs.weightAddressGenReductionLoopIndex[i] !=
           rhs.weightAddressGenReductionLoopIndex[i])
         return false;
       if (lhs.weightAddressGenWeightLoopIndex[i] !=
           rhs.weightAddressGenWeightLoopIndex[i])
+        return false;
+      if (lhs.weightAddressGenFyIndex[i] != rhs.weightAddressGenFyIndex[i])
         return false;
     }
 
@@ -362,11 +397,11 @@ struct MatrixParams : BaseParams {
       return false;
 
     // Compare other members
-    if (lhs.fxIndex != rhs.fxIndex || lhs.fyIndex != rhs.fyIndex) return false;
-    if ((lhs.weightAddressGenFxIndex != rhs.weightAddressGenFxIndex ||
-         lhs.weightAddressGenFyIndex != rhs.weightAddressGenFyIndex))
+    if (lhs.fxIndex != rhs.fxIndex) return false;
+    if (lhs.weightAddressGenFxIndex != rhs.weightAddressGenFxIndex)
       return false;
     if (lhs.stride != rhs.stride) return false;
+    if (lhs.padding != rhs.padding) return false;
 
     if (lhs.input_dtype != rhs.input_dtype) return false;
     if (lhs.use_input_codebook != rhs.use_input_codebook) return false;
@@ -392,7 +427,7 @@ struct MatrixParams : BaseParams {
       return false;
     if (lhs.has_input_transpose != rhs.has_input_transpose) return false;
     if (lhs.has_weight_transpose != rhs.has_weight_transpose) return false;
-    if (lhs.is_replication != rhs.is_replication) return false;
+    if (lhs.is_resnet_replication != rhs.is_resnet_replication) return false;
     if (lhs.has_attn_output_permute != rhs.has_attn_output_permute)
       return false;
     if (lhs.is_mx_op != rhs.is_mx_op) return false;
@@ -421,6 +456,8 @@ struct VectorInstructions {
     vector_op0_src1 = 0;
     vector_op2_src1 = 0;
     vector_op3_src1 = 0;
+    vdequantize = 0;
+    vector_dq_scale = 0;
     vector_op0 = 0;
     vector_op1 = 0;
     vector_op2 = 0;
@@ -671,6 +708,12 @@ struct VectorParams : BaseParams {
     }
     output_dtype = 0;
 
+    output_pad_dimension = false;
+    output_pad_dim_size = 0;
+    for (int i = 0; i < 2; i++) {
+      output_pad_dim_idx[i] = 0;
+    }
+
     addr_gen0_broadcast = 0;
     addr_gen1_broadcast = 0;
     addr_gen2_broadcast = 0;
@@ -687,6 +730,7 @@ struct VectorParams : BaseParams {
     }
 
     has_transpose = false;
+    has_transpose_with_padded_dimension = false;
 
     is_maxpool = false;
     for (int i = 0; i < 2; i++) {
@@ -749,6 +793,11 @@ struct VectorParams : BaseParams {
   ac_int<3, false> output_k_loop_idx[2];
   ac_int<4, false> output_dtype;
 
+  // support for shapes that need to be padded up
+  bool output_pad_dimension;
+  ac_int<11, false> output_pad_dim_size;
+  ac_int<3, false> output_pad_dim_idx[2];
+
   ac_int<6, false> addr_gen0_broadcast;
   ac_int<3, false> addr_gen1_broadcast;
   ac_int<3, false> addr_gen2_broadcast;
@@ -764,6 +813,7 @@ struct VectorParams : BaseParams {
   ac_int<3, false> addr_gen0_dims[6];
 
   bool has_transpose;
+  bool has_transpose_with_padded_dimension;
 
   bool is_maxpool;
   ac_int<8, false> stride[2];
@@ -790,10 +840,11 @@ struct VectorParams : BaseParams {
       1 + (NUM_CODEBOOK_ENTRIES - 1) * (MAX_DECODED_DTYPE_WIDTH + 1);
 
   // There are 4 address generators in total + 12-bit broadcasting flag + 36-bit
-  // slicing params + 32-bit pooling param + 18-bit reshape params + 4-bit head
-  // size + 6 boolean flags + 64-bit scale offset
+  // slicing params + 32-bit pooling param + 18-bit reshape params + 17-bit
+  // padded transpose params + 4-bit head size + 8 boolean flags + 64-bit scale
+  // offset
   static const unsigned int width = 4 * address_gen_width + 12 + 36 + 32 + 18 +
-                                    4 + 6 + ADDRESS_WIDTH - 16 +
+                                    17 + 4 + 8 + ADDRESS_WIDTH - 16 +
                                     codebook_params_width;
 
 #ifndef NO_SYSC
@@ -877,6 +928,11 @@ struct VectorParams : BaseParams {
       m& output_k_loop_idx[i];
     }
     m & output_dtype;
+    m & output_pad_dimension;
+    m & output_pad_dim_size;
+    for (int i = 0; i < 2; i++) {
+      m& output_pad_dim_idx[i];
+    }
 
     m & addr_gen0_broadcast;
     m & addr_gen1_broadcast;
@@ -895,6 +951,7 @@ struct VectorParams : BaseParams {
     }
 
     m & has_transpose;
+    m & has_transpose_with_padded_dimension;
 
     m & is_maxpool;
     for (int i = 0; i < 2; i++) {
@@ -1016,6 +1073,13 @@ struct VectorParams : BaseParams {
     }
     os << "output_dtype: " << params.output_dtype << std::endl;
 
+    os << "output_pad_dimension: " << params.output_pad_dimension << std::endl;
+    os << "output_pad_dim_size: " << params.output_pad_dim_size << std::endl;
+    for (int i = 0; i < 2; i++) {
+      os << "output_pad_dim_idx[" << i << "]: " << params.output_pad_dim_idx[i]
+         << std::endl;
+    }
+
     os << "addr_gen0_broadcast: " << params.addr_gen0_broadcast << std::endl;
     os << "addr_gen1_broadcast: " << params.addr_gen1_broadcast << std::endl;
     os << "addr_gen2_broadcast: " << params.addr_gen2_broadcast << std::endl;
@@ -1033,6 +1097,8 @@ struct VectorParams : BaseParams {
     }
 
     os << "has_transpose: " << params.has_transpose << std::endl;
+    os << "has_transpose_with_padded_dimension: "
+       << params.has_transpose_with_padded_dimension << std::endl;
 
     os << "is_maxpool: " << params.is_maxpool << std::endl;
     for (int i = 0; i < 2; i++) {
@@ -1135,6 +1201,12 @@ struct VectorParams : BaseParams {
     }
     if (lhs.output_dtype != rhs.output_dtype) return false;
 
+    if (lhs.output_pad_dimension != rhs.output_pad_dimension) return false;
+    if (lhs.output_pad_dim_size != rhs.output_pad_dim_size) return false;
+    for (int i = 0; i < 2; i++) {
+      if (lhs.output_pad_dim_idx[i] != rhs.output_pad_dim_idx[i]) return false;
+    }
+
     if (lhs.addr_gen0_broadcast != rhs.addr_gen0_broadcast) return false;
     if (lhs.addr_gen1_broadcast != rhs.addr_gen1_broadcast) return false;
     if (lhs.addr_gen2_broadcast != rhs.addr_gen2_broadcast) return false;
@@ -1151,6 +1223,9 @@ struct VectorParams : BaseParams {
     }
 
     if (lhs.has_transpose != rhs.has_transpose) return false;
+    if (lhs.has_transpose_with_padded_dimension !=
+        rhs.has_transpose_with_padded_dimension)
+      return false;
 
     if (lhs.is_maxpool != rhs.is_maxpool) return false;
     for (int i = 0; i < 2; i++) {

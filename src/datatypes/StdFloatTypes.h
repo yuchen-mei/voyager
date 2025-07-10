@@ -121,6 +121,15 @@ class StdFloat {
     return x * ac_math::ac_sigmoid_pwl<output_type>(x);
   }
 
+#pragma hls_design ccore
+  StdFloat tanh() const {
+    typedef ac_fixed<15, 7, true, AC_RND, AC_SAT> input_type;
+    typedef ac_fixed<15, 7, true, AC_RND, AC_SAT> output_type;
+
+    input_type x = to_ac_fixed<15, 7, true, AC_RND, AC_SAT>();
+    return ac_math::ac_tanh_pwl<output_type>(x);
+  }
+
   ac_int<e_width, false> unbiased_exponent() const {
     return float_val.d.template slc<e_width>(mant_bits);
   }

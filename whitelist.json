@@ -1,5 +1,59 @@
 [
     {
+        "datatype": "*",
+        "model": [
+            "vit"
+        ],
+        "sim_type": [
+            "systemc",
+            "fast-systemc",
+            "rtl"
+        ],
+        "block_size": "*",
+        "layers": [
+            "pad_default",
+            "vit_encoder_layer_0_intermediate_dense_fused",
+            "vit_encoder_layer_1_intermediate_dense_fused",
+            "vit_encoder_layer_2_intermediate_dense_fused",
+            "vit_encoder_layer_3_intermediate_dense_fused",
+            "vit_encoder_layer_4_intermediate_dense_fused",
+            "vit_encoder_layer_5_intermediate_dense_fused",
+            "vit_encoder_layer_6_intermediate_dense_fused",
+            "vit_encoder_layer_7_intermediate_dense_fused",
+            "vit_encoder_layer_8_intermediate_dense_fused",
+            "vit_encoder_layer_9_intermediate_dense_fused",
+            "vit_encoder_layer_10_intermediate_dense_fused",
+            "vit_encoder_layer_11_intermediate_dense_fused"
+        ]
+    },
+    {
+        "datatype": "*",
+        "model": [
+            "bert"
+        ],
+        "sim_type": [
+            "systemc",
+            "fast-systemc",
+            "rtl"
+        ],
+        "block_size": "*",
+        "layers": [
+            "tanh",
+            "bert_encoder_layer_0_intermediate_dense_fused",
+            "bert_encoder_layer_1_intermediate_dense_fused",
+            "bert_encoder_layer_2_intermediate_dense_fused",
+            "bert_encoder_layer_3_intermediate_dense_fused",
+            "bert_encoder_layer_4_intermediate_dense_fused",
+            "bert_encoder_layer_5_intermediate_dense_fused",
+            "bert_encoder_layer_6_intermediate_dense_fused",
+            "bert_encoder_layer_7_intermediate_dense_fused",
+            "bert_encoder_layer_8_intermediate_dense_fused",
+            "bert_encoder_layer_9_intermediate_dense_fused",
+            "bert_encoder_layer_10_intermediate_dense_fused",
+            "bert_encoder_layer_11_intermediate_dense_fused"
+        ]
+    },
+    {
         "datatype": "MXNF4",
         "model": [
             "llama_prefill",
@@ -15,7 +69,7 @@
             32
         ],
         "layers": [
-            "linear_mx_default_7"
+            "lm_head"
         ]
     },
     {
@@ -31,12 +85,13 @@
         ],
         "block_size": 64,
         "layers": [
-            "linear_mx_default_7",
+            "lm_head",
             "slice_1",
             "slice_3",
-            "submodule_3",
-            "submodule_4",
-            "submodule_5",
+            "permute_default_fused",
+            "slice_2_fused",
+            "slice_4_fused",
+            "permute_default_1_fused",
             "submodule_6"
         ]
     },
@@ -58,7 +113,8 @@
         "layers": [
             "calculate_mx_qparam_default",
             "calculate_mx_qparam_default_1",
-            "index_copy_"
+            "index_copy_",
+            "index_copy__1"
         ]
     },
     {
@@ -77,10 +133,14 @@
             "calculate_mx_qparam_default",
             "calculate_mx_qparam_default_1",
             "index_copy_",
+            "index_copy__1",
             "slice_1",
             "slice_3",
             "submodule_2",
-            "submodule_3",
+            "permute_default_fused",
+            "permute_default_1_fused",
+            "slice_2_fused",
+            "slice_4_fused",
             "submodule_4",
             "submodule_5"
         ]

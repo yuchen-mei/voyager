@@ -18,8 +18,7 @@ template <typename Input, typename Weight, typename Psum, typename Buffer,
           typename Scale>
 inline Buffer *gemm(std::any input_ptr, std::any input_scale_ptr,
                     std::any weight_ptr, std::any weight_scale_ptr,
-                    std::any bias_ptr, const Tiling &tiling,
-                    const int block_size) {
+                    std::any bias_ptr, Tiling tiling, const int block_size) {
   spdlog::debug("Performing GEMM\n");
 
   Input *inputs = std::any_cast<Input *>(input_ptr);
@@ -39,17 +38,30 @@ inline Buffer *gemm(std::any input_ptr, std::any input_scale_ptr,
   int K = tiling.loops[0][tiling.weight_loop_index[0]] *
           tiling.loops[1][tiling.weight_loop_index[1]] * OC_DIMENSION;
   int FX = tiling.loops[1][tiling.fx_index];
-  int FY = tiling.loops[1][tiling.fy_index];
+  int FY =
+      tiling.loops[0][tiling.fy_index[0]] * tiling.loops[1][tiling.fy_index[1]];
   int STRIDE = tiling.stride;
 
   int X0 = tiling.loops[1][tiling.x_loop_index[1]];
   int Y0 = tiling.loops[1][tiling.y_loop_index[1]];
   int K0 = tiling.loops[1][tiling.weight_loop_index[1]];
+  int FY0 = tiling.loops[1][tiling.fy_index[1]];
   int C1 = tiling.loops[1][tiling.reduction_loop_index[1]];
   int IC_UNROLL = IC_DIMENSION;
   int FX_UNROLL = 1;
 
-  if (tiling.replication) {
+  if (tiling.generic_replication) {
+    C = tiling.num_channels;
+    FX_UNROLL = tiling.fx_unrolling;
+    FX = FX * FX_UNROLL;
+    tiling.loops[1][tiling.fx_index] = FX;
+  }
+
+  if (C < IC_DIMENSION) {
+    IC_UNROLL = C;
+  }
+
+  if (tiling.resnet_replication) {
     FX = 7;
     C = 3;
     IC_UNROLL = 3;
@@ -63,7 +75,11 @@ inline Buffer *gemm(std::any input_ptr, std::any input_scale_ptr,
     } else if (IC_DIMENSION == 32) {
       FX_UNROLL = 7;
     }
+    tiling.loops[1][tiling.fx_index] = FX;
   }
+
+  spdlog::debug("Performing GEMM: {}x{}x{} * {}x{}x{}x{} -> {}x{}x{}\n", Y, X,
+                C, FY, FX, C, K, Y, X, K);
 
   // assert that none of tiling.loops are 0
   for (int j = 0; j < 3; j++) {
@@ -101,189 +117,224 @@ inline Buffer *gemm(std::any input_ptr, std::any input_scale_ptr,
            counters[0][2]++) {
         for (counters[0][3] = 0; counters[0][3] < tiling.loops[0][3];
              counters[0][3]++) {
-          int x1 = counters[0][tiling.x_loop_index[0]];
-          int y1 = counters[0][tiling.y_loop_index[0]];
-          int k1 = counters[0][tiling.weight_loop_index[0]];
-          int c2 = counters[0][tiling.reduction_loop_index[0]];
-          for (counters[1][0] = 0; counters[1][0] < tiling.loops[1][0];
-               counters[1][0]++) {
-            for (counters[1][1] = 0; counters[1][1] < tiling.loops[1][1];
-                 counters[1][1]++) {
-              for (counters[1][2] = 0; counters[1][2] < tiling.loops[1][2];
-                   counters[1][2]++) {
-                for (counters[1][3] = 0; counters[1][3] < tiling.loops[1][3];
-                     counters[1][3]++) {
-                  for (counters[1][4] = 0; counters[1][4] < tiling.loops[1][4];
-                       counters[1][4]++) {
-                    for (counters[1][5] = 0;
-                         counters[1][5] < tiling.loops[1][5];
-                         counters[1][5]++) {
-                      int x0 = counters[1][tiling.x_loop_index[1]];
-                      int y0 = counters[1][tiling.y_loop_index[1]];
-                      int c1 = counters[1][tiling.reduction_loop_index[1]];
-                      int k0 = counters[1][tiling.weight_loop_index[1]];
-                      int fx = counters[1][tiling.fx_index] - (FX - 1) / 2;
-                      int fy = counters[1][tiling.fy_index] - (FY - 1) / 2;
+          for (counters[0][4] = 0; counters[0][4] < tiling.loops[0][4];
+               counters[0][4]++) {
+            int x1 = counters[0][tiling.x_loop_index[0]];
+            int y1 = counters[0][tiling.y_loop_index[0]];
+            int k1 = counters[0][tiling.weight_loop_index[0]];
+            int c2 = counters[0][tiling.reduction_loop_index[0]];
+            int fy1 = counters[0][tiling.fy_index[0]];
+            for (counters[1][0] = 0; counters[1][0] < tiling.loops[1][0];
+                 counters[1][0]++) {
+              for (counters[1][1] = 0; counters[1][1] < tiling.loops[1][1];
+                   counters[1][1]++) {
+                for (counters[1][2] = 0; counters[1][2] < tiling.loops[1][2];
+                     counters[1][2]++) {
+                  for (counters[1][3] = 0; counters[1][3] < tiling.loops[1][3];
+                       counters[1][3]++) {
+                    for (counters[1][4] = 0;
+                         counters[1][4] < tiling.loops[1][4];
+                         counters[1][4]++) {
+                      for (counters[1][5] = 0;
+                           counters[1][5] < tiling.loops[1][5];
+                           counters[1][5]++) {
+                        int x0 = counters[1][tiling.x_loop_index[1]];
+                        int y0 = counters[1][tiling.y_loop_index[1]];
+                        int c1 = counters[1][tiling.reduction_loop_index[1]];
+                        int k0 = counters[1][tiling.weight_loop_index[1]];
+                        int fy0 = counters[1][tiling.fy_index[1]];
 
-                      int x = x1 * X0 + x0;
-                      int y = y1 * Y0 + y0;
+                        int fx = counters[1][tiling.fx_index] - tiling.padding;
+                        int fy = fy1 * FY0 + fy0 - tiling.padding;
 
-                      for (int oc0 = 0; oc0 < OC_DIMENSION; oc0++) {
-                        int k = (k1 * K0 + k0) * OC_DIMENSION + oc0;
-                        int output_addr = y * X * K + x * K + k;
+                        int x = x1 * X0 + x0;
+                        int y = y1 * Y0 + y0;
+
+                        for (int oc0 = 0; oc0 < OC_DIMENSION; oc0++) {
+                          int k = (k1 * K0 + k0) * OC_DIMENSION + oc0;
+                          int output_addr = y * X * K + x * K + k;
 
 #if SUPPORT_MX
-                        Psum psum = Psum(0.0);
+                          Psum psum = Psum(0.0);
 #else
-                        Psum psum = accumulations[output_addr];
+                          Psum psum = accumulations[output_addr];
 #endif
 
-                        for (int ic0 = 0; ic0 < IC_UNROLL; ic0++) {
-                          int c = c2 * C1 * IC_UNROLL + c1 * IC_UNROLL + ic0;
-                          int input_addr = (STRIDE * y + fy) * STRIDE * X * C +
-                                           (STRIDE * x + fx) * C + c;
-                          int weight_addr = (fy + (FY - 1) / 2) * FX * C * K +
-                                            (fx + (FX - 1) / 2) * C * K +
-                                            c * K + k;
-                          if (STRIDE * x + fx >= 0 &&
-                              STRIDE * x + fx < STRIDE * X &&
-                              STRIDE * y + fy >= 0 &&
-                              STRIDE * y + fy < STRIDE * Y) {
-                            Input input = inputs[input_addr];
-                            Weight weight = weights[weight_addr];
+                          for (int ic0 = 0; ic0 < IC_UNROLL; ic0++) {
+                            int c = c2 * C1 * IC_UNROLL + c1 * IC_UNROLL + ic0;
+                            int input_addr =
+                                (STRIDE * y + fy) * STRIDE * X * C +
+                                (STRIDE * x + fx) * C + c;
+                            int weight_addr =
+                                (fy + tiling.padding) * FX * C * K +
+                                (fx + tiling.padding) * C * K + c * K + k;
+                            if (STRIDE * x + fx >= 0 &&
+                                STRIDE * x + fx < STRIDE * X &&
+                                STRIDE * y + fy >= 0 &&
+                                STRIDE * y + fy < STRIDE * Y) {
+                              Input input = inputs[input_addr];
+                              Input weight = weights[weight_addr];
 #ifdef CHECK_PE
-                            int pe_num = ic0 * OC_DIMENSION + oc0;
-                            if (tiling.replication) {
-                              pe_num =
-                                  ic0 * OC_DIMENSION +
-                                  (counters[1][tiling.fx_index] % FX_UNROLL) *
-                                      IC_UNROLL * OC_DIMENSION +
-                                  oc0;
-                            }
-                            pe_checker.add_reference(pe_num, input, weight,
-                                                     psum);
+                              int pe_num = ic0 * OC_DIMENSION + oc0;
+                              if (tiling.resnet_replication ||
+                                  tiling.generic_replication) {
+                                pe_num =
+                                    ic0 * OC_DIMENSION +
+                                    (counters[1][tiling.fx_index] % FX_UNROLL) *
+                                        IC_UNROLL * OC_DIMENSION +
+                                    oc0;
+                              }
+                              pe_checker.add_reference(pe_num, input, weight,
+                                                       psum);
 #endif
-                            fused_multiply_add(input, weight, psum);
-                          } else {
+                              fused_multiply_add(input, weight, psum);
+                            } else {
 #ifdef CHECK_PE
-                            int pe_num = ic0 * OC_DIMENSION + oc0;
-                            if (tiling.replication) {
-                              pe_num =
-                                  ic0 * OC_DIMENSION +
-                                  (counters[1][tiling.fx_index] % FX_UNROLL) *
-                                      IC_UNROLL * OC_DIMENSION +
-                                  oc0;
-                            }
-                            Weight weight = weights[weight_addr];
-                            pe_checker.add_reference(pe_num, Input::zero(),
-                                                     weight, psum);
+                              int pe_num = ic0 * OC_DIMENSION + oc0;
+                              if (tiling.resnet_replication ||
+                                  tiling.generic_replication) {
+                                pe_num =
+                                    ic0 * OC_DIMENSION +
+                                    (counters[1][tiling.fx_index] % FX_UNROLL) *
+                                        IC_UNROLL * OC_DIMENSION +
+                                    oc0;
+                              }
+                              Weight weight = weights[weight_addr];
+                              pe_checker.add_reference(pe_num, Input::zero(),
+                                                       weight, psum);
 #endif
+                            }
                           }
-                        }
 
 #if SUPPORT_MX
-                        if (input_scales && weight_scales) {
-                          // only perform scaling if within bounds
-                          if (STRIDE * x + fx >= 0 &&
-                              STRIDE * x + fx < STRIDE * X &&
-                              STRIDE * y + fy >= 0 &&
-                              STRIDE * y + fy < STRIDE * Y) {
-                            int c = c2 * C1 + c1;
-                            int num_blocks = C / block_size;
-                            int input_scale_addr =
-                                (y * STRIDE + fy) * X * STRIDE * num_blocks +
-                                (x * STRIDE + fx) * num_blocks + c;
-                            assert(input_scale_addr >= 0);
-                            int weight_scale_addr =
-                                (fy + (FY - 1) / 2) * FX * num_blocks * K +
-                                (fx + (FX - 1) / 2) * num_blocks * K + c * K +
-                                k;
-                            assert(weight_scale_addr >= 0);
+                          if (input_scales && weight_scales) {
+                            // only perform scaling if within bounds
+                            if (STRIDE * x + fx >= 0 &&
+                                STRIDE * x + fx < STRIDE * X &&
+                                STRIDE * y + fy >= 0 &&
+                                STRIDE * y + fy < STRIDE * Y) {
+                              int c = c2 * C1 + c1;
+                              int num_blocks = C / block_size;
+                              int input_scale_addr =
+                                  (y * STRIDE + fy) * X * STRIDE * num_blocks +
+                                  (x * STRIDE + fx) * num_blocks + c;
+                              assert(input_scale_addr >= 0);
+                              int weight_scale_addr =
+                                  (fy + (FY - 1) / 2) * FX * num_blocks * K +
+                                  (fx + (FX - 1) / 2) * num_blocks * K + c * K +
+                                  k;
+                              assert(weight_scale_addr >= 0);
 
-                            Scale input_scale = input_scales[input_scale_addr];
-                            Scale weight_scale =
-                                weight_scales[weight_scale_addr];
-                            Buffer scale = static_cast<Buffer>(input_scale) *
-                                           static_cast<Buffer>(weight_scale);
-                            outputs[output_addr] +=
-                                static_cast<Buffer>(psum) * scale;
-                          }
-                        } else {
-                          if (tiling.replication) {
-                            accumulations[output_addr] += psum;
-                            if (IC_DIMENSION == 4) {
-                              Buffer scaled_psum = static_cast<Buffer>(
-                                  accumulations[output_addr]);
+                              Scale input_scale =
+                                  input_scales[input_scale_addr];
+                              Scale weight_scale =
+                                  weight_scales[weight_scale_addr];
+                              Buffer scale = static_cast<Buffer>(input_scale) *
+                                             static_cast<Buffer>(weight_scale);
+                              outputs[output_addr] +=
+                                  static_cast<Buffer>(psum) * scale;
+                            }
+
+                          } else {
+                            if (tiling.resnet_replication) {
+                              accumulations[output_addr] += psum;
+                              if (IC_DIMENSION == 4) {
+                                Buffer scaled_psum = static_cast<Buffer>(
+                                    accumulations[output_addr]);
+                                outputs[output_addr] += scaled_psum;
+                                accumulations[output_addr] = Psum(0.0);
+                              } else if (IC_DIMENSION == 8) {
+                                if (counters[1][tiling.fx_index] == 1 ||
+                                    counters[1][tiling.fx_index] == 3 ||
+                                    counters[1][tiling.fx_index] == 5 ||
+                                    counters[1][tiling.fx_index] == 6) {
+                                  Buffer scaled_psum = static_cast<Buffer>(
+                                      accumulations[output_addr]);
+                                  outputs[output_addr] += scaled_psum;
+                                  accumulations[output_addr] = Psum(0.0);
+                                }
+                              } else if (IC_DIMENSION == 16) {
+                                if (counters[1][tiling.fx_index] == 3 ||
+                                    counters[1][tiling.fx_index] == 6) {
+                                  Buffer scaled_psum = static_cast<Buffer>(
+                                      accumulations[output_addr]);
+                                  outputs[output_addr] += scaled_psum;
+                                  accumulations[output_addr] = Psum(0.0);
+                                }
+                              } else if (IC_DIMENSION == 32) {
+                                if (counters[1][tiling.fx_index] == 6) {
+                                  Buffer scaled_psum = static_cast<Buffer>(
+                                      accumulations[output_addr]);
+                                  outputs[output_addr] += scaled_psum;
+                                  accumulations[output_addr] = Psum(0.0);
+                                }
+                              }
+                            } else if (tiling.generic_replication) {
+                              accumulations[output_addr] += psum;
+                              if (tiling.fx_unrolling == 1 ||
+                                  ((counters[1][tiling.fx_index] > 0) &&
+                                   (counters[1][tiling.fx_index] %
+                                        tiling.fx_unrolling ==
+                                    tiling.fx_unrolling - 1))) {
+                                Buffer scaled_psum = static_cast<Buffer>(
+                                    accumulations[output_addr]);
+                                outputs[output_addr] += scaled_psum;
+                                accumulations[output_addr] = Psum(0.0);
+                              }
+                            } else {
+                              // use a scale factor of 1 to directly convert the
+                              // int value into a float
+                              Buffer scaled_psum = static_cast<Buffer>(psum);
                               outputs[output_addr] += scaled_psum;
+                            }
+                          }
+#else
+
+                          if (tiling.resnet_replication) {
+                            accumulations[output_addr] = psum;
+                            if (IC_DIMENSION == 4) {
+                              outputs[output_addr] += static_cast<Buffer>(
+                                  accumulations[output_addr]);
                               accumulations[output_addr] = Psum(0.0);
                             } else if (IC_DIMENSION == 8) {
                               if (counters[1][tiling.fx_index] == 1 ||
                                   counters[1][tiling.fx_index] == 3 ||
                                   counters[1][tiling.fx_index] == 5 ||
                                   counters[1][tiling.fx_index] == 6) {
-                                Buffer scaled_psum = static_cast<Buffer>(
+                                outputs[output_addr] += static_cast<Buffer>(
                                     accumulations[output_addr]);
-                                outputs[output_addr] += scaled_psum;
                                 accumulations[output_addr] = Psum(0.0);
                               }
                             } else if (IC_DIMENSION == 16) {
                               if (counters[1][tiling.fx_index] == 3 ||
                                   counters[1][tiling.fx_index] == 6) {
-                                Buffer scaled_psum = static_cast<Buffer>(
+                                outputs[output_addr] += static_cast<Buffer>(
                                     accumulations[output_addr]);
-                                outputs[output_addr] += scaled_psum;
                                 accumulations[output_addr] = Psum(0.0);
                               }
                             } else if (IC_DIMENSION == 32) {
                               if (counters[1][tiling.fx_index] == 6) {
-                                Buffer scaled_psum = static_cast<Buffer>(
+                                outputs[output_addr] += static_cast<Buffer>(
                                     accumulations[output_addr]);
-                                outputs[output_addr] += scaled_psum;
                                 accumulations[output_addr] = Psum(0.0);
                               }
                             }
+                          } else if (tiling.generic_replication) {
+                            accumulations[output_addr] = psum;
+                            if (tiling.fx_unrolling == 1 ||
+                                ((counters[1][tiling.fx_index] > 0) &&
+                                 (counters[1][tiling.fx_index] %
+                                      tiling.fx_unrolling ==
+                                  tiling.fx_unrolling - 1))) {
+                              outputs[output_addr] += static_cast<Buffer>(
+                                  accumulations[output_addr]);
+                              accumulations[output_addr] = Psum(0.0);
+                            }
                           } else {
-                            // use a scale factor of 1 to directly convert the
-                            // int value into a float
-                            Buffer scaled_psum = static_cast<Buffer>(psum);
-                            outputs[output_addr] += scaled_psum;
+                            outputs[output_addr] += static_cast<Buffer>(psum);
                           }
-                        }
-#else
-
-                        if (tiling.replication) {
-                          accumulations[output_addr] = psum;
-                          if (IC_DIMENSION == 4) {
-                            outputs[output_addr] +=
-                                static_cast<Buffer>(accumulations[output_addr]);
-                            accumulations[output_addr] = Psum(0.0);
-                          } else if (IC_DIMENSION == 8) {
-                            if (counters[1][tiling.fx_index] == 1 ||
-                                counters[1][tiling.fx_index] == 3 ||
-                                counters[1][tiling.fx_index] == 5 ||
-                                counters[1][tiling.fx_index] == 6) {
-                              outputs[output_addr] += static_cast<Buffer>(
-                                  accumulations[output_addr]);
-                              accumulations[output_addr] = Psum(0.0);
-                            }
-                          } else if (IC_DIMENSION == 16) {
-                            if (counters[1][tiling.fx_index] == 3 ||
-                                counters[1][tiling.fx_index] == 6) {
-                              outputs[output_addr] += static_cast<Buffer>(
-                                  accumulations[output_addr]);
-                              accumulations[output_addr] = Psum(0.0);
-                            }
-                          } else if (IC_DIMENSION == 32) {
-                            if (counters[1][tiling.fx_index] == 6) {
-                              outputs[output_addr] += static_cast<Buffer>(
-                                  accumulations[output_addr]);
-                              accumulations[output_addr] = Psum(0.0);
-                            }
-                          }
-                        } else {
-                          outputs[output_addr] += static_cast<Buffer>(psum);
-                        }
 #endif
+                        }
                       }
                     }
                   }
@@ -326,11 +377,6 @@ inline Buffer *gemm(std::any input_ptr, std::any input_scale_ptr,
   std::ostringstream oss;
   oss << "GEMM Tiling: " << tiling << std::endl;
   spdlog::debug(oss.str());
-
-  if (tiling.replication) {
-    tiling.loops[1][tiling.fx_index] = tiling.loops[1][tiling.fy_index];
-    tiling.loops[1][tiling.reduction_loop_index[1]] = 1;
-  }
 
   const auto op_list = get_op_list(operation.param);
   const auto matrix_op = op_list.front();

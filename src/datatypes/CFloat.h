@@ -58,6 +58,7 @@ class CFloat {
                              (float_val + 0.044715f * pow(float_val, 3))));
   }
   CFloat silu() { return float_val / (1.0f + std::exp(-float_val)); }
+  CFloat tanh() { return std::tanh(float_val); }
 
   CFloat fma(CFloat &b, CFloat &c) {
     return CFloat(float_val * b.float_val + c.float_val);

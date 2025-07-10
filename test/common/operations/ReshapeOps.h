@@ -3,6 +3,43 @@
 #include "test/common/operations/Common.h"
 
 template <typename T>
+inline T* pad_tensor(std::any input_ptr, const std::vector<int>& input_shape,
+                     const int pad_amount) {
+  spdlog::debug("Padding tensor with amount: {}\n", pad_amount);
+  T* inputs = std::any_cast<T*>(input_ptr);
+
+  std::vector<int> output_shape(input_shape);
+  output_shape[1] += pad_amount;
+
+  // copy the input tensor to the output tensor
+  T* outputs = new T[get_size(output_shape)];
+  for (int i = 0; i < get_size(input_shape); i++) {
+    outputs[i] = inputs[i];
+  }
+
+  // pad the first dimension of the output tensor
+  for (int i = input_shape[1]; i < input_shape[1] + pad_amount; i++) {
+    for (int j = 0; j < input_shape[2]; j++) {
+      outputs[i * input_shape[2] + j] = T::zero();
+    }
+  }
+
+  delete[] inputs;
+
+  return outputs;
+}
+
+template <typename T>
+inline T* pad_tensor(std::any input_ptr, const codegen::OpOverload op) {
+  const auto input = op.kwargs().at("input").tensor();
+  const auto input_shape = get_shape(input);
+  const auto pad_list = op.kwargs().at("pad").int_list().values();
+  const auto pad_amount = pad_list[pad_list.size() - 1];
+
+  return pad_tensor<T>(input_ptr, input_shape, pad_amount);
+}
+
+template <typename T>
 inline T* permute(std::any input_ptr, const std::vector<int>& shape,
                   const std::vector<int> dims) {
   T* inputs = std::any_cast<T*>(input_ptr);
