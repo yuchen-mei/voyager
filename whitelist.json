@@ -55,10 +55,7 @@
     },
     {
         "datatype": "MXNF4",
-        "model": [
-            "llama_prefill",
-            "llama_prefill_mp"
-        ],
+        "model": "llama_prefill",
         "sim_type": [
             "systemc",
             "fast-systemc",
@@ -66,12 +63,31 @@
         ],
         "block_size": 64,
         "layers": [
-            "slice_1",
-            "slice_3",
+            "permute_default_1_fused",
             "permute_default_fused",
+            "slice_1",
             "slice_2_fused",
-            "slice_4_fused",
-            "permute_default_1_fused"
+            "slice_3",
+            "slice_4_fused"
+        ]
+    },
+    {
+        "datatype": "MXNF4",
+        "model": "llama_prefill_mp",
+        "sim_type": [
+            "systemc",
+            "fast-systemc",
+            "rtl"
+        ],
+        "block_size": 64,
+        "layers": [
+            "model_layers_0_mlp_down_proj_fused",
+            "permute_default_1_fused",
+            "permute_default_fused",
+            "slice_1",
+            "slice_2_fused",
+            "slice_3",
+            "slice_4_fused"
         ]
     },
     {
@@ -90,18 +106,15 @@
             32
         ],
         "layers": [
-            "calculate_mx_qparam_default",
             "calculate_mx_qparam_default_1",
             "index_copy_",
-            "index_copy__1"
+            "index_copy__1",
+            "model_layers_0_mlp_down_proj_fused"
         ]
     },
     {
         "datatype": "MXNF4",
-        "model": [
-            "llama_decode",
-            "llama_decode_mp"
-        ],
+        "model": "llama_decode",
         "sim_type": [
             "systemc",
             "fast-systemc",
@@ -109,15 +122,36 @@
         ],
         "block_size": 64,
         "layers": [
-            "calculate_mx_qparam_default",
             "calculate_mx_qparam_default_1",
             "index_copy_",
             "index_copy__1",
-            "slice_1",
-            "slice_3",
-            "permute_default_fused",
             "permute_default_1_fused",
+            "permute_default_fused",
+            "slice_1",
             "slice_2_fused",
+            "slice_3",
+            "slice_4_fused"
+        ]
+    },
+    {
+        "datatype": "MXNF4",
+        "model": "llama_decode_mp",
+        "sim_type": [
+            "systemc",
+            "fast-systemc",
+            "rtl"
+        ],
+        "block_size": 64,
+        "layers": [
+            "calculate_mx_qparam_default_1",
+            "index_copy_",
+            "index_copy__1",
+            "model_layers_0_mlp_down_proj_fused",
+            "permute_default_1_fused",
+            "permute_default_fused",
+            "slice_1",
+            "slice_2_fused",
+            "slice_3",
             "slice_4_fused"
         ]
     }
