@@ -261,6 +261,11 @@ void MapVectorOperations(const codegen::Operation &param,
   }
 
   if (vector_params->has_permute) {
+    if (input_shape[input_shape.size() - 1] % OC_DIMENSION != 0) {
+      throw std::invalid_argument(
+          "Last dimension of input shape must be a multiple of OC_DIMENSION!");
+    }
+
     std::vector<int> dims;
     if (reshape_kwargs.contains("dims")) {
       auto int_list = reshape_op.kwargs().at("dims").int_list().values();
