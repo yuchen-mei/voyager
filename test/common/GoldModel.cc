@@ -209,7 +209,7 @@ std::vector<std::any> run_operation(const Operation &operation,
     }
     // output_ptr = pad<Vector>(input_ptr_s, first_op);
     // const auto input = first_op.kwargs().at("input").tensor();
-    output_ptr = pad_tensor<Vector>(kwargs[input.node()], first_op);
+    output_ptr = pad_tensor<Vector>(input_ptr_s, first_op);
   }
 
   if (first_op.target() == "layer_norm") {
