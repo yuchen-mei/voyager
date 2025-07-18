@@ -449,7 +449,7 @@ SC_MODULE(VectorPipeline) {
           temp[i] = op3_src0[i].abs();
         }
         VectorType amax = tree_max(temp);
-        amax_history = count == 0 || amax > amax_history ? amax : amax_history;
+        amax_history = count == 0 ? amax : std::max(amax, amax_history);
         count = count + 1;
 
         if (count == OcDimension / Width) {

@@ -1,5 +1,5 @@
 set block "VectorFetchUnit"
-set full_block_name "VectorFetchUnit<$VECTOR_DATATYPE, $ACCUM_BUFFER_DATATYPE, $OC_DIMENSION, $VU_INPUT_TYPES>"
+set full_block_name "VectorFetchUnit<$VECTOR_DATATYPE, $ACCUM_BUFFER_DATATYPE, $VECTOR_UNIT_WIDTH, $OC_DIMENSION, $VU_INPUT_TYPES>"
 
 proc pre_architect {} {
   global full_block_name
