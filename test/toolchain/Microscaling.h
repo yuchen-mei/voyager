@@ -100,7 +100,9 @@ void MapMicroscaling(const codegen::Operation &param,
   vinst1.inst_count = get_size(input) / OC_DIMENSION * packing_factor;
   vinst1.vector_op0_src0 = VectorInstructions::from_vector_fetch_0;
   vinst1.vector_op0_src1 = VectorInstructions::from_immediate_0;
-  VECTOR_DATATYPE immediate = 1.0 / quant_max;
+  VECTOR_DATATYPE immediate = force_scale_power_of_two
+                                  ? 1.0 / pow(2, floor(log2(quant_max)))
+                                  : 1.0 / quant_max;
   vinst1.immediate0 = immediate.bits_rep();
   vinst1.vector_op0 = VectorInstructions::vmult;
   vinst1.vector_op1 = VectorInstructions::vabs;
