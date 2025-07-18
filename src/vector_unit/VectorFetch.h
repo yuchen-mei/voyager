@@ -297,20 +297,9 @@ SC_MODULE(VectorFetchUnit) {
                   if (params.addr_gen0_mode == 1 ||
                       params.addr_gen0_mode == 2) {
                     if (params.has_transpose || in_bound) {
-                      bool found =
-                          (fetch_vector_input<InputTypes, Width, InputTypes...>(
-                               params.addr_gen0_dtype, address,
-                               params.ADDRESS_GEN0_OFFSET,
-                               vector_fetch_0_req) ||
-                           ...);
-
-#ifndef __SYNTHESIS__
-                      if (!found) {
-                        std::cerr << "Error: vector input 0 dtype '"
-                                  << params.addr_gen0_dtype
-                                  << "' is not valid.\n";
-                      }
-#endif
+                      fetch_vector_input<Width, InputTypes...>(
+                          params.addr_gen0_dtype, params.ADDRESS_GEN0_OFFSET,
+                          address, vector_fetch_0_req);
                     }
 
                     if (!params.has_transpose) {
@@ -615,14 +604,15 @@ SC_MODULE(VectorFetchUnit) {
           params.addr_gen1_loops[1][params.addr_gen1_k_loop_idx[1]];
 
       ac_int<16, false> X = X1 * X0;
-      ac_int<16, false> K = K2 * K1 * Width;
+      ac_int<16, false> k_stride = Width * params.addr_gen1_packing_factor;
+      ac_int<16, false> K = K2 * K1 * k_stride;
 
       if (params.addr_gen1_broadcast[1]) {
         X = 1;
       }
 
       if (params.addr_gen1_broadcast[2]) {
-        K = Width;
+        K = k_stride;
       }
 
 #pragma hls_pipeline_init_interval 1
@@ -648,7 +638,7 @@ SC_MODULE(VectorFetchUnit) {
 
                   ac_int<16, false> y = y1 * Y0 + y0;
                   ac_int<16, false> x = x1 * X0 + x0;
-                  ac_int<16, false> k = k1 * K1 * Width + k0 * Width;
+                  ac_int<16, false> k = (k1 * K1 + k0) * k_stride;
 
                   if (params.addr_gen1_broadcast[0]) {
                     y = 0;
@@ -664,20 +654,19 @@ SC_MODULE(VectorFetchUnit) {
 
                   ac_int<32, false> address = y * X * K + x * K + k;
 
-                  bool found =
-                      (fetch_vector_input<InputTypes, Width, InputTypes...>(
-                           params.addr_gen1_dtype, address,
-                           params.ADDRESS_GEN1_OFFSET, vector_fetch_1_req) ||
-                       ...);
+                  for (ac_int<4, false> pf = 0;; pf++) {
+                    fetch_vector_input<Width, InputTypes...>(
+                        params.addr_gen1_dtype, params.ADDRESS_GEN1_OFFSET,
+                        address, vector_fetch_1_req);
 
-#ifndef __SYNTHESIS__
-                  if (!found) {
-                    std::cerr << "Error: vector input 1 dtype '"
-                              << params.addr_gen1_dtype << "' is not valid.\n";
+                    vector_fetch_1_done.write(false);
+
+                    address += Width;
+
+                    if (pf == params.addr_gen1_packing_factor - 1) {
+                      break;
+                    }
                   }
-#endif
-
-                  vector_fetch_1_done.write(false);
 
                   if (loop_counters[1][2] == loop_ends[1][2]) {
                     break;
@@ -780,14 +769,15 @@ SC_MODULE(VectorFetchUnit) {
           params.addr_gen2_loops[1][params.addr_gen2_k_loop_idx[1]];
 
       ac_int<16, false> X = X1 * X0;
-      ac_int<16, false> K = K2 * K1 * Width;
+      ac_int<16, false> k_stride = Width * params.addr_gen2_packing_factor;
+      ac_int<16, false> K = K2 * K1 * k_stride;
 
       if (params.addr_gen2_broadcast[1]) {
         X = 1;
       }
 
       if (params.addr_gen2_broadcast[2]) {
-        K = Width;
+        K = k_stride;
       }
 
 #pragma hls_pipeline_init_interval 1
@@ -813,7 +803,7 @@ SC_MODULE(VectorFetchUnit) {
 
                   ac_int<16, false> y = y1 * Y0 + y0;
                   ac_int<16, false> x = x1 * X0 + x0;
-                  ac_int<16, false> k = k1 * K1 * Width + k0 * Width;
+                  ac_int<16, false> k = (k1 * K1 + k0) * k_stride;
 
                   if (params.addr_gen2_broadcast[0]) {
                     y = 0;
@@ -829,20 +819,19 @@ SC_MODULE(VectorFetchUnit) {
 
                   ac_int<32, false> address = y * X * K + x * K + k;
 
-                  bool found =
-                      (fetch_vector_input<InputTypes, Width, InputTypes...>(
-                           params.addr_gen2_dtype, address,
-                           params.ADDRESS_GEN2_OFFSET, vector_fetch_2_req) ||
-                       ...);
+                  for (ac_int<4, false> pf = 0;; pf++) {
+                    fetch_vector_input<Width, InputTypes...>(
+                        params.addr_gen2_dtype, params.ADDRESS_GEN2_OFFSET,
+                        address, vector_fetch_2_req);
 
-#ifndef __SYNTHESIS__
-                  if (!found) {
-                    std::cerr << "Error: vector input 2 dtype '"
-                              << params.addr_gen2_dtype << "' is not valid.\n";
+                    vector_fetch_2_done.write(false);
+
+                    address += Width;
+
+                    if (pf == params.addr_gen2_packing_factor - 1) {
+                      break;
+                    }
                   }
-#endif
-
-                  vector_fetch_2_done.write(false);
 
                   if (loop_counters[1][2] == loop_ends[1][2]) {
                     break;

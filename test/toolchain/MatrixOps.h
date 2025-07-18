@@ -594,7 +594,8 @@ void MapMatrixOperation(const Operation &operation,
   }
 
   const int packing_factor = OC_DIMENSION / VECTOR_UNIT_WIDTH;
-  tiling.loops[1][tiling.weight_loop_index[1]] *= packing_factor;
+  vector_params->addr_gen1_packing_factor = packing_factor;
+  vector_params->addr_gen2_packing_factor = packing_factor;
 
   VectorInstructions inst;
   inst.op_type = VectorInstructions::vector;

@@ -1084,8 +1084,7 @@ struct InputController<std::tuple<InputTypes...>, NRows, PortWidth, BufferWidth>
         while (!fetcher_done_2.read()) {
           ac_int<MAX_FETCH_WIDTH, false> bits = transpose_out.Pop();
 
-          // Unpack bits into outputs based on
-          // dtype
+          // Unpack bits into outputs based on dtype
           for (ac_int<4, false> i = 0;; i++) {
             ac_int<BufferWidth, false> outputs = 0;
             bool handled = (unpack_bits<InputTypes, NRows, BufferWidth,
@@ -1095,10 +1094,8 @@ struct InputController<std::tuple<InputTypes...>, NRows, PortWidth, BufferWidth>
 
 #ifndef __SYNTHESIS__
             if (!handled) {
-              throw std::runtime_error(
-                  "Unsupported dtype for "
-                  "matrix input: " +
-                  std::to_string(params.input_dtype));
+              throw std::runtime_error("Unsupported dtype for matrix input: " +
+                                       std::to_string(params.input_dtype));
             }
 #endif
             unpacked_data.Push(outputs);

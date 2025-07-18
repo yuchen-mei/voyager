@@ -678,6 +678,7 @@ struct VectorParams : BaseParams {
     }
     addr_gen1_dq_scale = 0;
     addr_gen1_dtype = 0;
+    addr_gen1_packing_factor = 1;
 
     addr_gen2_mode = 0;
     ADDRESS_GEN2_OFFSET = 0;
@@ -693,6 +694,7 @@ struct VectorParams : BaseParams {
     }
     addr_gen2_dq_scale = 0;
     addr_gen2_dtype = 0;
+    addr_gen2_packing_factor = 1;
 
     output_mode = 1;
     VECTOR_OUTPUT_OFFSET = 0;
@@ -753,7 +755,7 @@ struct VectorParams : BaseParams {
 
   static constexpr int LOOP_WIDTH = 16;
 
-  // Address generator 0 (vector input)
+  // Address generator 0
   ac_int<2, false> addr_gen0_mode;
   ac_int<ADDRESS_WIDTH, false> ADDRESS_GEN0_OFFSET;
   ac_int<LOOP_WIDTH, false> addr_gen0_loops[2][3];
@@ -763,7 +765,7 @@ struct VectorParams : BaseParams {
   ac_int<16, false> addr_gen0_dq_scale;
   ac_int<4, false> addr_gen0_dtype;
 
-  // Address generator 1 (op0src1)
+  // Address generator 1
   ac_int<2, false> addr_gen1_mode;
   ac_int<ADDRESS_WIDTH, false> ADDRESS_GEN1_OFFSET;
   ac_int<LOOP_WIDTH, false> addr_gen1_loops[2][3];
@@ -772,8 +774,9 @@ struct VectorParams : BaseParams {
   ac_int<3, false> addr_gen1_k_loop_idx[2];
   ac_int<16, false> addr_gen1_dq_scale;
   ac_int<4, false> addr_gen1_dtype;
+  ac_int<4, false> addr_gen1_packing_factor;
 
-  // Address generator 2 (op3src1)
+  // Address generator 2
   ac_int<2, false> addr_gen2_mode;
   ac_int<ADDRESS_WIDTH, false> ADDRESS_GEN2_OFFSET;
   ac_int<LOOP_WIDTH, false> addr_gen2_loops[2][3];
@@ -782,6 +785,7 @@ struct VectorParams : BaseParams {
   ac_int<3, false> addr_gen2_k_loop_idx[2];
   ac_int<16, false> addr_gen2_dq_scale;
   ac_int<4, false> addr_gen2_dtype;
+  ac_int<4, false> addr_gen2_packing_factor;
 
   // Output address generator
   ac_int<2, false> output_mode;
@@ -840,10 +844,10 @@ struct VectorParams : BaseParams {
   // There are 4 address generators in total + 12-bit broadcasting flag + 36-bit
   // slicing params + 32-bit pooling param + 18-bit reshape params + 17-bit
   // padded transpose params + 4-bit head size + 7 boolean flags + 64-bit scale
-  // offset
+  // offset + 2 * 4-bit packing factor
   static const unsigned int width = 4 * address_gen_width + 12 + 36 + 32 + 18 +
                                     17 + 4 + 7 + ADDRESS_WIDTH - 16 +
-                                    codebook_params_width;
+                                    codebook_params_width + 2 * 4;
 
 #ifndef NO_SYSC
   template <unsigned int Size>
@@ -887,6 +891,7 @@ struct VectorParams : BaseParams {
     }
     m & addr_gen1_dq_scale;
     m & addr_gen1_dtype;
+    m & addr_gen1_packing_factor;
 
     // Address generator 2
     m & addr_gen2_mode;
@@ -907,6 +912,7 @@ struct VectorParams : BaseParams {
     }
     m & addr_gen2_dq_scale;
     m & addr_gen2_dtype;
+    m & addr_gen2_packing_factor;
 
     // Output address generator
     m & output_mode;
@@ -1026,6 +1032,8 @@ struct VectorParams : BaseParams {
     }
     os << "addr_gen1_dq_scale: " << params.addr_gen1_dq_scale << std::endl;
     os << "addr_gen1_dtype: " << params.addr_gen1_dtype << std::endl;
+    os << "addr_gen1_packing_factor: " << params.addr_gen1_packing_factor
+       << std::endl;
 
     os << "addr_gen2_mode: " << params.addr_gen2_mode << std::endl;
     os << "addr_gen2_broadcast: " << params.addr_gen2_broadcast << std::endl;
@@ -1050,6 +1058,8 @@ struct VectorParams : BaseParams {
     }
     os << "addr_gen2_dq_scale: " << params.addr_gen2_dq_scale << std::endl;
     os << "addr_gen2_dtype: " << params.addr_gen2_dtype << std::endl;
+    os << "addr_gen2_packing_factor: " << params.addr_gen2_packing_factor
+       << std::endl;
 
     os << "output_mode: " << params.output_mode << std::endl;
     os << "VECTOR_OUTPUT_OFFSET: " << params.VECTOR_OUTPUT_OFFSET << std::endl;
@@ -1159,6 +1169,8 @@ struct VectorParams : BaseParams {
     }
     if (lhs.addr_gen1_dq_scale != rhs.addr_gen1_dq_scale) return false;
     if (lhs.addr_gen1_dtype != rhs.addr_gen1_dtype) return false;
+    if (lhs.addr_gen1_packing_factor != rhs.addr_gen1_packing_factor)
+      return false;
 
     // Compare Address Gen 2 members
     if (lhs.addr_gen2_mode != rhs.addr_gen2_mode) return false;
@@ -1179,6 +1191,8 @@ struct VectorParams : BaseParams {
     }
     if (lhs.addr_gen2_dq_scale != rhs.addr_gen2_dq_scale) return false;
     if (lhs.addr_gen2_dtype != rhs.addr_gen2_dtype) return false;
+    if (lhs.addr_gen2_packing_factor != rhs.addr_gen2_packing_factor)
+      return false;
 
     // Compare output and other members
     if (lhs.output_mode != rhs.output_mode) return false;
