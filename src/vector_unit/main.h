@@ -369,37 +369,35 @@ SC_MODULE(VectorUnit) {
         for (decltype(vector_inst_config.instLen) i = 0;; i++) {
           VectorInstructions inst = vector_inst_config.inst[i];
 
-          if (inst.vdest != VectorInstructions::to_output &&
-              inst.rdest != VectorInstructions::to_memory) {
-            continue;
-          }
-
-          ac_int<32, false> num_outputs = output_counts[i];
-          for (ac_int<32, false> count = 0;; count++) {
-            Pack1D<VectorType, OcDimension> packed_outputs;
-            for (ac_int<4, false> pack = 0;; pack++) {
-              Pack1D<VectorType, Width> outputs;
-              if (inst.op_type == VectorInstructions::vector) {
-                outputs = vector_unit_output.Pop();
-              } else if (inst.op_type == VectorInstructions::accumulation) {
-                outputs = accumulator_to_memory.Pop();
-              } else if (inst.op_type == VectorInstructions::reduction) {
-                outputs = reducer_to_memory.Pop();
-              }
+          if (inst.vdest == VectorInstructions::to_output ||
+              inst.rdest == VectorInstructions::to_memory) {
+            ac_int<32, false> num_outputs = output_counts[i];
+            for (ac_int<32, false> count = 0;; count++) {
+              Pack1D<VectorType, OcDimension> packed_outputs;
+              for (ac_int<4, false> pack = 0;; pack++) {
+                Pack1D<VectorType, Width> outputs;
+                if (inst.op_type == VectorInstructions::vector) {
+                  outputs = vector_unit_output.Pop();
+                } else if (inst.op_type == VectorInstructions::accumulation) {
+                  outputs = accumulator_to_memory.Pop();
+                } else if (inst.op_type == VectorInstructions::reduction) {
+                  outputs = reducer_to_memory.Pop();
+                }
 
 #pragma hls_unroll yes
-              for (int i = 0; i < Width; i++) {
-                packed_outputs[pack * Width + i] = outputs[i];
-              }
+                for (int i = 0; i < Width; i++) {
+                  packed_outputs[pack * Width + i] = outputs[i];
+                }
 
-              if (pack == packing_factor - 1) {
+                if (pack == packing_factor - 1) {
+                  break;
+                }
+              }
+              outputs_to_memory.Push(packed_outputs);
+
+              if (count == num_outputs) {
                 break;
               }
-            }
-            outputs_to_memory.Push(packed_outputs);
-
-            if (count == num_outputs) {
-              break;
             }
           }
           if (i == vector_inst_config.instLen - 1) {
