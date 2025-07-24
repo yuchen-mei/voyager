@@ -51,10 +51,12 @@ SC_MODULE(VectorPipeline) {
 #if SUPPORT_MX
   Connections::Fifo<Pack1D<StageInput, 2>, OcDimension / Width>
       stage3_input_fifo;
-  Connections::Combinational<Pack1D<StageInput, 2>> stage3_input_in;
-  Connections::Combinational<Pack1D<StageInput, 2>> stage3_input_out;
+  Connections::Combinational<Pack1D<StageInput, 2>> stage3_input_fifo_in;
+  Connections::Combinational<Pack1D<StageInput, 2>> stage3_input_fifo_out;
 
-  Connections::Combinational<ScaleType> stage3_scale;
+  Connections::Fifo<ScaleType, 1> stage3_scale_fifo;
+  Connections::Combinational<ScaleType> stage3_scale_fifo_in;
+  Connections::Combinational<ScaleType> stage3_scale_fifo_out;
 #endif
 
   SC_CTOR(VectorPipeline) {
@@ -84,8 +86,13 @@ SC_MODULE(VectorPipeline) {
 
     stage3_input_fifo.clk(clk);
     stage3_input_fifo.rst(rstn);
-    stage3_input_fifo.enq(stage3_input_in);
-    stage3_input_fifo.deq(stage3_input_out);
+    stage3_input_fifo.enq(stage3_input_fifo_in);
+    stage3_input_fifo.deq(stage3_input_fifo_out);
+
+    stage3_scale_fifo.clk(clk);
+    stage3_scale_fifo.rst(rstn);
+    stage3_scale_fifo.enq(stage3_scale_fifo_in);
+    stage3_scale_fifo.deq(stage3_scale_fifo_out);
 #endif
   }
 
@@ -424,8 +431,8 @@ SC_MODULE(VectorPipeline) {
 #if SUPPORT_MX
   void compute_mx_qparams() {
     stage3_input.ResetRead();
-    stage3_input_in.ResetWrite();
-    stage3_scale.ResetWrite();
+    stage3_input_fifo_in.ResetWrite();
+    stage3_scale_fifo_in.ResetWrite();
 
     wait();
 
@@ -441,6 +448,8 @@ SC_MODULE(VectorPipeline) {
           transactions[1].immediate;
       Pack1D<VectorType, Width> op3_src0 = transactions[0].payload;
 
+      stage3_input_fifo_in.Push(transactions);
+
       if (op3 == VectorInstructions::vquantize_mx) {
         Pack1D<VectorType, Width> temp;
 #pragma hls_unroll yes
@@ -454,19 +463,17 @@ SC_MODULE(VectorPipeline) {
         if (count == OcDimension / Width) {
           ScaleType scale =
               compute_scale<VectorType, ScaleType, Width>(amax_history, qparam);
-          stage3_scale.Push(scale);
+          stage3_scale_fifo_in.Push(scale);
           count = 0;
         }
       }
-
-      stage3_input_in.Push(transactions);
     }
   }
 #endif
   void stage3() {
 #if SUPPORT_MX
-    stage3_input_out.ResetRead();
-    stage3_scale.ResetRead();
+    stage3_input_fifo_out.ResetRead();
+    stage3_scale_fifo_out.ResetRead();
     mx_scale.Reset();
 #else
     stage3_input.ResetRead();
@@ -482,7 +489,7 @@ SC_MODULE(VectorPipeline) {
 #pragma hls_pipeline_stall_mode flush
     while (1) {
 #if SUPPORT_MX
-      Pack1D<StageInput, 2> transactions = stage3_input_out.Pop();
+      Pack1D<StageInput, 2> transactions = stage3_input_fifo_out.Pop();
 #else
       Pack1D<StageInput, 2> transactions = stage3_input.Pop();
 #endif
@@ -494,7 +501,7 @@ SC_MODULE(VectorPipeline) {
 #if SUPPORT_MX
       if (op3 == VectorInstructions::vquantize_mx) {
         if (count == 0) {
-          scale = stage3_scale.Pop();
+          scale = stage3_scale_fifo_out.Pop();
           mx_scale.Push(scale);
         }
 
