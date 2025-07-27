@@ -38,9 +38,9 @@ void MapLayerNorm(const codegen::Operation &param,
 
   const int packing_factor = OC_DIMENSION / VECTOR_UNIT_WIDTH;
 
-  const int output_size = get_size(output);
-  const int mean_scratch_address = get_address(output) + output_size;
-  const int var_scratch_address = mean_scratch_address + output_size;
+  const int mean_scratch_address = get_address(input) + 2 * input_size;
+  const int var_scratch_address =
+      mean_scratch_address + reduced_size * OC_DIMENSION * 2;
 
   // ======================================================================
   // Pass 1: compute mean
@@ -82,7 +82,8 @@ void MapLayerNorm(const codegen::Operation &param,
   vector_params->output_loops[1][1] = 1;
   vector_params->output_loops[1][2] = reduced_size;
 
-  vector_params->output_dtype = get_type_index<VECTOR_DATATYPE, OUTPUT_DATATYPES>();
+  vector_params->output_dtype =
+      get_type_index<VECTOR_DATATYPE, OUTPUT_DATATYPES>();
 
   // Configure reduction engine
   VectorInstructions inst0_0;
@@ -141,7 +142,7 @@ void MapLayerNorm(const codegen::Operation &param,
   vector_params->vector_fetch_0_loops[1][1] = non_reduction_loops[1];
   vector_params->vector_fetch_0_loops[1][2] = reduction_dim / OC_DIMENSION;
 
-  // Address generator 1: Scratch mean.
+  // Address generator 1: mean
   vector_params->vector_fetch_1_offset = mean_scratch_address;
   vector_params->vector_fetch_1_mode = 1;
   vector_params->vector_fetch_1_dtype =
@@ -174,7 +175,8 @@ void MapLayerNorm(const codegen::Operation &param,
   vector_params->output_loops[1][1] = 1;
   vector_params->output_loops[1][2] = reduced_size;
 
-  vector_params->output_dtype = get_type_index<VECTOR_DATATYPE, OUTPUT_DATATYPES>();
+  vector_params->output_dtype =
+      get_type_index<VECTOR_DATATYPE, OUTPUT_DATATYPES>();
 
   // Configure reduction unit
   VectorInstructions inst1_0;
@@ -220,7 +222,8 @@ void MapLayerNorm(const codegen::Operation &param,
   memory_map["vector0"] = get_partition(input_memory.partition());
   vector_params->vector_fetch_0_offset = get_address(input);
   vector_params->vector_fetch_0_mode = 2;
-  vector_params->vector_fetch_0_dtype = get_type_index<VECTOR_DATATYPE, VU_INPUT_TYPES>();
+  vector_params->vector_fetch_0_dtype =
+      get_type_index<VECTOR_DATATYPE, VU_INPUT_TYPES>();
 
   vector_params->vector_fetch_0_burst_size = vector_fetch_0_input_width / 8;
   vector_params->vector_fetch_0_num_beats =
@@ -283,7 +286,8 @@ void MapLayerNorm(const codegen::Operation &param,
   vector_params->output_loops[1][1] = non_reduction_loops[1];
   vector_params->output_loops[1][2] = reduction_dim / OC_DIMENSION;
 
-  vector_params->output_dtype = get_type_index<VECTOR_DATATYPE, OUTPUT_DATATYPES>();
+  vector_params->output_dtype =
+      get_type_index<VECTOR_DATATYPE, OUTPUT_DATATYPES>();
 
   // Multiply inputs with the inverse sqrt of the variance
   VectorInstructions inst2;
@@ -402,7 +406,7 @@ void MapLayerNorm(const codegen::Operation &param,
   // inputs x weights + bias
   VectorInstructions inst3;
   inst3.op_type = VectorInstructions::vector;
-  inst3.inst_count = output_size / OC_DIMENSION * packing_factor;
+  inst3.inst_count = get_size(output) / OC_DIMENSION * packing_factor;
   inst3.vector_op0_src0 = VectorInstructions::from_vector_fetch_0;
   inst3.vector_op0_src1 = VectorInstructions::from_vector_fetch_1;
   inst3.vector_op0 = VectorInstructions::vmult;
