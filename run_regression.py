@@ -362,7 +362,7 @@ def run_rtl_test(model, layer, layer_count, output_folder, scale_down_operation)
                 flags=re.IGNORECASE,
             )
 
-            runtime_type = match.group(1).capitalize()  # "Matrix" or "Vector"
+            runtime_type = match.group(1).lower()
             ideal_runtime = int(match.group(2))
 
     return (model, layer, success, total_runtime, ideal_runtime, runtime_type, layer_count)
