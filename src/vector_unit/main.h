@@ -77,9 +77,6 @@ SC_MODULE(VectorUnit) {
       vector_fetch_2_data);
 
   // Vector Pipeline
-  Connections::Out<MemoryRequest> CCS_INIT_S1(vector_fetch_3_req);
-  Connections::In<ac_int<16, false>> CCS_INIT_S1(vector_fetch_3_resp);
-
   Connections::Combinational<Pack1D<VectorType, Width>> CCS_INIT_S1(
       pipeline_to_memory);
   Connections::Combinational<ScaleType> CCS_INIT_S1(mx_scale);
@@ -175,8 +172,6 @@ SC_MODULE(VectorUnit) {
     pipeline.vector_fetch_0_data(vector_fetch_0_data);
     pipeline.vector_fetch_1_data(vector_fetch_1_data);
     pipeline.vector_fetch_2_data(vector_fetch_2_data);
-    pipeline.vector_fetch_3_req(vector_fetch_3_req);
-    pipeline.vector_fetch_3_resp(vector_fetch_3_resp);
     pipeline.accumulator_output(accumulator_to_pipeline);
     pipeline.reducer_output_0(reducer_output_0);
     pipeline.reducer_output_1(reducer_output_1);
@@ -184,7 +179,7 @@ SC_MODULE(VectorUnit) {
     pipeline.vector_unit_output(pipeline_to_memory);
     pipeline.reducer_input(reducer_input);
     pipeline.accumulator_input(accumulator_input);
-    pipeline.approx_unit_config_in(approx_unit_config);
+    pipeline.approx_unit_config(approx_unit_config);
 
     // Reducer
     reducer.clk(clk);
@@ -275,9 +270,7 @@ SC_MODULE(VectorUnit) {
           for (ac_int<20, false> count = 0;; count++) {
             if (inst.op_type == VectorInstructions::vector) {
               pipeline_instr.Push(inst);
-              if (inst.vector_op1 == VectorInstructions::vpoly) {
-                approx_unit_config.Push(vector_inst_config.approx);
-              }
+              approx_unit_config.Push(vector_inst_config.approx);
             } else if (inst.op_type == VectorInstructions::accumulation) {
               accumulator_instr.Push(inst);
             } else {
