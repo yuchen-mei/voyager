@@ -357,7 +357,7 @@ SC_MODULE(VectorPipeline) {
         // Stage 1: exp, abs, activations
         if (op1 == VectorInstructions::vpoly) {
           res1 = vpoly<VectorType, Width>(op1_src0, config.maxes, config.ranges,
-            config.clamp_min, config.clamp_max);
+                                          config.clamp_min, config.clamp_max);
         } else if (op1 == VectorInstructions::vabs) {
           res1 = vabs<VectorType, Width>(op1_src0);
         } else if (op1 == VectorInstructions::vrelu) {
