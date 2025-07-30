@@ -139,7 +139,6 @@ void MapMatrixVectorMultiply(const codegen::Operation &param,
   vinst0.rdest = VectorInstructions::to_op0;
   vinst0.immediate0 = 1;
   vector_instruction_config->inst[0] = vinst0;
-  vector_instruction_config->instCount[0] = 1;
 
   // inst1 - input x weight, send to reduce
   // reduction_dim / DIMENSION to do the complete reduction, DIMENSION to fill
@@ -152,7 +151,6 @@ void MapMatrixVectorMultiply(const codegen::Operation &param,
   vinst1.vector_op0 = VectorInstructions::vmult;
   vinst1.vdest = VectorInstructions::to_reduce;
   vector_instruction_config->inst[1] = vinst1;
-  vector_instruction_config->instCount[1] = 1;
 
   // inst2 - add bias, write out
   if (has_bias) {
@@ -163,7 +161,6 @@ void MapMatrixVectorMultiply(const codegen::Operation &param,
     vinst2.vector_op2 = VectorInstructions::vadd;
     vinst2.vdest = VectorInstructions::to_output;
     vector_instruction_config->inst[2] = vinst2;
-    vector_instruction_config->instCount[2] = 1;
   }
 
   vector_instruction_config->instLen = has_bias ? 3 : 2;

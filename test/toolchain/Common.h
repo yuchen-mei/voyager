@@ -17,7 +17,7 @@ std::vector<std::set<std::string>> vector_unit_stages = {
      "softplus_",    "tanh",         "tanh_",     "tanh_1",     "tanh_1_",
      "hardshrink",   "hardshrink_",  "hardtanh",  "hardtanh_",  "leaky_relu",
      "leaky_relu_",  "rrelu",        "rrelu_",    "softshrink", "softshrink_",
-     "threshold",    "threshold_",   "vmap"},
+     "threshold",    "threshold_"},
     {"add", "add_", "mul", "mul_", "square", "div", "div_"},
     {"div", "div_", "quantize", "quantize_mx"},
 };
@@ -76,7 +76,6 @@ std::map<std::string, unsigned int> get_vector_instruction_mapping() {
   mapping["softshrink_"] = VectorInstructions::vpoly;
   mapping["threshold"] = VectorInstructions::vpoly;
   mapping["threshold_"] = VectorInstructions::vpoly;
-  mapping["vmap"] = VectorInstructions::vmap;
   mapping["quantize"] = VectorInstructions::vdiv;
   mapping["quantize_mx"] = VectorInstructions::vquantize_mx;
   return mapping;

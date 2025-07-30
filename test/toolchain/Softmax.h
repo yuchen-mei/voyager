@@ -93,7 +93,6 @@ void MapSoftmax(const codegen::Operation &param,
   vinst0.rduplicate = 1;
   vinst0.rdest = VectorInstructions::to_memory;
   vector_instruction_config->inst[0] = vinst0;
-  vector_instruction_config->instCount[0] = 1;
 
   // Instruction 1 - send to reduction engine to calculate max
   VectorInstructions vinst1;
@@ -102,7 +101,6 @@ void MapSoftmax(const codegen::Operation &param,
   vinst1.vector_op0_src0 = VectorInstructions::from_vector_fetch_0;
   vinst1.vdest = VectorInstructions::to_reduce;
   vector_instruction_config->inst[1] = vinst1;
-  vector_instruction_config->instCount[1] = 1;
 
   vector_instruction_config->instLen = 2;
   vector_instruction_config->instLoopCount = 1;
@@ -181,7 +179,6 @@ void MapSoftmax(const codegen::Operation &param,
   vinst2.rduplicate = 1;
   vinst2.rdest = VectorInstructions::to_memory;
   vector_instruction_config->inst[0] = vinst2;
-  vector_instruction_config->instCount[0] = 1;
 
   // Instruction 3 - subtract max and exp, and reduce sum
   VectorInstructions vinst3;
@@ -193,7 +190,6 @@ void MapSoftmax(const codegen::Operation &param,
   vinst3.vector_op1 = VectorInstructions::vpoly;
   vinst3.vdest = VectorInstructions::to_reduce;
   vector_instruction_config->inst[1] = vinst3;
-  vector_instruction_config->instCount[1] = 1;
 
   vector_instruction_config->instLen = 2;
   vector_instruction_config->instLoopCount = 1;
@@ -303,7 +299,6 @@ void MapSoftmax(const codegen::Operation &param,
   set_quantize_params(param, vector_params, inst4);
 
   vector_instruction_config->inst[0] = inst4;
-  vector_instruction_config->instCount[0] = 1;
 
   vector_instruction_config->instLen = 1;
   vector_instruction_config->instLoopCount = 1;

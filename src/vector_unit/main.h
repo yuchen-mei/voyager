@@ -267,20 +267,15 @@ SC_MODULE(VectorUnit) {
         for (decltype(vector_inst_config.instLen) i = 0;; i++) {
           VectorInstructions inst = vector_inst_config.inst[i];
 
-          for (ac_int<20, false> count = 0;; count++) {
-            if (inst.op_type == VectorInstructions::vector) {
-              pipeline_instr.Push(inst);
-              approx_unit_config.Push(vector_inst_config.approx);
-            } else if (inst.op_type == VectorInstructions::accumulation) {
-              accumulator_instr.Push(inst);
-            } else {
-              reducer_instr.Push(inst);
-            }
-
-            if (count == vector_inst_config.instCount[i] - 1) {
-              break;
-            }
+          if (inst.op_type == VectorInstructions::vector) {
+            pipeline_instr.Push(inst);
+            approx_unit_config.Push(vector_inst_config.approx);
+          } else if (inst.op_type == VectorInstructions::accumulation) {
+            accumulator_instr.Push(inst);
+          } else {
+            reducer_instr.Push(inst);
           }
+
           if (i == vector_inst_config.instLen - 1) {
             break;
           }

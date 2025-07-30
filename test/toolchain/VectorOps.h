@@ -520,10 +520,7 @@ void MapVectorOperations(const codegen::Operation &param,
       inst.vector_op3 = vop;
     }
 
-    if (opcode == "vmap") {
-      const auto other = op.kwargs().at("other").tensor();
-      inst.VMAP_OFFSET = get_address(other);
-    } else if (opcode == "neg") {
+    if (opcode == "neg") {
       const auto self = op.kwargs().at("input").tensor();
       const auto output_shape = squeeze_shape(get_shape(self));
 
@@ -884,7 +881,6 @@ void MapVectorOperations(const codegen::Operation &param,
 
   // total output count
   vector_instruction_config->inst[0] = inst;
-  vector_instruction_config->instCount[0] = 1;
   vector_instruction_config->instLen = 1;
   vector_instruction_config->instLoopCount = 1;
 

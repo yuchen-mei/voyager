@@ -477,7 +477,6 @@ struct VectorInstructions {
     immediate0 = 0;
     immediate1 = 0;
     immediate2 = 0;
-    VMAP_OFFSET = 0;
   }
 #endif
 
@@ -517,13 +516,12 @@ struct VectorInstructions {
   static const unsigned int vsub = 3;
 
   // Stage 1: exp, abs, activations
-  ac_int<3, false> vector_op1;
+  ac_int<2, false> vector_op1;
   static const unsigned int vpoly = 1;
   static const unsigned int vabs = 2;
   static const unsigned int vrelu = 3;
-  static const unsigned int vmap = 4;
 
-  // Stage 2: add, mult, square, div
+  // Stage 2: add, mult, square
   ac_int<2, false> vector_op2;
   static const unsigned int vsquare = 3;
 
@@ -532,7 +530,7 @@ struct VectorInstructions {
   static const unsigned int vquantize_mx = 2;
 
   ac_int<10, false> reduce_count;
-  ac_int<3, false> reduce_op;
+  ac_int<2, false> reduce_op;
   static const unsigned int radd = 1;
   static const unsigned int rmax = 2;
 
@@ -554,9 +552,8 @@ struct VectorInstructions {
   ac_int<16, false> immediate0;
   ac_int<16, false> immediate1;
   ac_int<16, false> immediate2;
-  ac_int<64, false> VMAP_OFFSET;
 
-  static const unsigned int width = 201;
+  static const unsigned int width = 135;
 
 #ifndef NO_SYSC
   template <unsigned int Size>
@@ -584,7 +581,6 @@ struct VectorInstructions {
     m & immediate0;
     m & immediate1;
     m & immediate2;
-    m & VMAP_OFFSET;
   }
 
   inline friend void sc_trace(sc_trace_file* tf,
@@ -619,7 +615,6 @@ struct VectorInstructions {
     os << "immediate0: " << params.immediate0 << std::endl;
     os << "immediate1: " << params.immediate1 << std::endl;
     os << "immediate2: " << params.immediate2 << std::endl;
-    os << "VMAP_OFFSET: " << params.VMAP_OFFSET << std::endl;
     return os;
   }
 
@@ -638,13 +633,10 @@ struct VectorInstructions {
            lhs.vector_dq_scale == rhs.vector_dq_scale &&
            lhs.reduce_count == rhs.reduce_count &&
            lhs.reduce_op == rhs.reduce_op && lhs.rsqrt == rhs.rsqrt &&
-           lhs.rreciprocal == rhs.rreciprocal &&
-           lhs.rscale == rhs.rscale && lhs.rduplicate == rhs.rduplicate &&
-           lhs.rdest == rhs.rdest &&
+           lhs.rreciprocal == rhs.rreciprocal && lhs.rscale == rhs.rscale &&
+           lhs.rduplicate == rhs.rduplicate && lhs.rdest == rhs.rdest &&
            lhs.vdest == rhs.vdest && lhs.immediate0 == rhs.immediate0 &&
-           lhs.immediate1 == rhs.immediate1 &&
-           lhs.immediate2 == rhs.immediate2 &&
-           lhs.VMAP_OFFSET == rhs.VMAP_OFFSET;
+           lhs.immediate1 == rhs.immediate1 && lhs.immediate2 == rhs.immediate2;
   }
 };
 
@@ -1406,22 +1398,18 @@ struct ApproxUnitConfig {
 struct VectorInstructionConfig : BaseParams {
 #ifndef __SYNTHESIS__
   VectorInstructionConfig() {
-    for (int i = 0; i < 8; i++) {
-      instCount[i] = 0;
-    }
     instLen = 0;
     instLoopCount = 0;
   }
 #endif
 
   VectorInstructions inst[8];
-  ac_int<20, false> instCount[8];
   ac_int<3, false> instLen;
   ac_int<16, false> instLoopCount;
   ApproxUnitConfig approx;
 
   static const unsigned int width =
-      VectorInstructions::width * 8 + 20 * 8 + 3 + 16 + ApproxUnitConfig::width;
+      VectorInstructions::width * 8 + 3 + 16 + ApproxUnitConfig::width;
 
 #ifndef NO_SYSC
   template <unsigned int Size>
@@ -1495,13 +1483,7 @@ struct VectorInstructionConfig : BaseParams {
     for (int j = 0; j < 8; j++) {
       m& inst[j].immediate2;
     }
-    for (int j = 0; j < 8; j++) {
-      m& inst[j].VMAP_OFFSET;
-    }
 
-    for (int i = 0; i < 8; i++) {
-      m& instCount[i];
-    }
     m & instLen;
     m & instLoopCount;
 
@@ -1528,7 +1510,6 @@ struct VectorInstructionConfig : BaseParams {
       ostream& os, const VectorInstructionConfig& params) {
     for (int i = 0; i < params.instLen; i++) {
       os << "instIndex: " << i << std::endl;
-      os << "instCount: " << params.instCount[i] << std::endl;
       os << params.inst[i] << std::endl;
     }
     os << "instLen: " << params.instLen << std::endl;
@@ -1539,7 +1520,6 @@ struct VectorInstructionConfig : BaseParams {
   inline friend bool operator==(const VectorInstructionConfig& lhs,
                                 const VectorInstructionConfig& rhs) {
     for (int i = 0; i < 8; i++) {
-      if (lhs.instCount[i] != rhs.instCount[i]) return false;
       if (!(lhs.inst[i] == rhs.inst[i])) return false;
     }
     if (lhs.instLen != rhs.instLen || lhs.instLoopCount != rhs.instLoopCount)

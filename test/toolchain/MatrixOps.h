@@ -705,10 +705,7 @@ void MapMatrixOperation(const Operation &operation,
       inst.vector_op3 = vop;
     }
 
-    if (opcode == "vmap") {
-      const auto other = op.kwargs().at("code").tensor();
-      inst.VMAP_OFFSET = get_address(other);
-    } else if (opcode == "quantize_mx") {
+    if (opcode == "quantize_mx") {
       float quant_max = op.kwargs().at("quant_max").float_value();
       bool force_scale_power_of_two =
           op.kwargs().at("force_scale_power_of_two").int_value();
@@ -1051,7 +1048,6 @@ void MapMatrixOperation(const Operation &operation,
 
   // total output count
   vector_instruction_config->inst[0] = inst;
-  vector_instruction_config->instCount[0] = 1;
   vector_instruction_config->instLen = 1;
   vector_instruction_config->instLoopCount = 1;
 
