@@ -9,11 +9,6 @@ BLOCK_SIZE := $(shell [ $(IC_DIMENSION) -gt $(OC_DIMENSION) ] && echo $(IC_DIMEN
 MXINT8_FLAGS := --activation int8,qs=microscaling,bs=$(BLOCK_SIZE) --weight int8,qs=microscaling,bs=$(BLOCK_SIZE) --force_scale_power_of_two --bf16
 MXNF4_FLAGS := --activation nf4_6,qs=microscaling,bs=$(BLOCK_SIZE),scale=fp8_e5m3 --weight nf4_6,qs=microscaling,bs=$(BLOCK_SIZE),scale=fp8_e5m3 --bf16
 COMMON_FLAGS := --transpose_weight
-ifeq ($(DATATYPE), INT8)
-DWC_FLAG := --activation int8,qs=per_tensor_symmetric --weight int8,qs=per_tensor_symmetric --bias int24 --bf16 --calibration_steps 10
-else 
-DWC_FLAG := --activation int8,qs=per_tensor_symmetric --weight int8,qs=per_tensor_symmetric --bias bfloat16 --bf16 --calibration_steps 10
-endif
 EXTRA_COMPILER_FLAGS ?=
 
 ################################################################################
@@ -63,7 +58,7 @@ $(CODEGEN_DIR)/networks/segformer/%/model.txt: quantized-training/test/test_code
 
 $(CODEGEN_DIR)/networks/mobilenet_v2/%/model.txt: voyager-compiler/test/test_codegen.py
 	mkdir -p $(dir $@)
-	python voyager-compiler/test/test_codegen.py mobilenet_v2 $(DWC_FLAG) $(EXTRA_COMPILER_FLAGS) --padding $(IC_DIMENSION),$(OC_DIMENSION) --model_output_dir $(dir $@) $(COMMON_FLAGS) &> $(dir $@)codegen.log
+	python voyager-compiler/test/test_codegen.py mobilenet_v2 $($(notdir $(patsubst %/,%,$(dir $@)))_FLAGS) $(EXTRA_COMPILER_FLAGS) --hardware_unrolling $(IC_DIMENSION) --model_output_dir $(dir $@) $(COMMON_FLAGS) &> $(dir $@)codegen.log
 
 ################################################################################
 # Gesture

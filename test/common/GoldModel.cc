@@ -101,9 +101,21 @@ std::vector<std::any> run_operation(const Operation &operation,
       bias_ptr = kwargs[bias.node()];
     }
 
-    if (first_op.target() == "conv2d" &&
+    if ((first_op.target() == "conv2d" || first_op.target() == "conv2d_mx") &&
                first_op.kwargs().at("groups").int_value() > 1) {
-      output_ptr = DwC<DWC_DATATYPE, DWC_PSUM, ACCUM_BUFFER_DATATYPE>(input_ptr, weight_ptr, bias_ptr, operation);
+      // Fetch microscaling scales
+      std::any input_scale_ptr = static_cast<Scale *>(nullptr);
+      std::any weight_scale_ptr = static_cast<Scale *>(nullptr);
+
+      bool is_mx_op = first_op.target().find("mx") != std::string::npos;
+      if (is_mx_op) {
+        const auto input_scale = first_op.kwargs().at("input_scale").tensor();
+        input_scale_ptr = kwargs[input_scale.node()];
+
+        const auto weight_scale = first_op.kwargs().at("weight_scale").tensor();
+        weight_scale_ptr = kwargs[weight_scale.node()];
+      }
+      output_ptr = DwC<DWC_DATATYPE, DWC_PSUM, ACCUM_BUFFER_DATATYPE, Scale>(input_ptr, input_scale_ptr, weight_ptr, weight_scale_ptr, bias_ptr, operation);
     }
     else {
       const auto input_shape = get_shape(input);

@@ -583,6 +583,38 @@ def run_accuracy(model, dataset, num_processes, output_folder):
     else:
         raise ValueError("Invalid datatype")
 
+    if "mobilenet" in model:
+        if env_vars["DATATYPE"] == "INT8":
+            quantization_args = [
+                "--activation",
+                "int8,qs=per_tensor_symmetric",
+                "--weight",
+                "int8,qs=per_tensor_symmetric",
+                "--bias",
+                "int24",
+                "--bf16",
+                "--calibration_steps",
+                "10",
+                "--hardware_unrolling",
+                "32",
+            ]
+        elif env_vars["DATATYPE"] == "CFLOAT":
+            quantization_args = [
+                "--hardware_unrolling",
+                "32",
+            ]
+        else:
+            quantization_args = [
+                "--force_scale_power_of_two",
+                "--activation",
+                "int8,qs=microscaling,bs=" + str(block_size),
+                "--weight",
+                "int8,qs=microscaling,bs=" + str(block_size),
+                "--bf16",
+                "--hardware_unrolling",
+                "32",
+            ]
+
     subprocess.run(
         [
             "mkdir",

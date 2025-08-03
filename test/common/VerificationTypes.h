@@ -130,3 +130,23 @@ inline float* read_constant_param(const codegen::Tensor& tensor) {
 
   return data;
 }
+
+inline std::string getenv(std::string const& name,
+  std::string const& default_value) {
+const char* val = std::getenv(name.c_str());
+return val == NULL ? default_value : std::string(val);
+}
+
+inline bool is_soc_sim() {
+const char* env = std::getenv("SOC_SIM");
+return env != nullptr && std::string(env) == "1";
+}
+
+inline uint64_t get_address(const codegen::Tensor& tensor) {
+if (is_soc_sim() && tensor.has_scratchpad()) {
+std::string offset = getenv("SOC_MEM_OFFSET", "0");
+return tensor.scratchpad().offset() + std::stoi(offset);
+} else {
+return tensor.memory().address();
+}
+}
