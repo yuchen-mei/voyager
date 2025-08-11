@@ -19,6 +19,9 @@ constexpr int NUM_COEFFS = 3;
 #define SA_INPUT_TYPE INPUT_DATATYPE::decoded
 #define SA_WEIGHT_TYPE WEIGHT_DATATYPE::decoded
 
+#define DWC_DATATYPE DataTypes::posit8
+#define DWC_PSUM DataTypes::bfloat16
+
 #elif defined(E4M3)
 
 #define INPUT_DATATYPE DataTypes::e4m3
@@ -83,6 +86,8 @@ using F9 = StdFloat<3, 5>;
 #define WEIGHT_DATATYPE DataTypes::bfloat16
 #define ACCUM_DATATYPE DataTypes::bfloat16
 #define VECTOR_DATATYPE DataTypes::bfloat16
+#define DWC_DATATYPE DataTypes::bfloat16
+#define DWC_PSUM DataTypes::bfloat16
 
 #elif defined(FP32)
 
@@ -90,6 +95,8 @@ using F9 = StdFloat<3, 5>;
 #define WEIGHT_DATATYPE DataTypes::float32
 #define ACCUM_DATATYPE DataTypes::float32
 #define VECTOR_DATATYPE DataTypes::float32
+#define DWC_DATATYPE DataTypes::float32
+#define DWC_PSUM DataTypes::float32
 
 #elif defined(INT8)
 
@@ -219,7 +226,7 @@ using F9 = StdFloat<3, 5>;
 #if SUPPORT_MX
 #define VU_INPUT_TYPES VECTOR_DATATYPE, SCALE_DATATYPE, INPUT_DATATYPE
 #else
-#define VU_INPUT_TYPES INPUT_DATATYPE, VECTOR_DATATYPE
+#define VU_INPUT_TYPES INPUT_DATATYPE, VECTOR_DATATYPE, ACCUM_BUFFER_DATATYPE
 #endif
 #endif
 
@@ -313,6 +320,14 @@ using WeightTypeList = std::tuple<WEIGHT_DATATYPE>;
 
 #ifndef ACCUM_BUFFER_SIZE
 #define ACCUM_BUFFER_SIZE 1024
+#endif
+
+// ================================================================
+// DwC Configurations
+// ================================================================
+
+#ifndef SUPPORT_DWC
+#define SUPPORT_DWC false
 #endif
 
 #ifndef DWC_WIDTH

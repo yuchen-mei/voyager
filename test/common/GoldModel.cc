@@ -333,12 +333,30 @@ std::vector<std::any> run_operation(const Operation &operation,
       } else if (input.dtype() == DataTypes::TypeName<INPUT_DATATYPE>::name()) {
         output_ptr = permute<INPUT_DATATYPE>(output_ptr, reshape_op);
         output_ptr = slice<INPUT_DATATYPE>(output_ptr, reshape_op);
+      } else if (input.dtype() == DataTypes::TypeName<ACCUM_BUFFER_DATATYPE>::name()) {
+        output_ptr = permute<ACCUM_BUFFER_DATATYPE>(output_ptr, reshape_op);
+        output_ptr = slice<ACCUM_BUFFER_DATATYPE>(output_ptr, reshape_op);
       } else {
         spdlog::error("The datatype is not inside VU_INPUT_TYPES\n");
         std::abort();
       }
       // output_ptr = permute<Vector>(output_ptr, reshape_op);
       // output_ptr = slice<Vector>(output_ptr, reshape_op);
+    } else {
+      if (input.dtype() == DataTypes::TypeName<INPUT_DATATYPE>::name()) {
+        // const int size = get_size(input);
+        // Vector *outputs = new Vector[size];
+        // INPUT_DATATYPE *inputs = std::any_cast<INPUT_DATATYPE *>(output_ptr);
+        // for (int i = 0; i < size; i++) {
+        //   outputs[i] = static_cast<Vector>(inputs[i]);
+        // }
+        // delete[] inputs;
+        // output_ptr = outputs;
+        Vector *scale_tmp = new Vector[1];
+        scale_tmp[0] = input.scale() != 0 ? input.scale() : 1.0;
+        output_ptr = dequantize_tensor<Vector>(kwargs[input.node()],
+                                              scale_tmp, input);
+      }
     }
   }
 
@@ -399,7 +417,7 @@ std::vector<std::any> run_operation(const Operation &operation,
         input_shape = get_shape(operand1);
         other_shape = get_shape(operand2);
 
-        if (operand1.dtype() == operand2.dtype()) {
+        if (operand1.dtype() == operand2.dtype() || operand2.dtype() == DataTypes::TypeName<Vector>::name()) {
           other_ptr = std::any_cast<Vector *>(kwargs[operand2.node()]);
         } else {
           if constexpr (std::is_same<Vector, CFloat>::value) {

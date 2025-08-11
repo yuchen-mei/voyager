@@ -696,6 +696,14 @@ inline Buffer *DwC(std::any input_ptr, std::any input_scale_ptr,
   int OY1 = (oy + BUFFER_DIM[2] - 1) / BUFFER_DIM[2];
   int OY0 = BUFFER_DIM[2];
 
+#if SUPPORT_MX
+  Buffer Partial_Sum[7];
+  Buffer Mul_Result[kernel_size*kernel_size];
+#else
+  Psum Partial_Sum[7];
+  Psum Mul_Result[kernel_size * kernel_size];
+#endif
+
   int counter[2][3] = {0};
   for (counter[0][0] = 0; counter[0][0] < IC1; counter[0][0]++) {
     for (counter[0][1] = 0; counter[0][1] < OX1; counter[0][1]++) {
@@ -722,7 +730,7 @@ inline Buffer *DwC(std::any input_ptr, std::any input_scale_ptr,
               int y_start = y * stride_y;
 
               int output_addr = (y * ox + x) * oc + ic_g;
-              outputs[output_addr] = biases[ic_g];
+              // outputs[output_addr] = biases[ic_g];
 
               // Apply 3x3 kernel directly on input (pad=0 behavior)
               for (int ky = 0; ky < kernel_size; ky++) {
@@ -740,24 +748,49 @@ inline Buffer *DwC(std::any input_ptr, std::any input_scale_ptr,
                     Input weight = weights[weight_addr];  // Use padded_weights
 
 #if SUPPORT_MX
-                    int num_blocks = (ic + block_size - 1) / block_size;
-                    int input_scale_addr = (input_y * ix + input_x) * 
-                                           num_blocks + ic_g / block_size;
-                    int weight_scale_addr = weight_addr;
-                    Scale input_scale =
-                        input_scales[input_scale_addr];
-                    Scale weight_scale =
-                        weight_scales[weight_scale_addr];
-                    Buffer scale = static_cast<Buffer>(input_scale) *
-                                   static_cast<Buffer>(weight_scale);
+                    if (block_size == 0){
+                      Mul_Result[ky * kernel_size + kx] =
+                            static_cast<Buffer>(input) * static_cast<Buffer>(weight);
+                    } else {
+                      int num_blocks = (ic + block_size - 1) / block_size;
+                      int input_scale_addr = (input_y * ix + input_x) * 
+                                            num_blocks + ic_g / block_size;
+                      int weight_scale_addr = weight_addr;
+                      Scale input_scale =
+                          input_scales[input_scale_addr];
+                      Scale weight_scale =
+                          weight_scales[weight_scale_addr];
+                      Buffer scale = static_cast<Buffer>(input_scale) *
+                                    static_cast<Buffer>(weight_scale);
+                      Mul_Result[ky * kernel_size + kx] =
+                            static_cast<Buffer>(input) * static_cast<Buffer>(weight) *
+                            scale;
+                    }
 #else
-                    Buffer scale = 1.0;  // Use a scale factor of 1
+                    Mul_Result[ky * kernel_size + kx] =
+                          static_cast<Psum>(input) * static_cast<Psum>(weight);
 #endif
-                    outputs[output_addr] +=
-                        static_cast<Buffer>(input) * static_cast<Buffer>(weight) * scale;
+                    // outputs[output_addr] +=
+                    //     static_cast<Buffer>(input) * static_cast<Buffer>(weight) * scale;
+                  }
+                  else {
+#if SUPPORT_MX
+                    Mul_Result[ky * kernel_size + kx] = Buffer(0.0);
+#else
+                    Mul_Result[ky * kernel_size + kx] = Psum(0.0);
+#endif
                   }
                 }
               }
+              Partial_Sum[0] = Mul_Result[0] + Mul_Result[1];
+              Partial_Sum[1] = Mul_Result[2] + Mul_Result[3];
+              Partial_Sum[2] = Mul_Result[4] + Mul_Result[5];
+              Partial_Sum[3] = Mul_Result[6] + Mul_Result[7];
+              Partial_Sum[4] = Partial_Sum[0] + Partial_Sum[1];
+              Partial_Sum[5] = Partial_Sum[2] + Partial_Sum[3];
+              Partial_Sum[6] = Partial_Sum[4] + Partial_Sum[5] + Mul_Result[8];
+              outputs[output_addr] = biases[ic_g] + 
+                                      static_cast<Buffer>(Partial_Sum[6]);
             }
           }
         }

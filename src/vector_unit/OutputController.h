@@ -24,6 +24,11 @@ SC_MODULE(OutputController) {
   Connections::In<ScaleType> CCS_INIT_S1(scale_in);
   Connections::Combinational<ScaleType> CCS_INIT_S1(scale_deq);
 
+#if SUPPORT_DWC
+  Connections::In<ac_int<ADDRESS_WIDTH, false>> CCS_INIT_S1(dwc_address_in);
+  Connections::In<ac_int<1, false>> CCS_INIT_S1(dwc_output_end);
+#endif
+
   Connections::Out<ac_int<OC_PORT_WIDTH, false>> CCS_INIT_S1(vector_out);
   Connections::Out<ac_int<ADDRESS_WIDTH, false>> CCS_INIT_S1(
       vector_address_out);
@@ -132,6 +137,9 @@ SC_MODULE(OutputController) {
     scale_out.Reset();
     quantized_data.ResetRead();
     vector_out.Reset();
+#if SUPPORT_DWC
+    dwc_output_end.Reset();
+#endif
     done.Reset();
 
     wait();
@@ -146,6 +154,27 @@ SC_MODULE(OutputController) {
 
       ac_int<32, false> counter = 0;
 
+#if SUPPORT_DWC
+      if (params.addr_from_dwc) {
+        ac_int<1, false> dwc_end;
+#pragma hls_pipeline_init_interval 1
+#pragma hls_pipeline_stall_mode flush
+        while (true) {
+          Pack1D<VectorType, Width> output_tmp = quantized_data.Pop();
+          dwc_end = dwc_output_end.Pop();
+
+          ac_int<OC_PORT_WIDTH, false> output;
+          output =
+              BitsToType<ac_int<OC_PORT_WIDTH, false>>(TypeToBits(output_tmp));
+          vector_out.Push(output);
+
+          if (dwc_end) {
+            break;
+          }
+        }
+        done.SyncPush();
+      } else {
+#endif
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
       while (counter++ < num_outputs) {
@@ -174,6 +203,9 @@ SC_MODULE(OutputController) {
 
       done.SyncPush();
     }
+#if SUPPORT_DWC
+      }
+#endif
   }
 
   void send_address() {
@@ -182,6 +214,9 @@ SC_MODULE(OutputController) {
     quantizer_params.ResetWrite();
     vector_address_out.Reset();
     scale_address_out.Reset();
+#if SUPPORT_DWC
+    dwc_address_in.Reset();
+#endif
 
     wait();
 
@@ -222,6 +257,17 @@ SC_MODULE(OutputController) {
       ac_int<16, false> loop_bound_2 = params.output_loops[1][0] * loop_bound_3;
       ac_int<16, false> loop_bound_1 = params.output_loops[0][2] * loop_bound_2;
       ac_int<16, false> loop_bound_0 = params.output_loops[0][1] * loop_bound_1;
+
+#if SUPPORT_DWC
+      if (params.addr_from_dwc) {
+#pragma hls_pipeline_init_interval 1
+#pragma hls_pipeline_stall_mode flush
+        while (true) {
+          ac_int<ADDRESS_WIDTH, false> address = dwc_address_in.Pop();
+          vector_address_out.Push(address);
+        }
+      }
+#endif
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush

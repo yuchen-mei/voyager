@@ -546,6 +546,10 @@ def run_accuracy(model, dataset, num_processes, output_folder):
         ]
     elif env_vars["DATATYPE"] == "CFLOAT":
         quantization_args = []
+    elif env_vars["DATATYPE"] == "BF16":
+        quantization_args = [
+            "--bf16",
+        ]
     elif env_vars["DATATYPE"] == "MXINT8":
         quantization_args = [
             "--force_scale_power_of_two",
@@ -571,12 +575,38 @@ def run_accuracy(model, dataset, num_processes, output_folder):
                 "--calibration_steps",
                 "10",
                 "--hardware_unrolling",
-                "32",
+                "32,32",
             ]
         elif env_vars["DATATYPE"] == "CFLOAT":
             quantization_args = [
                 "--hardware_unrolling",
-                "32",
+                "32,32",
+            ]
+        elif env_vars["DATATYPE"] == "BF16":
+            quantization_args = [
+                "--bf16",
+                "--hardware_unrolling",
+                "32,32",
+            ]
+        elif env_vars["DATATYPE"] == "P8_1":
+            quantization_args = [
+                "--activation",
+                "posit8_1",
+                "--weight",
+                "posit8_1",
+                "--bf16",
+                "--hardware_unrolling",
+                "32,32",
+            ]
+        elif env_vars["DATATYPE"] == "E4M3":
+            quantization_args = [
+                "--activation",
+                "fp8_e4m3",
+                "--weight",
+                "fp8_e4m3",
+                "--bf16",
+                "--hardware_unrolling",
+                "32,32",
             ]
         else:
             quantization_args = [
@@ -587,7 +617,7 @@ def run_accuracy(model, dataset, num_processes, output_folder):
                 "int8,qs=microscaling,bs=" + str(block_size),
                 "--bf16",
                 "--hardware_unrolling",
-                "32",
+                "32,32",
             ]
 
     subprocess.run(
@@ -602,7 +632,8 @@ def run_accuracy(model, dataset, num_processes, output_folder):
         subprocess.run(
             [
                 "python",
-                "quantized-training/test/test_codegen.py",
+                # "quantized-training/test/test_codegen.py",
+                "voyager-compiler/test/test_codegen.py",
                 model,
                 "--model_name_or_path",
                 model_path,

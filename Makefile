@@ -78,6 +78,12 @@ else
 	override BASE_FLAGS += -DSUPPORT_MVM=$(SUPPORT_MVM)
 endif
 
+ifndef SUPPORT_DWC
+	export SUPPORT_DWC = false
+else
+	override BASE_FLAGS += -DSUPPORT_DWC=$(SUPPORT_DWC)
+endif
+
 ifdef CLOCK_PERIOD
 	override BASE_FLAGS += -DCLOCK_PERIOD=$(CLOCK_PERIOD)
 endif

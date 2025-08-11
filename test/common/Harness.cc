@@ -30,6 +30,12 @@ Harness::Harness(sc_module_name name, std::vector<Operation> operations,
       matrix_vector_weight_resp_fifo("matrix_vector_weight_resp_fifo", 1024),
       matrix_vector_bias_resp_fifo("matrix_vector_bias_resp_fifo", 1024)
 #endif
+#if SUPPORT_DWC
+      ,
+      DwC_inputDataResponse_fifo("DwC_inputDataResponse_fifo", 1024),
+      DwC_weightDataResponse_fifo("DwC_weightDataResponse_fifo", 1024),
+      DwC_biasDataResponse_fifo("DwC_biasDataResponse_fifo", 1024)
+#endif
 {
   accelerator.clk(clk);
   accelerator.rstn(rstn);
@@ -79,6 +85,27 @@ Harness::Harness(sc_module_name name, std::vector<Operation> operations,
   accelerator.inputScaleDataResponse(inputScaleDataResponse);
   accelerator.weightScaleAddressRequest(weightScaleAddressRequest);
   accelerator.weightScaleDataResponse(weightScaleDataResponse);
+#endif
+
+#if SUPPORT_DWC
+  accelerator.serialDwCParamsIn(serialDwCParamsIn);
+
+  accelerator.DwCInputDataResponse(DwC_inputDataResponse);
+  accelerator.DwCWeightDataResponse(DwC_weightDataResponse);
+  accelerator.DwCBiasDataResponse(DwC_biasDataResponse);
+  accelerator.DwCAddressRequestInput(DwC_address_request_input);
+  accelerator.DwCAddressRequestWeight(DwC_address_request_weight);
+  accelerator.DwCAddressRequestBias(DwC_address_request_bias);
+
+#if SUPPORT_MX
+  accelerator.DwC_address_request_input_scale(DwC_address_request_input_scale);
+  accelerator.DwC_address_request_input_resp(DwC_address_request_input_resp);
+  accelerator.DwC_address_request_weight_scale(DwC_address_request_weight_scale);
+  accelerator.DwC_address_request_weight_resp(DwC_address_request_weight_resp);
+#endif
+
+  accelerator.DwCUnitStartSignal(DwCUnitStartSignal);
+  accelerator.DwCUnitDoneSignal(DwCUnitDoneSignal);
 #endif
 
   SC_CTHREAD(reset, clk);
@@ -202,6 +229,49 @@ Harness::Harness(sc_module_name name, std::vector<Operation> operations,
   SC_THREAD(storeScalarOutputs);
   sensitive << clk.posedge_event();
   async_reset_signal_is(rstn, false);
+
+#if SUPPORT_DWC
+  SC_THREAD(readDwCRequestInputs);
+  sensitive << clk.posedge_event();
+  async_reset_signal_is(rstn, false);
+
+  SC_THREAD(sendDwCResponseInputs);
+  sensitive << clk.posedge_event();
+  async_reset_signal_is(rstn, false);
+
+  SC_THREAD(readDwCRequestWeights);
+  sensitive << clk.posedge_event();
+  async_reset_signal_is(rstn, false);
+
+  SC_THREAD(sendDwCResponseWeights);
+  sensitive << clk.posedge_event();
+  async_reset_signal_is(rstn, false);
+
+  SC_THREAD(readDwCRequestBias);
+  sensitive << clk.posedge_event();
+  async_reset_signal_is(rstn, false);
+
+  SC_THREAD(sendDwCResponseBias);
+  sensitive << clk.posedge_event();
+  async_reset_signal_is(rstn, false);
+#if SUPPORT_MX
+  SC_THREAD(readDwCRequestInputScale);
+  sensitive << clk.posedge_event();
+  async_reset_signal_is(rstn, false);
+
+  SC_THREAD(sendDwCResponseInputScale);
+  sensitive << clk.posedge_event();
+  async_reset_signal_is(rstn, false);
+
+  SC_THREAD(readDwCRequestWeightScale);
+  sensitive << clk.posedge_event();
+  async_reset_signal_is(rstn, false);
+
+  SC_THREAD(sendDwCResponseWeightScale);
+  sensitive << clk.posedge_event();
+  async_reset_signal_is(rstn, false);
+#endif
+#endif
 
   SC_THREAD(sendParams);
   sensitive << clk.posedge_event();
@@ -415,6 +485,53 @@ void Harness::storeScalarOutputs() {
   storeMemoryResponse(&scalar_output, &scalar_output_address);
 }
 
+#if SUPPORT_DWC
+void Harness::readDwCRequestInputs() {
+  readMemoryRequest(&DwC_address_request_input, &DwC_inputDataResponse_fifo);
+}
+
+void Harness::sendDwCResponseInputs() {
+  sendMemoryResponse(&DwC_inputDataResponse_fifo, &DwC_inputDataResponse);
+}
+
+void Harness::readDwCRequestWeights() {
+  readMemoryRequest(&DwC_address_request_weight, &DwC_weightDataResponse_fifo);
+}
+
+void Harness::sendDwCResponseWeights() {
+  sendMemoryResponse(&DwC_weightDataResponse_fifo, &DwC_weightDataResponse);
+}
+
+void Harness::readDwCRequestBias() {
+  readMemoryRequest(&DwC_address_request_bias, &DwC_biasDataResponse_fifo);
+}
+
+void Harness::sendDwCResponseBias() {
+  sendMemoryResponse(&DwC_biasDataResponse_fifo, &DwC_biasDataResponse);
+}
+#if SUPPORT_MX
+void Harness::readDwCRequestInputScale() {
+  readMemoryRequest(&DwC_address_request_input_scale,
+                    &DwC_address_request_input_scale_resp_fifo);
+}
+
+void Harness::sendDwCResponseInputScale() {
+  sendMemoryResponse(&DwC_address_request_input_scale_resp_fifo,
+                     &DwC_address_request_input_resp);
+}
+
+void Harness::readDwCRequestWeightScale() {
+  readMemoryRequest(&DwC_address_request_weight_scale,
+                    &DwC_address_request_weight_scale_resp_fifo);
+}
+
+void Harness::sendDwCResponseWeightScale() {
+  sendMemoryResponse(&DwC_address_request_weight_scale_resp_fifo,
+                     &DwC_address_request_weight_resp);
+}
+#endif
+#endif
+
 void Harness::reset() {
   rstn.write(0);
   wait(5);
@@ -455,6 +572,12 @@ void Harness::sendParams() {
   serial_matrix_vector_params_in.ResetWrite();
 #endif
 
+#if SUPPORT_DWC
+  DwCUnitStartSignal.ResetRead();
+  DwCUnitDoneSignal.ResetRead();
+  serialDwCParamsIn.ResetWrite();
+#endif
+
   wait();
 
   // Iterate through all params, ie all layers
@@ -473,7 +596,7 @@ void Harness::sendParams() {
     }
 
     while (accelerator_params.size() > 0) {
-      bool matrixParamsValid, vectorParamsValid;
+      bool matrixParamsValid, vectorParamsValid, dwcParamsValid;
 
       BaseParams *baseParam = accelerator_params.front();
 
@@ -484,6 +607,18 @@ void Harness::sendParams() {
         accelerator_params.pop_front();
         baseParam = accelerator_params.front();
       }
+
+#if SUPPORT_DWC
+      DwCParams *dwcParams = dynamic_cast<DwCParams *>(baseParam);
+      dwcParamsValid = dwcParams != NULL;
+
+      if (dwcParamsValid) {
+        accelerator_params.pop_front();
+        baseParam = accelerator_params.front();
+      }
+#else
+      dwcParamsValid = false;
+#endif
 
       VectorParams *vectorParams = dynamic_cast<VectorParams *>(baseParam);
       VectorInstructionConfig *vectorInstructionConfig;
@@ -528,6 +663,16 @@ void Harness::sendParams() {
       CCS_LOG("----- Accelerator Layer '" << currentOperation.name
                                           << "' Started. -----");
 
+#if SUPPORT_DWC
+      if (dwcParamsValid) {
+        sendSerializedParams<DwCParams, 64>(*dwcParams,
+                                                &serialDwCParamsIn);
+        DwCUnitStartSignal.SyncPop();
+      }
+
+      CCS_LOG("----- Accelerator Layer '" << currentOperation.name
+                                          << "' Started. -----");
+#endif
       if (matrixParamsValid) {
 #if SUPPORT_MVM
         if (matrixParams->is_fc) {
@@ -541,6 +686,11 @@ void Harness::sendParams() {
       if (vectorParamsValid) {
         vectorUnitDoneSignal.SyncPop();
       }
+#if SUPPORT_DWC
+      if (dwcParamsValid) {
+        DwCUnitDoneSignal.SyncPop();
+      }
+#endif
       CCS_LOG("----- Accelerator Layer '" << currentOperation.name
                                           << "' Finished. -----");
       sc_time end = sc_time_stamp();
