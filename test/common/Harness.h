@@ -24,7 +24,7 @@ SC_MODULE(Harness) {
   Connections::Combinational<ac_int<64, false>> CCS_INIT_S1(
       serialMatrixParamsIn);
   Connections::Combinational<ac_int<64, false>> CCS_INIT_S1(
-      serialVectorParamsIn);
+      serial_vector_params_in);
 
   Connections::Combinational<MemoryRequest> CCS_INIT_S1(inputAddressRequest);
   sc_fifo<IC_PORT_TYPE> inputDataResponse_fifo;
@@ -120,10 +120,14 @@ SC_MODULE(Harness) {
 
   Connections::SyncChannel CCS_INIT_S1(matrixUnitStartSignal);
   Connections::SyncChannel CCS_INIT_S1(matrixUnitDoneSignal);
-  Connections::SyncChannel CCS_INIT_S1(vectorUnitStartSignal);
-  Connections::SyncChannel CCS_INIT_S1(vectorUnitDoneSignal);
+  Connections::SyncChannel CCS_INIT_S1(vector_unit_start_signal);
+  Connections::SyncChannel CCS_INIT_S1(vector_unit_done_signal);
 
-  Connections::SyncChannel l2_tile_done[2];
+  Connections::SyncChannel CCS_INIT_S1(scratchpad_bank_0_done);
+  Connections::SyncChannel CCS_INIT_S1(scratchpad_bank_1_done);
+
+  std::deque<sc_time> start_times;
+  std::deque<sc_time> operation_start_times;
 
   Harness(sc_module_name, std::vector<Operation>, DataLoader *);
   SC_HAS_PROCESS(Harness);
@@ -194,10 +198,13 @@ SC_MODULE(Harness) {
 
   void reset();
   void param_sender();
-  void runtime_monitor();
+  void start_monitor();
+  void done_monitor();
 
   void send_params(const std::deque<BaseParams *> &params);
-  void count_runtime(const std::deque<BaseParams *> &params,
-                     const Operation &operation, int runtime_scale);
+  void record_start(const std::deque<BaseParams *> &params,
+                    const Operation &operation, bool is_first);
+  void record_done(const std::deque<BaseParams *> &params,
+                   const Operation &operation, int runtime_scale, bool is_last);
 };
 #endif

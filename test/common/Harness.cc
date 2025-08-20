@@ -34,7 +34,6 @@ Harness::Harness(sc_module_name name, std::vector<Operation> operations,
   accelerator.clk(clk);
   accelerator.rstn(rstn);
   accelerator.serialMatrixParamsIn(serialMatrixParamsIn);
-  accelerator.serialVectorParamsIn(serialVectorParamsIn);
   accelerator.inputAddressRequest(inputAddressRequest);
   accelerator.inputDataResponse(inputDataResponse);
   accelerator.weightAddressRequest(weightAddressRequest);
@@ -58,6 +57,7 @@ Harness::Harness(sc_module_name name, std::vector<Operation> operations,
   accelerator.matrix_vector_unit_start_signal(matrix_vector_unit_start_signal);
   accelerator.matrix_vector_unit_done_signal(matrix_vector_unit_done_signal);
 #endif
+  accelerator.serial_vector_params_in(serial_vector_params_in);
   accelerator.vector_fetch_0_req(vector_fetch_0_req);
   accelerator.vector_fetch_0_resp(vector_fetch_0_resp);
   accelerator.vector_fetch_1_req(vector_fetch_1_req);
@@ -71,8 +71,8 @@ Harness::Harness(sc_module_name name, std::vector<Operation> operations,
 
   accelerator.matrixUnitStartSignal(matrixUnitStartSignal);
   accelerator.matrixUnitDoneSignal(matrixUnitDoneSignal);
-  accelerator.vectorUnitStartSignal(vectorUnitStartSignal);
-  accelerator.vectorUnitDoneSignal(vectorUnitDoneSignal);
+  accelerator.vector_unit_start_signal(vector_unit_start_signal);
+  accelerator.vector_unit_done_signal(vector_unit_done_signal);
 
 #if SUPPORT_MX
   accelerator.inputScaleAddressRequest(inputScaleAddressRequest);
@@ -205,7 +205,11 @@ Harness::Harness(sc_module_name name, std::vector<Operation> operations,
   sensitive << clk.posedge_event();
   async_reset_signal_is(rstn, false);
 
-  SC_THREAD(runtime_monitor);
+  SC_THREAD(start_monitor);
+  sensitive << clk.posedge_event();
+  async_reset_signal_is(rstn, false);
+
+  SC_THREAD(done_monitor);
   sensitive << clk.posedge_event();
   async_reset_signal_is(rstn, false);
 
@@ -469,15 +473,15 @@ void Harness::send_params(const std::deque<BaseParams *> &params) {
           dynamic_cast<VectorInstructionConfig *>(params[++idx]);
 
       send_serialized_params<VectorParams, 64>(*vector_params,
-                                               &serialVectorParamsIn);
+                                               &serial_vector_params_in);
       send_serialized_params<VectorInstructionConfig, 64>(
-          *vector_config, &serialVectorParamsIn);
+          *vector_config, &serial_vector_params_in);
     }
   }
 }
 
-void Harness::count_runtime(const std::deque<BaseParams *> &params,
-                            const Operation &operation, int runtime_scale) {
+void Harness::record_start(const std::deque<BaseParams *> &params,
+                           const Operation &operation, bool is_first) {
   for (size_t idx = 0; idx < params.size(); idx++) {
     BaseParams *base_param = params[idx];
     MatrixParams *matrix_params = dynamic_cast<MatrixParams *>(base_param);
@@ -506,14 +510,57 @@ void Harness::count_runtime(const std::deque<BaseParams *> &params,
       {
         matrixUnitStartSignal.SyncPop();
       }
+
+      auto start = sc_time_stamp();
+      start_times.push_back(start);
+
+      if (is_first) {
+        operation_start_times.push_back(start);
+        is_first = false;
+      }
+
+      CCS_LOG("----- Accelerator Layer '" << operation.name
+                                          << "' Started. -----");
+
+      if (has_vector_params) {
+        vector_unit_start_signal.SyncPop();
+      }
+    } else if (has_vector_params) {
+      vector_unit_start_signal.SyncPop();
+
+      auto start = sc_time_stamp();
+      start_times.push_back(start);
+
+      if (is_first) {
+        operation_start_times.push_back(start);
+        is_first = false;
+      }
+
+      CCS_LOG("----- Accelerator Layer '" << operation.name
+                                          << "' Started. -----");
+    }
+  }
+}
+
+void Harness::record_done(const std::deque<BaseParams *> &params,
+                          const Operation &operation, int runtime_scale,
+                          bool is_last) {
+  for (size_t idx = 0; idx < params.size(); idx++) {
+    BaseParams *base_param = params[idx];
+    MatrixParams *matrix_params = dynamic_cast<MatrixParams *>(base_param);
+    bool has_matrix_params = matrix_params != nullptr;
+
+    if (has_matrix_params) {
+      base_param = params[++idx];
     }
 
-    sc_time start = sc_time_stamp();
-    CCS_LOG("----- Accelerator Layer '" << operation.name
-                                        << "' Started. -----");
+    VectorParams *vector_params = dynamic_cast<VectorParams *>(base_param);
+    VectorInstructionConfig *vector_config = nullptr;
+    bool has_vector_params = vector_params != nullptr;
 
     if (has_vector_params) {
-      vectorUnitStartSignal.SyncPop();
+      base_param = params[++idx];
+      vector_config = dynamic_cast<VectorInstructionConfig *>(base_param);
     }
 
     // --- Wait for done signals ---
@@ -529,21 +576,30 @@ void Harness::count_runtime(const std::deque<BaseParams *> &params,
     }
 
     if (has_vector_params) {
-      vectorUnitDoneSignal.SyncPop();
+      vector_unit_done_signal.SyncPop();
     }
 
+    sc_time end = sc_time_stamp();
     CCS_LOG("----- Accelerator Layer '" << operation.name
                                         << "' Finished. -----");
 
-    sc_time end = sc_time_stamp();
+    sc_time start = start_times.front();
+    start_times.pop_front();
+
     int runtime = runtime_scale * int(end.to_default_time_units() -
                                       start.to_default_time_units());
 
-    std::cout << "Default time unit: " << sc_get_default_time_unit()
-              << std::endl;
     std::cout << "Runtime: " << runtime << " ns" << std::endl;
-
     accessCounter->print_summary(operation.tiling, operation.has_valid_tiling);
+
+    if (is_last && idx == params.size() - 1) {
+      auto start = operation_start_times.front();
+      operation_start_times.pop_front();
+
+      int total_runtime = runtime_scale * int(end.to_default_time_units() -
+                                              start.to_default_time_units());
+      std::cout << "Total Runtime: " << total_runtime << " ns" << std::endl;
+    }
   }
 }
 
@@ -553,11 +609,11 @@ std::deque<BaseParams *> offset_param_addresses(std::deque<BaseParams *> params,
   for (const auto base_param : params) {
     if (auto *mp = dynamic_cast<MatrixParams *>(base_param)) {
       auto *param = new MatrixParams(*mp);
-      param->INPUT_OFFSET += offset;
-      param->WEIGHT_OFFSET += offset;
-      param->BIAS_OFFSET += offset;
-      param->INPUT_SCALE_OFFSET += offset;
-      param->WEIGHT_SCALE_OFFSET += offset;
+      param->input_offset += offset;
+      param->weight_offset += offset;
+      param->bias_offset += offset;
+      param->input_scale_offset += offset;
+      param->weight_scale_offset += offset;
       new_params.push_back(param);
     } else if (auto *vp = dynamic_cast<VectorParams *>(base_param)) {
       auto *param = new VectorParams(*vp);
@@ -575,12 +631,12 @@ std::deque<BaseParams *> offset_param_addresses(std::deque<BaseParams *> params,
 
 void Harness::param_sender() {
   serialMatrixParamsIn.ResetWrite();
-  serialVectorParamsIn.ResetWrite();
+  serial_vector_params_in.ResetWrite();
 #if SUPPORT_MVM
   serial_matrix_vector_params_in.ResetWrite();
 #endif
-  l2_tile_done[0].ResetRead();
-  l2_tile_done[1].ResetRead();
+  scratchpad_bank_0_done.ResetRead();
+  scratchpad_bank_1_done.ResetRead();
 
   wait();
 
@@ -591,13 +647,6 @@ void Harness::param_sender() {
     std::deque<AcceleratorMemoryMap> memory_maps;
     std::deque<BaseParams *> accelerator_params;
     MapOperation(operation, accelerator_params, memory_maps);
-
-    int runtime_scale_factor = 1;
-    std::cout << "Operation: " << operation.name << std::endl;
-    if (operation.has_shrunk_tiling) {
-      runtime_scale_factor = operation.shrink_factor;
-      std::cout << "Scaling operation by " << runtime_scale_factor << std::endl;
-    }
 
     if (is_soc_sim()) {
       const auto l2_tiling = get_l2_tiling(param);
@@ -613,7 +662,9 @@ void Harness::param_sender() {
 
       for (int j = 0; j < num_tiles; j++) {
         if (j > 1) {
-          l2_tile_done[bank_index].SyncPop();
+          auto &done_signal =
+              bank_index ? scratchpad_bank_1_done : scratchpad_bank_0_done;
+          done_signal.SyncPop();
         }
 
         std::cerr << "Sending tile " << j << " params" << std::endl;
@@ -621,23 +672,29 @@ void Harness::param_sender() {
         send_params(bank_index ? adjusted_params : accelerator_params);
         bank_index = !bank_index;
       }
+
+      // drain out remaining done signals
+      auto &done_signal =
+          bank_index ? scratchpad_bank_1_done : scratchpad_bank_0_done;
+      done_signal.SyncPop();
+
+      if (num_tiles > 1) {
+        auto &done_signal =
+            bank_index ? scratchpad_bank_0_done : scratchpad_bank_1_done;
+        done_signal.SyncPop();
+      }
     } else {
       send_params(accelerator_params);
     }
   }
 }
 
-void Harness::runtime_monitor() {
+void Harness::start_monitor() {
   matrixUnitStartSignal.ResetRead();
-  matrixUnitDoneSignal.ResetRead();
-  vectorUnitStartSignal.ResetRead();
-  vectorUnitDoneSignal.ResetRead();
+  vector_unit_start_signal.ResetRead();
 #if SUPPORT_MVM
   matrix_vector_unit_start_signal.ResetRead();
-  matrix_vector_unit_done_signal.ResetRead();
 #endif
-  l2_tile_done[0].ResetWrite();
-  l2_tile_done[1].ResetWrite();
 
   wait();
 
@@ -649,11 +706,45 @@ void Harness::runtime_monitor() {
     std::deque<BaseParams *> accelerator_params;
     MapOperation(operation, accelerator_params, memory_maps);
 
-    int runtime_scale_factor = 1;
-    std::cout << "Operation: " << operation.name << std::endl;
+    if (is_soc_sim()) {
+      const auto l2_tiling = get_l2_tiling(param);
+      const int num_tiles = get_num_tiles(l2_tiling);
+
+      for (int j = 0; j < num_tiles; j++) {
+        std::cerr << "Waiting for tile " << j << " start signal" << std::endl;
+        bool is_first = j == 0;
+        record_start(accelerator_params, operation, is_first);
+      }
+    } else {
+      record_start(accelerator_params, operation, true);
+    }
+  }
+}
+
+void Harness::done_monitor() {
+  matrixUnitDoneSignal.ResetRead();
+  vector_unit_done_signal.ResetRead();
+#if SUPPORT_MVM
+  matrix_vector_unit_done_signal.ResetRead();
+#endif
+  scratchpad_bank_0_done.ResetWrite();
+  scratchpad_bank_1_done.ResetWrite();
+
+  wait();
+
+  for (int i = 0; i < operations.size(); i++) {
+    const auto operation = operations.at(i);
+    const auto param = operation.param;
+
+    std::deque<AcceleratorMemoryMap> memory_maps;
+    std::deque<BaseParams *> accelerator_params;
+    MapOperation(operation, accelerator_params, memory_maps);
+
+    int runtime_scale = 1;
     if (operation.has_shrunk_tiling) {
-      runtime_scale_factor = operation.shrink_factor;
-      std::cout << "Scaling operation by " << runtime_scale_factor << std::endl;
+      runtime_scale = operation.shrink_factor;
+      std::cout << "Scale operation" << operation.name << " by "
+                << runtime_scale << std::endl;
     }
 
     if (is_soc_sim()) {
@@ -665,17 +756,19 @@ void Harness::runtime_monitor() {
 
       for (int j = 0; j < num_tiles; j++) {
         std::cerr << "Waiting for tile " << j << " to complete" << std::endl;
-        count_runtime(accelerator_params, operation, runtime_scale_factor);
+
+        bool is_last = j == num_tiles - 1;
+        record_done(accelerator_params, operation, runtime_scale, is_last);
         dataloader->store_scratchpad(param, j, bank_index ? cache_size : 0);
 
-        if (j < num_tiles - 2) {
-          l2_tile_done[bank_index].SyncPush();
-        }
+        auto &done_signal =
+            bank_index ? scratchpad_bank_1_done : scratchpad_bank_0_done;
+        done_signal.SyncPush();
 
         bank_index = !bank_index;
       }
     } else {
-      count_runtime(accelerator_params, operation, runtime_scale_factor);
+      record_done(accelerator_params, operation, runtime_scale, true);
     }
   }
 

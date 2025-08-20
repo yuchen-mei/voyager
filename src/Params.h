@@ -16,11 +16,11 @@ struct BaseParams {
 struct MatrixParams : BaseParams {
 #ifndef __SYNTHESIS__
   MatrixParams() {
-    INPUT_OFFSET = 0;
-    INPUT_SCALE_OFFSET = 0;
-    WEIGHT_OFFSET = 0;
-    WEIGHT_SCALE_OFFSET = 0;
-    BIAS_OFFSET = 0;
+    input_offset = 0;
+    input_scale_offset = 0;
+    weight_offset = 0;
+    weight_scale_offset = 0;
+    bias_offset = 0;
 
     for (int i = 0; i < 2; i++) {
       for (int j = 0; j < 6; j++) {
@@ -92,11 +92,11 @@ struct MatrixParams : BaseParams {
 
   static constexpr int LOOP_WIDTH = 16;
 
-  ac_int<ADDRESS_WIDTH, false> INPUT_OFFSET;
-  ac_int<ADDRESS_WIDTH, false> INPUT_SCALE_OFFSET;
-  ac_int<ADDRESS_WIDTH, false> WEIGHT_OFFSET;
-  ac_int<ADDRESS_WIDTH, false> WEIGHT_SCALE_OFFSET;
-  ac_int<ADDRESS_WIDTH, false> BIAS_OFFSET;
+  ac_int<ADDRESS_WIDTH, false> input_offset;
+  ac_int<ADDRESS_WIDTH, false> input_scale_offset;
+  ac_int<ADDRESS_WIDTH, false> weight_offset;
+  ac_int<ADDRESS_WIDTH, false> weight_scale_offset;
+  ac_int<ADDRESS_WIDTH, false> bias_offset;
 
   // systolic array loop
   ac_int<LOOP_WIDTH, false> loops[2][6];
@@ -167,11 +167,11 @@ struct MatrixParams : BaseParams {
 #ifndef NO_SYSC
   template <unsigned int Size>
   void Marshall(Marshaller<Size>& m) {
-    m & INPUT_OFFSET;
-    m & INPUT_SCALE_OFFSET;
-    m & WEIGHT_OFFSET;
-    m & WEIGHT_SCALE_OFFSET;
-    m & BIAS_OFFSET;
+    m & input_offset;
+    m & input_scale_offset;
+    m & weight_offset;
+    m & weight_scale_offset;
+    m & bias_offset;
 
     for (int i = 0; i < 2; i++) {
       for (int j = 0; j < 6; j++) {
@@ -259,11 +259,11 @@ struct MatrixParams : BaseParams {
 
   inline friend std::ostream& operator<<(ostream& os,
                                          const MatrixParams& params) {
-    os << "INPUT_OFFSET: " << params.INPUT_OFFSET << std::endl;
-    os << "INPUT_SCALE_OFFSET: " << params.INPUT_SCALE_OFFSET << std::endl;
-    os << "WEIGHT_OFFSET: " << params.WEIGHT_OFFSET << std::endl;
-    os << "WEIGHT_SCALE_OFFSET: " << params.WEIGHT_SCALE_OFFSET << std::endl;
-    os << "BIAS_OFFSET: " << params.BIAS_OFFSET << std::endl;
+    os << "input_offset: " << params.input_offset << std::endl;
+    os << "input_scale_offset: " << params.input_scale_offset << std::endl;
+    os << "weight_offset: " << params.weight_offset << std::endl;
+    os << "weight_scale_offset: " << params.weight_scale_offset << std::endl;
+    os << "bias_offset: " << params.bias_offset << std::endl;
 
     for (int i = 0; i < 2; i++) {
       for (int j = 0; j < 6; j++) {
@@ -363,11 +363,11 @@ struct MatrixParams : BaseParams {
 
   inline friend bool operator==(const MatrixParams& lhs,
                                 const MatrixParams& rhs) {
-    if (lhs.INPUT_OFFSET != rhs.INPUT_OFFSET ||
-        lhs.INPUT_SCALE_OFFSET != rhs.INPUT_SCALE_OFFSET ||
-        lhs.WEIGHT_OFFSET != rhs.WEIGHT_OFFSET ||
-        lhs.WEIGHT_SCALE_OFFSET != rhs.WEIGHT_SCALE_OFFSET ||
-        lhs.BIAS_OFFSET != rhs.BIAS_OFFSET)
+    if (lhs.input_offset != rhs.input_offset ||
+        lhs.input_scale_offset != rhs.input_scale_offset ||
+        lhs.weight_offset != rhs.weight_offset ||
+        lhs.weight_scale_offset != rhs.weight_scale_offset ||
+        lhs.bias_offset != rhs.bias_offset)
       return false;
 
     // Compare the 2D arrays
@@ -427,7 +427,7 @@ struct MatrixParams : BaseParams {
     if (lhs.head_size_power_of_two != rhs.head_size_power_of_two) return false;
 
     // Compare boolean values
-    if (lhs.has_bias != rhs.has_bias || lhs.BIAS_OFFSET != rhs.BIAS_OFFSET)
+    if (lhs.has_bias != rhs.has_bias || lhs.bias_offset != rhs.bias_offset)
       return false;
     if (lhs.has_input_transpose != rhs.has_input_transpose) return false;
     if (lhs.has_weight_transpose != rhs.has_weight_transpose) return false;

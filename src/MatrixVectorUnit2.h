@@ -31,11 +31,11 @@ struct MatrixVectorUnit<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
   struct MatrixVectorParam {
     ac_int<32, false> K;
     ac_int<32, false> C;
-    ac_int<64, false> INPUT_OFFSET;
-    ac_int<64, false> WEIGHT_OFFSET;
-    ac_int<64, false> BIAS_OFFSET;
-    ac_int<64, false> INPUT_SCALE_OFFSET;
-    ac_int<64, false> WEIGHT_SCALE_OFFSET;
+    ac_int<64, false> input_offset;
+    ac_int<64, false> weight_offset;
+    ac_int<64, false> bias_offset;
+    ac_int<64, false> input_scale_offset;
+    ac_int<64, false> weight_scale_offset;
 
     /** \brief Project the route from the instruction. */
     static MatrixVectorParam from_instructions(const MatrixParams& params) {
@@ -47,11 +47,11 @@ struct MatrixVectorUnit<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
       ac_int<32, false> C = C2 * C1;
       return MatrixVectorParam{K,
                                C,
-                               params.INPUT_OFFSET,
-                               params.WEIGHT_OFFSET,
-                               params.BIAS_OFFSET,
-                               params.INPUT_SCALE_OFFSET,
-                               params.WEIGHT_SCALE_OFFSET};
+                               params.input_offset,
+                               params.weight_offset,
+                               params.bias_offset,
+                               params.input_scale_offset,
+                               params.weight_scale_offset};
     }
 
     static const unsigned int width = 32 * 2 + 64 * 5;
@@ -61,11 +61,11 @@ struct MatrixVectorUnit<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
     void Marshall(Marshaller<Size>& m) {
       m & K;
       m & C;
-      m & INPUT_OFFSET;
-      m & WEIGHT_OFFSET;
-      m & BIAS_OFFSET;
-      m & INPUT_SCALE_OFFSET;
-      m & WEIGHT_SCALE_OFFSET;
+      m & input_offset;
+      m & weight_offset;
+      m & bias_offset;
+      m & input_scale_offset;
+      m & weight_scale_offset;
     }
 #endif
 
@@ -79,22 +79,22 @@ struct MatrixVectorUnit<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
                                            const MatrixVectorParam& route) {
       os << "K: " << route.K << std::endl;
       os << "C: " << route.C << std::endl;
-      os << "INPUT_OFFSET: " << route.INPUT_OFFSET << std::endl;
-      os << "WEIGHT_OFFSET: " << route.WEIGHT_OFFSET << std::endl;
-      os << "BIAS_OFFSET: " << route.BIAS_OFFSET << std::endl;
-      os << "INPUT_SCALE_OFFSET: " << route.INPUT_SCALE_OFFSET << std::endl;
-      os << "WEIGHT_SCALE_OFFSET: " << route.WEIGHT_SCALE_OFFSET << std::endl;
+      os << "input_offset: " << route.input_offset << std::endl;
+      os << "weight_offset: " << route.weight_offset << std::endl;
+      os << "bias_offset: " << route.bias_offset << std::endl;
+      os << "input_scale_offset: " << route.input_scale_offset << std::endl;
+      os << "weight_scale_offset: " << route.weight_scale_offset << std::endl;
       return os;
     }
 
     inline friend bool operator==(const MatrixVectorParam& lhs,
                                   const MatrixVectorParam& rhs) {
       return (lhs.K == rhs.K) && (lhs.C == rhs.C) &&
-             (lhs.INPUT_OFFSET == rhs.INPUT_OFFSET) &&
-             (lhs.WEIGHT_OFFSET == rhs.WEIGHT_OFFSET) &&
-             (lhs.BIAS_OFFSET == rhs.BIAS_OFFSET) &&
-             (lhs.INPUT_SCALE_OFFSET == rhs.INPUT_SCALE_OFFSET) &&
-             (lhs.WEIGHT_SCALE_OFFSET == rhs.WEIGHT_SCALE_OFFSET);
+             (lhs.input_offset == rhs.input_offset) &&
+             (lhs.weight_offset == rhs.weight_offset) &&
+             (lhs.bias_offset == rhs.bias_offset) &&
+             (lhs.input_scale_offset == rhs.input_scale_offset) &&
+             (lhs.weight_scale_offset == rhs.weight_scale_offset);
     }
   };
 
@@ -217,13 +217,13 @@ struct MatrixVectorUnit<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
 
         for (ac_int<32, false> c = 0;; c++) {
           (fetch_matrix_input<InputTypes, Width, InputTypes...>(
-               params.input_dtype, params.INPUT_OFFSET, address, input_req),
+               params.input_dtype, params.input_offset, address, input_req),
            ...);
 
 #if SUPPORT_MX
           if (params.is_mx_op) {
             send_input_request<Scale, Width / BS>(
-                params.INPUT_SCALE_OFFSET, address / BS, input_scale_req);
+                params.input_scale_offset, address / BS, input_scale_req);
           }
 #endif
           address += Width;
@@ -381,13 +381,13 @@ struct MatrixVectorUnit<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
         for (ac_int<32, false> c = 0;; c++) {
           ac_int<32, false> address = k * C + c * Width;
           (fetch_matrix_input<WeightTypes, Width, WeightTypes...>(
-               params.weight_dtype, params.WEIGHT_OFFSET, address, weight_req),
+               params.weight_dtype, params.weight_offset, address, weight_req),
            ...);
 
 #if SUPPORT_MX
           if (params.is_mx_op) {
             ac_int<32, false> address = k * (C / BS) + c * (Width / BS);
-            send_input_request<Scale, Width / BS>(params.WEIGHT_SCALE_OFFSET,
+            send_input_request<Scale, Width / BS>(params.weight_scale_offset,
                                                   address, weight_scale_req);
           }
 #endif
@@ -535,7 +535,7 @@ struct MatrixVectorUnit<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
 #pragma hls_pipeline_stall_mode flush
       for (ac_int<32, false> k = 0;; k++) {
         send_input_request<Output, VectorUnitWidth>(
-            params.BIAS_OFFSET, k * VectorUnitWidth, bias_req);
+            params.bias_offset, k * VectorUnitWidth, bias_req);
 
         ac_int<Output::width * VectorUnitWidth, false> bits = 0;
         process_matrix_input<Output, VectorUnitWidth, PortWidth,
