@@ -118,7 +118,7 @@ SC_MODULE(Accelerator) {
 
 #if SUPPORT_DWC
     DwCUnit<DWC_DATATYPE, DWC_DATATYPE, DWC_PSUM, ACCUM_BUFFER_DATATYPE, 
-            OC_DIMENSION, VECTOR_DATATYPE> CCS_INIT_S1(DwcUnit);
+            OC_DIMENSION, DWC_DATATYPE> CCS_INIT_S1(DwcUnit);
 
     Connections::In<ac_int<64, false>> CCS_INIT_S1(serialDwCParamsIn);
     Connections::In<ac_int<UNROLLFACTOR * DWC_DATATYPE::width, false>> CCS_INIT_S1(DwCInputDataResponse);
@@ -128,7 +128,6 @@ SC_MODULE(Accelerator) {
     Connections::Out<MemoryRequest> CCS_INIT_S1(DwCAddressRequestWeight);
     Connections::Out<MemoryRequest> CCS_INIT_S1(DwCAddressRequestBias);
     Connections::Combinational<ac_int<ADDRESS_WIDTH, false>> CCS_INIT_S1(DwCOutputAddressOut);
-    Connections::Combinational<ac_int<1, false>> CCS_INIT_S1(DwCOutputEnd);
     Connections::Combinational<Pack1D<ACCUM_BUFFER_DATATYPE, OC_DIMENSION>>
         CCS_INIT_S1(outputsFromDwC);
 
@@ -221,7 +220,6 @@ SC_MODULE(Accelerator) {
 #if SUPPORT_DWC
     vector_unit.dwc_unit_in(outputsFromDwC);
     vector_unit.dwc_address_in(DwCOutputAddressOut);
-    vector_unit.dwc_output_end(DwCOutputEnd);
 #endif
 
 #if DOUBLE_BUFFERED_ACCUM_BUFFER
@@ -247,7 +245,6 @@ SC_MODULE(Accelerator) {
     DwcUnit.weightDataResponse(DwCWeightDataResponse);
     DwcUnit.biasDataResponse(DwCBiasDataResponse);
     DwcUnit.DwC_output_address_out(DwCOutputAddressOut);
-    DwcUnit.DwC_output_end(DwCOutputEnd);
     DwcUnit.DwC_output(outputsFromDwC);
     DwcUnit.start(DwCUnitStartSignal);
     DwcUnit.done(DwCUnitDoneSignal);

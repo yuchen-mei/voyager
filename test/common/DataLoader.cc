@@ -45,8 +45,9 @@ void DataLoader::load_tensor(const codegen::Tensor& tensor,
     }
   }
 
+  const int effective_ic_dimension = IC_DIMENSION == 64 ? 32 : IC_DIMENSION;
   // number of elements packed into a single word for replication
-  const int packing_factor = IC_DIMENSION / 4 * 3;
+  const int packing_factor = effective_ic_dimension / 4 * 3;
   if (replication) {
     spdlog::debug("packing factor: {}", packing_factor);
   }

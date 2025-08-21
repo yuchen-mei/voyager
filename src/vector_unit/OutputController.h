@@ -26,7 +26,6 @@ SC_MODULE(OutputController) {
 
 #if SUPPORT_DWC
   Connections::In<ac_int<ADDRESS_WIDTH, false>> CCS_INIT_S1(dwc_address_in);
-  Connections::In<ac_int<1, false>> CCS_INIT_S1(dwc_output_end);
 #endif
 
   Connections::Out<ac_int<OC_PORT_WIDTH, false>> CCS_INIT_S1(vector_out);
@@ -137,9 +136,6 @@ SC_MODULE(OutputController) {
     scale_out.Reset();
     quantized_data.ResetRead();
     vector_out.Reset();
-#if SUPPORT_DWC
-    dwc_output_end.Reset();
-#endif
     done.Reset();
 
     wait();
@@ -154,27 +150,6 @@ SC_MODULE(OutputController) {
 
       ac_int<32, false> counter = 0;
 
-#if SUPPORT_DWC
-      if (params.addr_from_dwc) {
-        ac_int<1, false> dwc_end;
-#pragma hls_pipeline_init_interval 1
-#pragma hls_pipeline_stall_mode flush
-        while (true) {
-          Pack1D<VectorType, Width> output_tmp = quantized_data.Pop();
-          dwc_end = dwc_output_end.Pop();
-
-          ac_int<OC_PORT_WIDTH, false> output;
-          output =
-              BitsToType<ac_int<OC_PORT_WIDTH, false>>(TypeToBits(output_tmp));
-          vector_out.Push(output);
-
-          if (dwc_end) {
-            break;
-          }
-        }
-        done.SyncPush();
-      } else {
-#endif
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
       while (counter++ < num_outputs) {
@@ -203,9 +178,6 @@ SC_MODULE(OutputController) {
 
       done.SyncPush();
     }
-#if SUPPORT_DWC
-      }
-#endif
   }
 
   void send_address() {
@@ -264,7 +236,26 @@ SC_MODULE(OutputController) {
 #pragma hls_pipeline_stall_mode flush
         while (true) {
           ac_int<ADDRESS_WIDTH, false> address = dwc_address_in.Pop();
-          vector_address_out.Push(address);
+          bool found =
+            (send_output_address<OutputTypes, Width, OC_PORT_WIDTH,
+                                OutputTypes...>(
+                params.output_dtype, params.VECTOR_OUTPUT_OFFSET,
+                address, vector_address_out) ||
+            ...);
+
+#ifndef __SYNTHESIS__
+      if (!found) {
+        std::cerr << "Error: output type '" << params.output_dtype
+                  << "' is not valid.\n";
+      }
+#endif
+#if SUPPORT_MX
+          if (params.quantize_output_mx) {
+            scale_address_out.Push(params.SCALE_OFFSET +
+                                    address / Width * ScaleType::width /
+                                        8);
+          }
+#endif
         }
       }
 #endif

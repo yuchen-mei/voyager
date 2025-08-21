@@ -72,7 +72,7 @@ inline Buffer *gemm(std::any input_ptr, std::any input_scale_ptr,
       FX_UNROLL = 2;
     } else if (IC_DIMENSION == 16) {
       FX_UNROLL = 4;
-    } else if (IC_DIMENSION == 32) {
+    } else if (IC_DIMENSION == 32 || IC_DIMENSION == 64) {
       FX_UNROLL = 7;
     }
     tiling.loops[1][tiling.fx_index] = FX;
@@ -261,7 +261,7 @@ inline Buffer *gemm(std::any input_ptr, std::any input_scale_ptr,
                                   outputs[output_addr] += scaled_psum;
                                   accumulations[output_addr] = Psum(0.0);
                                 }
-                              } else if (IC_DIMENSION == 32) {
+                              } else if (IC_DIMENSION == 32 || IC_DIMENSION == 64) {
                                 if (counters[1][tiling.fx_index] == 6) {
                                   Buffer scaled_psum = static_cast<Buffer>(
                                       accumulations[output_addr]);
@@ -312,7 +312,7 @@ inline Buffer *gemm(std::any input_ptr, std::any input_scale_ptr,
                                     accumulations[output_addr]);
                                 accumulations[output_addr] = Psum(0.0);
                               }
-                            } else if (IC_DIMENSION == 32) {
+                            } else if (IC_DIMENSION == 32 || IC_DIMENSION == 64) {
                               if (counters[1][tiling.fx_index] == 6) {
                                 outputs[output_addr] += static_cast<Buffer>(
                                     accumulations[output_addr]);
@@ -651,7 +651,6 @@ inline Buffer *DwC(std::any input_ptr, std::any input_scale_ptr,
   const auto param = operation.param;
   const auto op_list = get_op_list(param);
   const auto first_op = op_list.front();
-  const auto out_tensor = get_op_outputs(param).front();
   bool is_mx = first_op.target().find("mx") != std::string::npos;
   int block_size = is_mx ? first_op.kwargs().at("block_size").int_value() : 0;
 
@@ -664,16 +663,17 @@ inline Buffer *DwC(std::any input_ptr, std::any input_scale_ptr,
   int iy     = first_op.kwargs().at("input").tensor().shape(1);  // input height
   int ix     = first_op.kwargs().at("input").tensor().shape(2);  // input weight
 
-  int obatch = out_tensor.shape(0);
-  int oc     = out_tensor.shape(3);
-  int oy     = out_tensor.shape(1);
-  int ox     = out_tensor.shape(2);
   int k_h = first_op.kwargs().at("weight").tensor().shape(2);
   int k_w = first_op.kwargs().at("weight").tensor().shape(3);
   int kernel_size = 3;
 
   int x_pad = first_op.kwargs().at("padding").int_list().values()[1];
   int y_pad = first_op.kwargs().at("padding").int_list().values()[0];
+
+  int obatch = 1;
+  int oc     = ic;
+  int oy     = floor((ix + 2*x_pad - kernel_size)/stride_x) + 1;
+  int ox     = floor((iy + 2*y_pad - kernel_size)/stride_y) + 1;
 
   Buffer *outputs = new Buffer[obatch * oc * ox * oy];
   Input *inputs = std::any_cast<Input *>(input_ptr);
@@ -763,7 +763,7 @@ inline Buffer *DwC(std::any input_ptr, std::any input_scale_ptr,
                       Buffer scale = static_cast<Buffer>(input_scale) *
                                     static_cast<Buffer>(weight_scale);
                       Mul_Result[ky * kernel_size + kx] =
-                            static_cast<Buffer>(input) * static_cast<Buffer>(weight) *
+                            static_cast<Buffer>(static_cast<Psum>(input) * static_cast<Psum>(weight)) *
                             scale;
                     }
 #else

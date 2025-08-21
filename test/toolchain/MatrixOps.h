@@ -232,7 +232,7 @@ if (matrix_op.target().find("conv2d") != std::string::npos &&
   const auto input = matrix_op.kwargs().at("input").tensor();
   const auto weight = matrix_op.kwargs().at("weight").tensor();
   const auto bias = matrix_op.kwargs().at("bias").tensor();
-  const auto output = param.output();
+  const auto output = get_op_outputs(param).back();
   bool is_mx_op = matrix_op.target().find("mx") != std::string::npos;
   if (is_mx_op) {
     dwc_params->use_mx = 1;
@@ -303,14 +303,14 @@ if (matrix_op.target().find("conv2d") != std::string::npos &&
   // null tiling
   for (int i = 0; i < 2; i++) {
     if (i == 0) {
-      for (int j = 0; j < 3; j++) {
-        tiling.loops[i][j] = dwc_params->outloops[j];
-      }
+      tiling.loops[i][0] = output.shape(1);
+      tiling.loops[i][1] = output.shape(2);
+      tiling.loops[i][2] = output.shape(3)/UNROLLFACTOR;
       tiling.x_loop_index[i] = 0;
       tiling.y_loop_index[i] = 0;
       tiling.weight_loop_index[i] = 0;
     } else{
-      tiling.loops[i][0] = C1;
+      tiling.loops[i][0] = 1;
       tiling.loops[i][1] = 1;
       tiling.loops[i][2] = 1;
       tiling.x_loop_index[i] = 0;
@@ -678,18 +678,9 @@ if (matrix_op.target().find("conv2d") != std::string::npos &&
 #endif
 
   const auto output = get_op_outputs(param).back();
-#if SUPPORT_DWC
-  if (DwC_enable) {
-    vector_params->VECTOR_OUTPUT_OFFSET = 0;
-  } else {
-#endif
   const auto output_memory = output.memory();
   accelerator_memory_map["outputs"] = get_partition(output_memory.partition());
   vector_params->VECTOR_OUTPUT_OFFSET = get_address(output);
-#if SUPPORT_DWC
-  }
-#endif
-
   // Set outer loops
   for (int i = 0; i < 3; i++) {
     vector_params->output_loops[0][i] = tiling.loops[0][i];
@@ -749,8 +740,7 @@ if (matrix_op.target().find("conv2d") != std::string::npos &&
 
 #if SUPPORT_DWC
   if (DwC_enable) {
-    const auto DwC_out_shape = param.output().shape();
-    inst.inst_count = DwC_out_shape[3] / UNROLLFACTOR * DwC_out_shape[1] * DwC_out_shape[2];
+    inst.inst_count = tiling.loops[0][0] * tiling.loops[0][1] * tiling.loops[0][2];
     inst.vector_op0_src0 = VectorInstructions::from_dwc_unit;
   } else {
 #endif

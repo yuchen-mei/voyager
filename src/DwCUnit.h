@@ -39,7 +39,6 @@ SC_MODULE(DwCUnit) {
   Connections::Out<Pack1D<Output, OutputWidth>> CCS_INIT_S1(DwC_output);
   Connections::Out<ac_int<ADDRESS_WIDTH, false>> CCS_INIT_S1(
       DwC_output_address_out);
-  Connections::Out<ac_int<1, false>> CCS_INIT_S1(DwC_output_end);
 
   Connections::SyncOut CCS_INIT_S1(start);
   Connections::SyncOut CCS_INIT_S1(done);
@@ -91,8 +90,6 @@ SC_MODULE(DwCUnit) {
   ac_int<SCALE_DATATYPE::width, false>
       input_scale_shift_new_reg[DWC_KERNEL_DIM];
 #endif
-
-  Pack1D<Psum, UNROLLFACTOR> output_reg;
 
 #ifdef __SYNTHESIS__
   MulAddTree<Input, Weight, Psum, Output> mulAddTree[UNROLLFACTOR];
@@ -596,10 +593,6 @@ SC_MODULE(DwCUnit) {
                   ac_int<SCALE_DATATYPE::width, false> input_scale =
                       inputScaleDataResponse.Pop();
                   input_scale_shift_new_reg[DWC_KERNEL_DIM - 1] = input_scale;
-                } else {
-                  input_scale_shift_new_reg[DWC_KERNEL_DIM - 1] =
-                      static_cast<ac_int<SCALE_DATATYPE::width, false>>(
-                          SCALE_DATATYPE::one());
                 }
 #endif
               } else {
@@ -795,7 +788,6 @@ SC_MODULE(DwCUnit) {
   void out_addr_gen()  // Buffer read & write addr gen, output addr gen
   {
     DwC_output_address_out.Reset();
-    DwC_output_end.Reset();
     Output_params.ResetRead();
 
     done.Reset();
@@ -855,19 +847,8 @@ SC_MODULE(DwCUnit) {
 
               ac_int<32, false> address =
                   (Y1 * X_g_T + X_g) * input_bounds[2] + C_g;
-              ac_int<ADDRESS_WIDTH, false> output_address =
-                  params.OUTPUT_OFFSET + address * OutputFinal::width / 8;
+              ac_int<ADDRESS_WIDTH, false> output_address = address;
               DwC_output_address_out.Push(output_address);
-
-              if ((X_g == X_g_T - 1) && (loop_counters[0][0] >= Y_T - 1) &&
-                  ((loop_counters[0][1] >= loop_bounds[0][1] - 1) &&
-                   (loop_counters[0][2] >= loop_bounds[0][2] - 1))) {
-                output_end = 1;
-                DwC_output_end.Push(output_end);
-              } else {
-                output_end = 0;
-                DwC_output_end.Push(output_end);
-              }
 
               if (loop_counters[1][1] == X0_T - 1 || X_g == X_g_T - 1) {
                 break;

@@ -275,7 +275,7 @@ Tiling get_conv2d_tiling(const codegen::OpOverload param) {
       fx_unrolling = 2;
     } else if (IC_DIMENSION == 16) {
       fx_unrolling = 4;
-    } else if (IC_DIMENSION == 32) {
+    } else if (IC_DIMENSION == 32 || IC_DIMENSION == 64) {
       fx_unrolling = 8;
     } else {
       throw std::runtime_error("replication not supported for IC_DIMENSION=" +
@@ -338,7 +338,7 @@ Tiling get_conv2d_tiling(const codegen::OpOverload param) {
       fx = 4;
     } else if (IC_DIMENSION == 16) {
       fx = 2;
-    } else if (IC_DIMENSION == 32) {
+    } else if (IC_DIMENSION == 32 || IC_DIMENSION == 64) {
       fx = 1;
     } else {
       throw std::runtime_error("replication not supported for IC_DIMENSION=" +

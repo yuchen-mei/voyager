@@ -335,7 +335,7 @@ using WeightTypeList = std::tuple<WEIGHT_DATATYPE>;
 #endif
 
 #ifndef UNROLLFACTOR
-#define UNROLLFACTOR (OC_PORT_WIDTH / VECTOR_DATATYPE::width)
+#define UNROLLFACTOR OC_DIMENSION
 #endif
 
 #ifndef DWC_KERNEL_DIM
@@ -344,9 +344,9 @@ using WeightTypeList = std::tuple<WEIGHT_DATATYPE>;
 #define DWC_KERNEL_SIZE (DWC_KERNEL_DIM * DWC_KERNEL_DIM)
 
 #ifndef DWC_DATATYPE
-#define DWC_DATATYPE DataTypes::int8
+#define DWC_DATATYPE INPUT_DATATYPE
 #endif
 
 #ifndef DWC_PSUM
-#define DWC_PSUM DataTypes::int32
+#define DWC_PSUM ACCUM_DATATYPE
 #endif

@@ -38,7 +38,6 @@ SC_MODULE(VectorUnit) {
 #if SUPPORT_DWC
   Connections::In<Pack1D<BufferType, Width>> CCS_INIT_S1(dwc_unit_in);
   Connections::In<ac_int<ADDRESS_WIDTH, false>> CCS_INIT_S1(dwc_address_in);
-  Connections::In<ac_int<1, false>> CCS_INIT_S1(dwc_output_end);
 #endif
 
   Connections::In<Pack1D<BufferType, OcDimension>> CCS_INIT_S1(
@@ -220,7 +219,6 @@ SC_MODULE(VectorUnit) {
     output_controller.done(done);
   #if SUPPORT_DWC
     output_controller.dwc_address_in(dwc_address_in);
-    output_controller.dwc_output_end(dwc_output_end);
   #endif
 
     // Param / Instruction handling

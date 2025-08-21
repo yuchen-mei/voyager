@@ -10,6 +10,8 @@ SC_MODULE(MulAddTree) {
  private:
 #if SUPPORT_MX
   Output mul_results[DWC_KERNEL_SIZE];
+  Output mul_scale[DWC_KERNEL_SIZE];
+  Psum mul_unscaled_results[DWC_KERNEL_SIZE];
   Output out_partial[7];
 #else
   Psum mul_results[DWC_KERNEL_SIZE];
@@ -88,10 +90,12 @@ SC_MODULE(MulAddTree) {
       for (int i = 0; i < 9; i++) {
 #if SUPPORT_MX
         if (mask[i]){
-          mul_results[i] = static_cast<Output>(input[i]) *
-                           static_cast<Output>(input_scale[i]) *
-                           static_cast<Output>(weight_reg[i]) *
+          mul_unscaled_results[i] = static_cast<Psum>(input[i]) *
+                           static_cast<Psum>(weight_reg[i]);
+          mul_scale[i] = static_cast<Output>(input_scale[i]) *
                            static_cast<Output>(weight_scale_reg[i]);
+          mul_results[i] = static_cast<Output>(mul_unscaled_results[i]) *
+                           mul_scale[i];
         } else {
           mul_results[i] = Output::zero();
         }
