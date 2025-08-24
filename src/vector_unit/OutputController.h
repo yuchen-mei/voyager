@@ -273,7 +273,7 @@ SC_MODULE(OutputController) {
 
 #if SUPPORT_MX
                   if (params.quantize_output_mx) {
-                    scale_address_out.Push(params.SCALE_OFFSET +
+                    scale_address_out.Push(params.mx_scale_offset +
                                            address / Width * ScaleType::width /
                                                8);
                   }

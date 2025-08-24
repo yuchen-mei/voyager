@@ -299,7 +299,7 @@ void set_quantize_params(const codegen::Operation &param,
     }
 
     vector_params->quantize_output_mx = true;
-    vector_params->SCALE_OFFSET = get_address(param.outputs().tensors(0));
+    vector_params->mx_scale_offset = get_address(param.outputs().tensors(0));
 
     if (last_op.kwargs().contains("quant_code")) {
       const auto code = last_op.kwargs().at("quant_code").tensor();

@@ -278,7 +278,11 @@ def main():
             continue
 
         def get_shape(tensor):
-            return tensor.tiled_shape if "SOC_SIM" in os.environ else tensor.shape
+            return (
+                tensor.tiled_shape
+                if "SOC_SIM" in os.environ and tensor.tiled_shape
+                else tensor.shape
+            )
 
         # FC doesn't need tiling
         input = matrix_op.kwargs["input"].tensor

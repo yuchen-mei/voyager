@@ -201,7 +201,8 @@ void DataLoader::copy_tile(const std::string& dtype,
 
 void DataLoader::load_scratchpad(const codegen::Operation& param,
                                  const int tile_index, const int offset) {
-  const auto output = param.output();
+  const auto outputs = get_op_outputs(param);
+  const auto output = outputs.back();
   const auto output_full_shape = get_shape(output, false, false);
   const auto output_tiled_shape = get_shape(output, false);
   const auto output_tiles = get_tiles(output_full_shape, output_tiled_shape);
@@ -242,12 +243,6 @@ void DataLoader::load_scratchpad(const codegen::Operation& param,
       auto tiles = get_tiles(full_shape, tiled_shape);
       auto actual_tiles = get_tile_index(tiles, curr_tile_index);
 
-      // std::cerr << "tile_index: " << tile_index << std::endl;
-      // std::cerr << "adjusted tile_index: " << curr_tile_index << std::endl;
-      // std::cerr << "tiles and actual tiles" << std::endl;
-      // print_shape(tiles);
-      // print_shape(actual_tiles);
-
       copy_tile(dtype, full_shape, tiled_shape, actual_tiles, partition,
                 address, false, scratch_par, scratch_addr, true);
     }
@@ -274,10 +269,6 @@ void DataLoader::store_scratchpad(const codegen::Operation& param,
 
     auto tiles = get_tiles(full_shape, tiled_shape);
     auto actual_tiles = get_tile_index(tiles, tile_index);
-
-    // std::cerr << "tiles and actual tiles" << std::endl;
-    // print_shape(tiles);
-    // print_shape(actual_tiles);
 
     copy_tile(dtype, full_shape, tiled_shape, actual_tiles, scratch_par,
               scratch_addr, true, partition, address, false);

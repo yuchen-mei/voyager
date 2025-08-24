@@ -746,7 +746,7 @@ struct VectorParams : BaseParams {
     has_attn_head_permute = false;
 
     quantize_output_mx = false;
-    SCALE_OFFSET = 0;
+    mx_scale_offset = 0;
     use_output_codebook = false;
     for (int i = 0; i < NUM_CODEBOOK_ENTRIES - 1; i++) {
       output_code[i] = 0;
@@ -837,7 +837,7 @@ struct VectorParams : BaseParams {
   bool has_attn_head_permute;
 
   bool quantize_output_mx;
-  ac_int<ADDRESS_WIDTH, false> SCALE_OFFSET;
+  ac_int<ADDRESS_WIDTH, false> mx_scale_offset;
 
   bool use_output_codebook;
   ac_int<MAX_DECODED_DTYPE_WIDTH + 1, true>
@@ -987,7 +987,7 @@ struct VectorParams : BaseParams {
     m & has_attn_head_permute;
 
     m & quantize_output_mx;
-    m & SCALE_OFFSET;
+    m & mx_scale_offset;
 
     m & use_output_codebook;
     for (int i = 0; i < NUM_CODEBOOK_ENTRIES - 1; i++) {
@@ -1159,7 +1159,7 @@ struct VectorParams : BaseParams {
        << std::endl;
 
     os << "quantize_output_mx: " << params.quantize_output_mx << std::endl;
-    os << "SCALE_OFFSET: " << params.SCALE_OFFSET << std::endl;
+    os << "mx_scale_offset: " << params.mx_scale_offset << std::endl;
 
     os << "use_output_codebook: " << params.use_output_codebook << std::endl;
     for (int i = 0; i < NUM_CODEBOOK_ENTRIES - 1; i++) {
@@ -1306,7 +1306,7 @@ struct VectorParams : BaseParams {
     if (lhs.has_attn_head_permute != rhs.has_attn_head_permute) return false;
 
     if (lhs.quantize_output_mx != rhs.quantize_output_mx) return false;
-    if (lhs.SCALE_OFFSET != rhs.SCALE_OFFSET) return false;
+    if (lhs.mx_scale_offset != rhs.mx_scale_offset) return false;
     if (lhs.use_output_codebook != rhs.use_output_codebook) return false;
     for (int i = 0; i < NUM_CODEBOOK_ENTRIES - 1; i++) {
       if (lhs.output_code[i] != rhs.output_code[i]) return false;

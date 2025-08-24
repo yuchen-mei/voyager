@@ -226,8 +226,9 @@ void MapMatrixOperation(const Operation &operation,
   if (matrix_params->is_fc) {
     bool is_mx_op = matrix_op.target().find("mx") != std::string::npos;
 
-    int K = is_matmul ? weight.shape(1) : weight.shape(0);
-    int C = is_matmul ? weight.shape(0) : weight.shape(1);
+    auto weight_shape = get_shape(weight);
+    int K = is_matmul ? weight_shape[1] : weight_shape[0];
+    int C = is_matmul ? weight_shape[0] : weight_shape[1];
     int C1 = is_mx_op ? matrix_op.kwargs().at("block_size").int_value() : 1;
     int C2 = C / C1;
 
@@ -513,18 +514,6 @@ void MapMatrixOperation(const Operation &operation,
 
   // vector instructions
   VectorParams *vector_params = new VectorParams;
-#if DOUBLE_BUFFERED_ACCUM_BUFFER
-  vector_params->vector_fetch_0_mode = 3;  // read from accumulation buffer
-#else
-  vector_params->vector_fetch_0_mode = 0;  // read from matrix unit
-#endif
-  // Set outer loops
-  for (int i = 0; i < 3; i++) {
-    vector_params->vector_fetch_0_loops[0][i] = tiling.loops[0][i];
-  }
-  vector_params->vector_fetch_0_y_loop_idx[0] = tiling.y_loop_index[0];
-  vector_params->vector_fetch_0_x_loop_idx[0] = tiling.x_loop_index[0];
-  vector_params->vector_fetch_0_k_loop_idx[0] = tiling.weight_loop_index[0];
 
   // Rescale tiling for vector instructions
   if (matrix_params->is_fc) {
@@ -718,7 +707,7 @@ void MapMatrixOperation(const Operation &operation,
       }
 
       vector_params->quantize_output_mx = true;
-      vector_params->SCALE_OFFSET = get_address(param.outputs().tensors(0));
+      vector_params->mx_scale_offset = get_address(param.outputs().tensors(0));
 
       if (op.kwargs().contains("quant_code")) {
         const auto code = op.kwargs().at("quant_code").tensor();

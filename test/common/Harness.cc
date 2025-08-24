@@ -621,6 +621,7 @@ std::deque<BaseParams *> offset_param_addresses(std::deque<BaseParams *> params,
       param->vector_fetch_1_offset += offset;
       param->vector_fetch_2_offset += offset;
       param->vector_output_offset += offset;
+      param->mx_scale_offset += offset;
       new_params.push_back(param);
     } else {
       new_params.push_back(base_param);
@@ -654,7 +655,7 @@ void Harness::param_sender() {
       std::cerr << "Number of accelerator tiles to run: " << num_tiles
                 << std::endl;
 
-      const int cache_size = getenv_int("CACHE_SIZE");
+      const int cache_size = getenv_int("CACHE_SIZE", 8 * 1024 * 1024);
       auto adjusted_params =
           offset_param_addresses(accelerator_params, cache_size);
 
@@ -714,6 +715,7 @@ void Harness::start_monitor() {
         std::cerr << "Waiting for tile " << j << " start signal" << std::endl;
         bool is_first = j == 0;
         record_start(accelerator_params, operation, is_first);
+        std::cerr << "Tile " << j << " started" << std::endl;
       }
     } else {
       record_start(accelerator_params, operation, true);
@@ -751,7 +753,7 @@ void Harness::done_monitor() {
       const auto l2_tiling = get_l2_tiling(param);
       const int num_tiles = get_num_tiles(l2_tiling);
 
-      const int cache_size = getenv_int("CACHE_SIZE");
+      const int cache_size = getenv_int("CACHE_SIZE", 8 * 1024 * 1024);
       bool bank_index = 0;
 
       for (int j = 0; j < num_tiles; j++) {
@@ -760,6 +762,8 @@ void Harness::done_monitor() {
         bool is_last = j == num_tiles - 1;
         record_done(accelerator_params, operation, runtime_scale, is_last);
         dataloader->store_scratchpad(param, j, bank_index ? cache_size : 0);
+
+        std::cerr << "Tile " << j << " finished" << std::endl;
 
         auto &done_signal =
             bank_index ? scratchpad_bank_1_done : scratchpad_bank_0_done;
