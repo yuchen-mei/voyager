@@ -473,18 +473,6 @@ inline Buffer *gemm(std::any input_ptr, std::any input_scale_ptr,
 //   return outputs;
 // }
 
-template <typename T>
-inline T tree_reduce(T *buffer, int length) {
-  int depth = length;
-  while (depth > 1) {
-    for (int j = 0; j < depth; j += 2) {
-      buffer[j / 2] = buffer[j] + buffer[j + 1];
-    }
-    depth = depth / 2;
-  }
-  return buffer[0];
-}
-
 template <typename Input, typename Weight, typename Psum, typename Output,
           typename Scale, int N>
 inline Output *gemv(std::any input_ptr, std::any input_scale_ptr,

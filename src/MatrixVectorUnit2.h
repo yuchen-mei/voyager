@@ -166,7 +166,6 @@ struct MatrixVectorUnit<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
           break;
         }
       }
-      std::cerr << "fetch inputs done" << std::endl;
     }
   }
 
@@ -235,7 +234,6 @@ struct MatrixVectorUnit<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
           break;
         }
       }
-      std::cerr << "process inputs done" << std::endl;
     }
   }
 #if SUPPORT_MX
@@ -281,7 +279,6 @@ struct MatrixVectorUnit<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
           break;
         }
       }
-      std::cerr << "process input scales done" << std::endl;
     }
   }
 #endif
@@ -330,7 +327,6 @@ struct MatrixVectorUnit<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
           break;
         }
       }
-      std::cerr << "fetch weights done" << std::endl;
     }
   }
 
@@ -400,7 +396,6 @@ struct MatrixVectorUnit<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
           break;
         }
       }
-      std::cerr << "process weights done" << std::endl;
     }
   }
 #if SUPPORT_MX
@@ -440,8 +435,6 @@ struct MatrixVectorUnit<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
           break;
         }
       }
-
-      std::cerr << "process weight scales done" << std::endl;
     }
   }
 #endif
@@ -503,9 +496,6 @@ struct MatrixVectorUnit<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
 
     while (true) {
       MatrixParams params = run_accumulation_param.Pop();
-
-      std::cerr << "MatrixVectorUnit params: " << std::endl
-                << params << std::endl;
 
       start_signal.SyncPush();
 
@@ -593,7 +583,6 @@ struct MatrixVectorUnit<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
         }
       }
 
-      std::cerr << "run accumulation done" << std::endl;
       done_signal.SyncPush();
     }
   }
@@ -638,8 +627,6 @@ struct MatrixVectorUnit<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
           break;
         }
       }
-
-      std::cerr << "send outputs done" << std::endl;
     }
   }
 
@@ -661,30 +648,21 @@ struct MatrixVectorUnit<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
 
     while (true) {
       const MatrixParams params = params_in.Pop();
-      std::cerr << "Matrix vector unit param received" << std::endl;
       fetch_input_param.Push(params);
-      std::cerr << "fetch_input_param.Push(params)" << std::endl;
       process_input_param.Push(params);
-      std::cerr << "process_input_param.Push(params)" << std::endl;
       fetch_weight_param.Push(params);
-      std::cerr << "fetch_weight_param.Push(params)" << std::endl;
       process_weight_param.Push(params);
-      std::cerr << "process_weight_param.Push(params)" << std::endl;
 #if SUPPORT_MX
       if (params.is_mx_op) {
         input_scale_param.Push(params);
-        std::cerr << "input_scale_param.Push(params)" << std::endl;
         weight_scale_param.Push(params);
-        std::cerr << "weight_scale_param.Push(params)" << std::endl;
       }
 #endif
       if (params.has_bias) {
         fetch_bias_param.Push(params);
       }
       run_accumulation_param.Push(params);
-      std::cerr << "run_accumulation_param.Push(params)" << std::endl;
       send_outputs_param.Push(params);
-      std::cerr << "send_outputs_param.Push(params)" << std::endl;
     }
   }
 };

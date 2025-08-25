@@ -500,7 +500,7 @@ void Harness::record_start(const std::deque<BaseParams *> &params,
       vector_config = dynamic_cast<VectorInstructionConfig *>(base_param);
     }
 
-    // --- Wait for start signals ---
+    // Wait for start signals
     if (has_matrix_params) {
 #if SUPPORT_MVM
       if (matrix_params->is_fc) {
@@ -539,6 +539,11 @@ void Harness::record_start(const std::deque<BaseParams *> &params,
       CCS_LOG("----- Accelerator Layer '" << operation.name
                                           << "' Started. -----");
     }
+
+    // Wait for last operation to finish
+    if (idx != params.size() - 1) {
+      operation_done.SyncPop();
+    }
   }
 }
 
@@ -563,7 +568,7 @@ void Harness::record_done(const std::deque<BaseParams *> &params,
       vector_config = dynamic_cast<VectorInstructionConfig *>(base_param);
     }
 
-    // --- Wait for done signals ---
+    // Wait for done signals
     if (has_matrix_params) {
 #if SUPPORT_MVM
       if (matrix_params->is_fc) {
@@ -591,6 +596,10 @@ void Harness::record_done(const std::deque<BaseParams *> &params,
 
     std::cout << "Runtime: " << runtime << " ns" << std::endl;
     accessCounter->print_summary(operation.tiling, operation.has_valid_tiling);
+
+    if (idx != params.size() - 1) {
+      operation_done.SyncPush();
+    }
 
     if (is_last && idx == params.size() - 1) {
       auto start = operation_start_times.front();
@@ -636,8 +645,7 @@ void Harness::param_sender() {
 #if SUPPORT_MVM
   serial_matrix_vector_params_in.ResetWrite();
 #endif
-  scratchpad_bank_0_done.ResetRead();
-  scratchpad_bank_1_done.ResetRead();
+  tile_done.ResetRead();
 
   wait();
 
@@ -662,10 +670,8 @@ void Harness::param_sender() {
       bool bank_index = 0;
 
       for (int j = 0; j < num_tiles; j++) {
-        if (j > 1) {
-          auto &done_signal =
-              bank_index ? scratchpad_bank_1_done : scratchpad_bank_0_done;
-          done_signal.SyncPop();
+        if (accelerator_params.size() < 4 && j > 1) {
+          tile_done.SyncPop();
         }
 
         std::cerr << "Sending tile " << j << " params" << std::endl;
@@ -675,14 +681,12 @@ void Harness::param_sender() {
       }
 
       // drain out remaining done signals
-      auto &done_signal = bank_index && num_tiles > 1 ? scratchpad_bank_1_done
-                                                      : scratchpad_bank_0_done;
-      done_signal.SyncPop();
+      if (accelerator_params.size() < 4) {
+        tile_done.SyncPop();
 
-      if (num_tiles > 1) {
-        auto &done_signal =
-            bank_index ? scratchpad_bank_0_done : scratchpad_bank_1_done;
-        done_signal.SyncPop();
+        if (num_tiles > 1) {
+          tile_done.SyncPop();
+        }
       }
     } else {
       send_params(accelerator_params);
@@ -696,6 +700,7 @@ void Harness::start_monitor() {
 #if SUPPORT_MVM
   matrix_vector_unit_start_signal.ResetRead();
 #endif
+  operation_done.ResetRead();
 
   wait();
 
@@ -729,8 +734,8 @@ void Harness::done_monitor() {
 #if SUPPORT_MVM
   matrix_vector_unit_done_signal.ResetRead();
 #endif
-  scratchpad_bank_0_done.ResetWrite();
-  scratchpad_bank_1_done.ResetWrite();
+  tile_done.ResetWrite();
+  operation_done.ResetWrite();
 
   wait();
 
@@ -762,14 +767,13 @@ void Harness::done_monitor() {
         bool is_last = j == num_tiles - 1;
         record_done(accelerator_params, operation, runtime_scale, is_last);
         dataloader->store_scratchpad(param, j, bank_index ? cache_size : 0);
+        bank_index = !bank_index;
 
         std::cerr << "Tile " << j << " finished" << std::endl;
 
-        auto &done_signal =
-            bank_index ? scratchpad_bank_1_done : scratchpad_bank_0_done;
-        done_signal.SyncPush();
-
-        bank_index = !bank_index;
+        if (accelerator_params.size() < 4) {
+          tile_done.SyncPush();
+        }
       }
     } else {
       record_done(accelerator_params, operation, runtime_scale, true);

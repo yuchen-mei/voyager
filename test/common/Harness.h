@@ -123,8 +123,8 @@ SC_MODULE(Harness) {
   Connections::SyncChannel CCS_INIT_S1(vector_unit_start_signal);
   Connections::SyncChannel CCS_INIT_S1(vector_unit_done_signal);
 
-  Connections::SyncChannel CCS_INIT_S1(scratchpad_bank_0_done);
-  Connections::SyncChannel CCS_INIT_S1(scratchpad_bank_1_done);
+  Connections::SyncChannel CCS_INIT_S1(tile_done);
+  Connections::SyncChannel CCS_INIT_S1(operation_done);
 
   std::deque<sc_time> start_times;
   std::deque<sc_time> operation_start_times;
