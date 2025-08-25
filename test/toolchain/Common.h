@@ -253,12 +253,16 @@ std::pair<std::vector<int>, std::vector<int>> factor_out_non_broadcastable_dim(
 
 void update_tensor_shape(codegen::Tensor &tensor,
                          const std::vector<int> &new_shape) {
-  // Clear the existing shape
-  tensor.clear_shape();
-
-  // Add new values from the vector
-  for (int dim : new_shape) {
-    tensor.add_shape(dim);
+  if (is_soc_sim()) {
+    tensor.clear_tiled_shape();
+    for (int dim : new_shape) {
+      tensor.add_tiled_shape(dim);
+    }
+  } else {
+    tensor.clear_shape();
+    for (int dim : new_shape) {
+      tensor.add_shape(dim);
+    }
   }
 }
 
