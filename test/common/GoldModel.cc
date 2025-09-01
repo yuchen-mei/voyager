@@ -175,11 +175,10 @@ std::vector<std::any> run_operation(const Operation &operation,
 
       if (is_fc) {
 #if SUPPORT_MVM
-        output_ptr =
-            simd_matrix_vector_multiply<SaInput, SaWeight, Psum, AccumBuffer,
-                                        Scale, MV_UNIT_WIDTH>(
-                input_ptr, input_scale_ptr, weight_ptr, weight_scale_ptr,
-                bias_ptr, operation);
+      output_ptr =
+          gemv<SaInput, SaWeight, Psum, AccumBuffer, Scale, MV_UNIT_WIDTH>(
+              input_ptr, input_scale_ptr, weight_ptr, weight_scale_ptr,
+              bias_ptr, operation);
 #else
         output_ptr = matrix_vector_multiply<Vector>(input_ptr, weight_ptr,
                                                     bias_ptr, get_shape(weight));

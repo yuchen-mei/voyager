@@ -331,8 +331,9 @@ if (matrix_op.target().find("conv2d") != std::string::npos &&
   if (matrix_params->is_fc) {
     bool is_mx_op = matrix_op.target().find("mx") != std::string::npos;
 
-    int K = is_matmul ? weight.shape(1) : weight.shape(0);
-    int C = is_matmul ? weight.shape(0) : weight.shape(1);
+    auto weight_shape = get_shape(weight);
+    int K = is_matmul ? weight_shape[1] : weight_shape[0];
+    int C = is_matmul ? weight_shape[0] : weight_shape[1];
     int C1 = is_mx_op ? matrix_op.kwargs().at("block_size").int_value() : 1;
     int C2 = C / C1;
 
@@ -363,7 +364,7 @@ if (matrix_op.target().find("conv2d") != std::string::npos &&
 
   const auto input_memory = input.memory();
   accelerator_memory_map["inputs"] = get_partition(input_memory.partition());
-  matrix_params->INPUT_OFFSET = get_address(input);
+  matrix_params->input_offset = get_address(input);
   matrix_params->input_dtype =
       get_index_from_type_name<INPUT_DATATYPE>(input.dtype());
   matrix_params->use_input_codebook = matrix_op.kwargs().contains("input_code");
@@ -383,7 +384,7 @@ if (matrix_op.target().find("conv2d") != std::string::npos &&
 
   const auto weight_memory = weight.memory();
   accelerator_memory_map["weights"] = get_partition(weight_memory.partition());
-  matrix_params->WEIGHT_OFFSET = get_address(weight);
+  matrix_params->weight_offset = get_address(weight);
   matrix_params->weight_dtype =
       get_index_from_type_name<WEIGHT_DATATYPE>(weight.dtype());
   matrix_params->use_weight_codebook =
@@ -409,10 +410,10 @@ if (matrix_op.target().find("conv2d") != std::string::npos &&
     assert(block_size == std::max(IC_DIMENSION, OC_DIMENSION));
 
     const auto input_scale = matrix_op.kwargs().at("input_scale").tensor();
-    matrix_params->INPUT_SCALE_OFFSET = get_address(input_scale);
+    matrix_params->input_scale_offset = get_address(input_scale);
 
     const auto weight_scale = matrix_op.kwargs().at("weight_scale").tensor();
-    matrix_params->WEIGHT_SCALE_OFFSET = get_address(weight_scale);
+    matrix_params->weight_scale_offset = get_address(weight_scale);
   }
 
   for (int i = 0; i < 2; i++) {
@@ -612,7 +613,7 @@ if (matrix_op.target().find("conv2d") != std::string::npos &&
     const auto bias = matrix_op.kwargs().at("bias").tensor();
     const auto bias_memory = bias.memory();
     matrix_params->has_bias = true;
-    matrix_params->BIAS_OFFSET = get_address(bias);
+    matrix_params->bias_offset = get_address(bias);
     accelerator_memory_map["bias"] = get_partition(bias_memory.partition());
   }
 #if SUPPORT_DWC
@@ -624,18 +625,6 @@ if (matrix_op.target().find("conv2d") != std::string::npos &&
 #if SUPPORT_DWC
   if (!DwC_enable) {
 #endif
-#if DOUBLE_BUFFERED_ACCUM_BUFFER
-  vector_params->vector_fetch_0_mode = 3;  // read from accumulation buffer
-#else
-  vector_params->vector_fetch_0_mode = 0;  // read from matrix unit
-#endif
-  // Set outer loops
-  for (int i = 0; i < 3; i++) {
-    vector_params->vector_fetch_0_loops[0][i] = tiling.loops[0][i];
-  }
-  vector_params->vector_fetch_0_y_loop_idx[0] = tiling.y_loop_index[0];
-  vector_params->vector_fetch_0_x_loop_idx[0] = tiling.x_loop_index[0];
-  vector_params->vector_fetch_0_k_loop_idx[0] = tiling.weight_loop_index[0];
 
   // Rescale tiling for vector instructions
   if (matrix_params->is_fc) {
@@ -680,7 +669,8 @@ if (matrix_op.target().find("conv2d") != std::string::npos &&
   const auto output = get_op_outputs(param).back();
   const auto output_memory = output.memory();
   accelerator_memory_map["outputs"] = get_partition(output_memory.partition());
-  vector_params->VECTOR_OUTPUT_OFFSET = get_address(output);
+  vector_params->vector_output_offset = get_address(output);
+
   // Set outer loops
   for (int i = 0; i < 3; i++) {
     vector_params->output_loops[0][i] = tiling.loops[0][i];
@@ -842,7 +832,7 @@ if (matrix_op.target().find("conv2d") != std::string::npos &&
       }
 
       vector_params->quantize_output_mx = true;
-      vector_params->SCALE_OFFSET = get_address(param.outputs().tensors(0));
+      vector_params->mx_scale_offset = get_address(param.outputs().tensors(0));
 
       if (op.kwargs().contains("quant_code")) {
         const auto code = op.kwargs().at("quant_code").tensor();
