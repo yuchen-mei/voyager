@@ -122,9 +122,9 @@ std::vector<std::any> run_operation(const Operation &operation,
       int input_dim = get_size(input_shape) / input_shape.back();
       bool is_fc = input_dim == 1;
 
-  #if !SUPPORT_MVM
+#if !SUPPORT_MVM
       if (!is_fc)
-  #endif
+#endif
       {
         float *input_code = nullptr;
         if (first_op.kwargs().contains("input_code")) {
@@ -174,16 +174,16 @@ std::vector<std::any> run_operation(const Operation &operation,
       }
 
       if (is_fc) {
-  #if SUPPORT_MVM
+#if SUPPORT_MVM
         output_ptr =
             simd_matrix_vector_multiply<SaInput, SaWeight, Psum, AccumBuffer,
                                         Scale, MV_UNIT_WIDTH>(
                 input_ptr, input_scale_ptr, weight_ptr, weight_scale_ptr,
                 bias_ptr, operation);
-  #else
+#else
         output_ptr = matrix_vector_multiply<Vector>(input_ptr, weight_ptr,
                                                     bias_ptr, get_shape(weight));
-  #endif
+#endif
       } else {
         output_ptr = gemm<SaInput, SaWeight, Psum, AccumBuffer, Scale>(
             input_ptr, input_scale_ptr, weight_ptr, weight_scale_ptr, bias_ptr,
@@ -207,8 +207,8 @@ std::vector<std::any> run_operation(const Operation &operation,
         }
         delete[] inputs;
         input_ptr_s = outputs;
-      } else if (input.dtype() == DataTypes::TypeName<INPUT_DATATYPE>::name()) {
-        INPUT_DATATYPE *inputs = std::any_cast<INPUT_DATATYPE *>(input_ptr_s);
+      } else if (input.dtype() == DataTypes::TypeName<SA_INPUT_TYPE>::name()) {
+        SA_INPUT_TYPE *inputs = std::any_cast<SA_INPUT_TYPE *>(input_ptr_s);
         for (int i = 0; i < size; i++) {
           outputs[i] = static_cast<Vector>(inputs[i]);
         }
@@ -271,8 +271,8 @@ std::vector<std::any> run_operation(const Operation &operation,
         }
         delete[] inputs;
         input_ptr_s = outputs;
-      } else if (input.dtype() == DataTypes::TypeName<INPUT_DATATYPE>::name()) {
-        INPUT_DATATYPE *inputs = std::any_cast<INPUT_DATATYPE *>(input_ptr_s);
+      } else if (input.dtype() == DataTypes::TypeName<SA_INPUT_TYPE>::name()) {
+        SA_INPUT_TYPE *inputs = std::any_cast<SA_INPUT_TYPE *>(input_ptr_s);
         for (int i = 0; i < size; i++) {
           outputs[i] = static_cast<Vector>(inputs[i]);
         }
@@ -300,8 +300,8 @@ std::vector<std::any> run_operation(const Operation &operation,
         }
         delete[] inputs;
         input_ptr_s = outputs;
-      } else if (input.dtype() == DataTypes::TypeName<INPUT_DATATYPE>::name()) {
-        INPUT_DATATYPE *inputs = std::any_cast<INPUT_DATATYPE *>(input_ptr_s);
+      } else if (input.dtype() == DataTypes::TypeName<SA_INPUT_TYPE>::name()) {
+        SA_INPUT_TYPE *inputs = std::any_cast<SA_INPUT_TYPE *>(input_ptr_s);
         for (int i = 0; i < size; i++) {
           outputs[i] = static_cast<Vector>(inputs[i]);
         }
@@ -330,9 +330,9 @@ std::vector<std::any> run_operation(const Operation &operation,
       } else if (input.dtype() == DataTypes::TypeName<SCALE_DATATYPE>::name()) {
         output_ptr = permute<SCALE_DATATYPE>(output_ptr, reshape_op);
         output_ptr = slice<SCALE_DATATYPE>(output_ptr, reshape_op);
-      } else if (input.dtype() == DataTypes::TypeName<INPUT_DATATYPE>::name()) {
-        output_ptr = permute<INPUT_DATATYPE>(output_ptr, reshape_op);
-        output_ptr = slice<INPUT_DATATYPE>(output_ptr, reshape_op);
+      } else if (input.dtype() == DataTypes::TypeName<SA_INPUT_TYPE>::name()) {
+        output_ptr = permute<SA_INPUT_TYPE>(output_ptr, reshape_op);
+        output_ptr = slice<SA_INPUT_TYPE>(output_ptr, reshape_op);
       } else if (input.dtype() == DataTypes::TypeName<ACCUM_BUFFER_DATATYPE>::name()) {
         output_ptr = permute<ACCUM_BUFFER_DATATYPE>(output_ptr, reshape_op);
         output_ptr = slice<ACCUM_BUFFER_DATATYPE>(output_ptr, reshape_op);
@@ -343,15 +343,7 @@ std::vector<std::any> run_operation(const Operation &operation,
       // output_ptr = permute<Vector>(output_ptr, reshape_op);
       // output_ptr = slice<Vector>(output_ptr, reshape_op);
     } else {
-      if (input.dtype() == DataTypes::TypeName<INPUT_DATATYPE>::name()) {
-        // const int size = get_size(input);
-        // Vector *outputs = new Vector[size];
-        // INPUT_DATATYPE *inputs = std::any_cast<INPUT_DATATYPE *>(output_ptr);
-        // for (int i = 0; i < size; i++) {
-        //   outputs[i] = static_cast<Vector>(inputs[i]);
-        // }
-        // delete[] inputs;
-        // output_ptr = outputs;
+      if (input.dtype() == DataTypes::TypeName<SA_INPUT_TYPE>::name()) {
         Vector *scale_tmp = new Vector[1];
         scale_tmp[0] = input.scale() != 0 ? input.scale() : 1.0;
         output_ptr = dequantize_tensor<Vector>(kwargs[input.node()],

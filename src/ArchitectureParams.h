@@ -155,6 +155,8 @@ using F9 = StdFloat<3, 5>;
 #define SUPPORT_MX true
 #define SUPPORT_CODEBOOK_QUANT true
 
+#define DWC_DATATYPE SA_INPUT_TYPE
+
 #elif defined(CFLOAT)
 
 #define INPUT_DATATYPE CFloat
