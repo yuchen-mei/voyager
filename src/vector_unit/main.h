@@ -130,7 +130,7 @@ SC_MODULE(VectorUnit) {
     // Param deserializer
     param_deserializer.clk(clk);
     param_deserializer.rstn(rstn);
-    param_deserializer.serialParamsIn(serial_params_in);
+    param_deserializer.serial_params_in(serial_params_in);
     param_deserializer.vectorParamsOut(vector_params);
     param_deserializer.vectorInstructionsOut(vector_instruction);
 
@@ -217,9 +217,9 @@ SC_MODULE(VectorUnit) {
     output_controller.scale_out(scale_out);
     output_controller.scale_address_out(scale_address_out);
     output_controller.done(done);
-  #if SUPPORT_DWC
+#if SUPPORT_DWC
     output_controller.dwc_address_in(dwc_address_in);
-  #endif
+#endif
 
     SC_THREAD(send_instructions);
     sensitive << clk.pos();

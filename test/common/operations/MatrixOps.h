@@ -261,7 +261,8 @@ inline Buffer *gemm(std::any input_ptr, std::any input_scale_ptr,
                                   outputs[output_addr] += scaled_psum;
                                   accumulations[output_addr] = Psum(0.0);
                                 }
-                              } else if (IC_DIMENSION == 32 || IC_DIMENSION == 64) {
+                              } else if (IC_DIMENSION == 32 ||
+                                         IC_DIMENSION == 64) {
                                 if (counters[1][tiling.fx_index] == 6) {
                                   Buffer scaled_psum = static_cast<Buffer>(
                                       accumulations[output_addr]);
@@ -312,7 +313,8 @@ inline Buffer *gemm(std::any input_ptr, std::any input_scale_ptr,
                                     accumulations[output_addr]);
                                 accumulations[output_addr] = Psum(0.0);
                               }
-                            } else if (IC_DIMENSION == 32 || IC_DIMENSION == 64) {
+                            } else if (IC_DIMENSION == 32 ||
+                                       IC_DIMENSION == 64) {
                               if (counters[1][tiling.fx_index] == 6) {
                                 outputs[output_addr] += static_cast<Buffer>(
                                     accumulations[output_addr]);
@@ -655,9 +657,9 @@ inline Buffer *DwC(std::any input_ptr, std::any input_scale_ptr,
   int stride_x = stride_vals[1];
 
   int ibatch = first_op.kwargs().at("input").tensor().shape(0);
-  int ic     = first_op.kwargs().at("input").tensor().shape(3);
-  int iy     = first_op.kwargs().at("input").tensor().shape(1);  // input height
-  int ix     = first_op.kwargs().at("input").tensor().shape(2);  // input weight
+  int ic = first_op.kwargs().at("input").tensor().shape(3);
+  int iy = first_op.kwargs().at("input").tensor().shape(1);  // input height
+  int ix = first_op.kwargs().at("input").tensor().shape(2);  // input weight
 
   int k_h = first_op.kwargs().at("weight").tensor().shape(2);
   int k_w = first_op.kwargs().at("weight").tensor().shape(3);
@@ -667,9 +669,9 @@ inline Buffer *DwC(std::any input_ptr, std::any input_scale_ptr,
   int y_pad = first_op.kwargs().at("padding").int_list().values()[0];
 
   int obatch = 1;
-  int oc     = ic;
-  int oy     = floor((ix + 2*x_pad - kernel_size)/stride_x) + 1;
-  int ox     = floor((iy + 2*y_pad - kernel_size)/stride_y) + 1;
+  int oc = ic;
+  int oy = floor((ix + 2 * x_pad - kernel_size) / stride_x) + 1;
+  int ox = floor((iy + 2 * y_pad - kernel_size) / stride_y) + 1;
 
   Buffer *outputs = new Buffer[obatch * oc * ox * oy];
   Input *inputs = std::any_cast<Input *>(input_ptr);
@@ -694,7 +696,7 @@ inline Buffer *DwC(std::any input_ptr, std::any input_scale_ptr,
 
 #if SUPPORT_MX
   Buffer Partial_Sum[7];
-  Buffer Mul_Result[kernel_size*kernel_size];
+  Buffer Mul_Result[kernel_size * kernel_size];
 #else
   Psum Partial_Sum[7];
   Psum Mul_Result[kernel_size * kernel_size];
@@ -744,32 +746,33 @@ inline Buffer *DwC(std::any input_ptr, std::any input_scale_ptr,
                     Input weight = weights[weight_addr];  // Use padded_weights
 
 #if SUPPORT_MX
-                    if (block_size == 0){
+                    if (block_size == 0) {
                       Mul_Result[ky * kernel_size + kx] =
-                            static_cast<Buffer>(input) * static_cast<Buffer>(weight);
+                          static_cast<Buffer>(input) *
+                          static_cast<Buffer>(weight);
                     } else {
                       int num_blocks = (ic + block_size - 1) / block_size;
-                      int input_scale_addr = (input_y * ix + input_x) * 
-                                            num_blocks + ic_g / block_size;
+                      int input_scale_addr =
+                          (input_y * ix + input_x) * num_blocks +
+                          ic_g / block_size;
                       int weight_scale_addr = weight_addr;
-                      Scale input_scale =
-                          input_scales[input_scale_addr];
-                      Scale weight_scale =
-                          weight_scales[weight_scale_addr];
+                      Scale input_scale = input_scales[input_scale_addr];
+                      Scale weight_scale = weight_scales[weight_scale_addr];
                       Buffer scale = static_cast<Buffer>(input_scale) *
-                                    static_cast<Buffer>(weight_scale);
+                                     static_cast<Buffer>(weight_scale);
                       Mul_Result[ky * kernel_size + kx] =
-                            static_cast<Buffer>(static_cast<Psum>(input) * static_cast<Psum>(weight)) *
-                            scale;
+                          static_cast<Buffer>(static_cast<Psum>(input) *
+                                              static_cast<Psum>(weight)) *
+                          scale;
                     }
 #else
                     Mul_Result[ky * kernel_size + kx] =
-                          static_cast<Psum>(input) * static_cast<Psum>(weight);
+                        static_cast<Psum>(input) * static_cast<Psum>(weight);
 #endif
                     // outputs[output_addr] +=
-                    //     static_cast<Buffer>(input) * static_cast<Buffer>(weight) * scale;
-                  }
-                  else {
+                    //     static_cast<Buffer>(input) *
+                    //     static_cast<Buffer>(weight) * scale;
+                  } else {
 #if SUPPORT_MX
                     Mul_Result[ky * kernel_size + kx] = Buffer(0.0);
 #else
@@ -785,8 +788,8 @@ inline Buffer *DwC(std::any input_ptr, std::any input_scale_ptr,
               Partial_Sum[4] = Partial_Sum[0] + Partial_Sum[1];
               Partial_Sum[5] = Partial_Sum[2] + Partial_Sum[3];
               Partial_Sum[6] = Partial_Sum[4] + Partial_Sum[5] + Mul_Result[8];
-              outputs[output_addr] = biases[ic_g] + 
-                                      static_cast<Buffer>(Partial_Sum[6]);
+              outputs[output_addr] =
+                  biases[ic_g] + static_cast<Buffer>(Partial_Sum[6]);
             }
           }
         }

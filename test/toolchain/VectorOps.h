@@ -1,11 +1,10 @@
 #pragma once
 
+#include "ApproximationConstants.h"
 #include "ArchitectureParams.h"
 #include "test/common/Tiling.h"
 #include "test/toolchain/ApproximationConstants.h"
 #include "test/toolchain/Common.h"
-#include "ApproximationConstants.h"
-#include "ArchitectureParams.h"
 
 inline bool are_broadcastable(const std::vector<int> &shape1,
                               const std::vector<int> &shape2) {

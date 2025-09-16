@@ -1,8 +1,8 @@
 #pragma once
 
-#include "test/toolchain/Common.h"
 #include "ApproximationConstants.h"
 #include "ArchitectureParams.h"
+#include "test/toolchain/Common.h"
 
 void MapSoftmax(const codegen::Operation &param,
                 std::deque<BaseParams *> &mappedParams,
@@ -304,18 +304,6 @@ void MapSoftmax(const codegen::Operation &param,
 
   vector_instruction_config->instLen = 1;
   vector_instruction_config->instLoopCount = 1;
-
-  // Copy coefficients from ApproximationConstants.h
-  for (int i = 0; i < NUM_MAXES; i++) {
-    vector_instruction_config->approx.maxes[i] = EXP_MAXES[i];
-  }
-  for (int i = 0; i < NUM_RANGES; i++) {
-    for (int j = 0; j < NUM_COEFFS; j++) {
-      vector_instruction_config->approx.ranges[i][j] = EXP_RANGES[i][j];
-    }
-  }
-  vector_instruction_config->approx.clamp_min = EXP_CLAMP_MIN;
-  vector_instruction_config->approx.clamp_max = EXP_CLAMP_MAX;
 
   // Copy coefficients from ApproximationConstants.h
   for (int i = 0; i < NUM_MAXES; i++) {

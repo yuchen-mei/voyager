@@ -30,83 +30,82 @@ SC_MODULE(MatrixUnit) {
   static constexpr int ACCUM_BUFFER_BANKS = 1;
 #endif
 
-  MatrixParamsDeserializer<PARAMS_MODULE_COUNT> CCS_INIT_S1(paramsDeserializer);
-  Connections::In<ac_int<64, false>> CCS_INIT_S1(serialMatrixParamsIn);
-  Connections::Combinational<MatrixParams> matrixParams[PARAMS_MODULE_COUNT];
+  MatrixParamsDeserializer<PARAMS_MODULE_COUNT> CCS_INIT_S1(
+      params_deserializer);
+  Connections::In<ac_int<64, false>> CCS_INIT_S1(serial_params_in);
+  Connections::Combinational<MatrixParams> matrix_params[PARAMS_MODULE_COUNT];
 
   InputController<InputTypeList, IC_DIMENSION, IC_PORT_WIDTH,
                   INPUT_BUFFER_WIDTH>
-      CCS_INIT_S1(inputController);
+      CCS_INIT_S1(input_controller);
 
-  DoubleBuffer<INPUT_BUFFER_SIZE, INPUT_BUFFER_WIDTH> CCS_INIT_S1(inputBuffer);
-  Connections::Out<MemoryRequest> CCS_INIT_S1(inputAddressRequest);
-
-  Connections::In<ac_int<IC_PORT_WIDTH, false>> CCS_INIT_S1(inputDataResponse);
+  DoubleBuffer<INPUT_BUFFER_SIZE, INPUT_BUFFER_WIDTH> CCS_INIT_S1(input_buffer);
+  Connections::Out<MemoryRequest> CCS_INIT_S1(input_req);
+  Connections::In<ac_int<IC_PORT_WIDTH, false>> CCS_INIT_S1(input_resp);
   Connections::Combinational<
       BufferWriteRequest<ac_int<INPUT_BUFFER_WIDTH, false>>>
-      inputBufferWriteReq[2];
-  Connections::Combinational<BufferReadRequest> inputBufferReadAddress[2];
+      input_buffer_write_req[2];
+  Connections::Combinational<BufferReadRequest> input_buffer_read_req[2];
   Connections::Combinational<ac_int<INPUT_BUFFER_WIDTH, false>> CCS_INIT_S1(
-      inputsToWindowBuffer);
+      window_buffer_in);
   Connections::Combinational<ac_int<INPUT_BUFFER_WIDTH, false>> CCS_INIT_S1(
-      inputsFromBuffer);
+      window_buffer_out);
 
 #if SUPPORT_MX
   InputScaleController<SCALE_DATATYPE, IC_DIMENSION> CCS_INIT_S1(
-      inputScaleController);
+      input_scale_controller);
   DoubleBuffer<INPUT_BUFFER_SIZE, SCALE_DATATYPE::width> CCS_INIT_S1(
-      inputScaleBuffer);
-  Connections::Out<MemoryRequest> CCS_INIT_S1(inputScaleAddressRequest);
+      input_scale_buffer);
+  Connections::Out<MemoryRequest> CCS_INIT_S1(input_scale_req);
   Connections::In<ac_int<SCALE_DATATYPE::width, false>> CCS_INIT_S1(
-      inputScaleDataResponse);
+      input_scale_resp);
   Connections::Combinational<
       BufferWriteRequest<ac_int<SCALE_DATATYPE::width, false>>>
-      inputScaleWriteRequest[2];
-  Connections::Combinational<BufferReadRequest> inputScaleReadAddress[2];
+      input_scale_write_req[2];
+  Connections::Combinational<BufferReadRequest> input_scale_read_req[2];
   Connections::Combinational<ac_int<SCALE_DATATYPE::width, false>> CCS_INIT_S1(
-      inputScaleFromBuffer);
+      input_scale_read_resp);
 #endif
 
   WeightController<WeightTypeList, ACCUM_BUFFER_DATATYPE, IC_DIMENSION,
                    OC_DIMENSION, OC_PORT_WIDTH, WEIGHT_BUFFER_WIDTH>
-      CCS_INIT_S1(weightController);
+      CCS_INIT_S1(weight_controller);
 
   DoubleBuffer<WEIGHT_BUFFER_SIZE, WEIGHT_BUFFER_WIDTH> CCS_INIT_S1(
-      weightBuffer);
-  Connections::Out<MemoryRequest> CCS_INIT_S1(weightAddressRequest);
-  Connections::In<ac_int<OC_PORT_WIDTH, false>> CCS_INIT_S1(weightDataResponse);
-  Connections::Out<MemoryRequest> CCS_INIT_S1(biasAddressRequest);
-  Connections::In<ac_int<OC_PORT_WIDTH, false>> CCS_INIT_S1(biasDataResponse);
+      weight_buffer);
+  Connections::Out<MemoryRequest> CCS_INIT_S1(weight_req);
+  Connections::In<ac_int<OC_PORT_WIDTH, false>> CCS_INIT_S1(weight_resp);
+  Connections::Out<MemoryRequest> CCS_INIT_S1(bias_req);
+  Connections::In<ac_int<OC_PORT_WIDTH, false>> CCS_INIT_S1(bias_resp);
   Connections::Combinational<
       BufferWriteRequest<ac_int<WEIGHT_BUFFER_WIDTH, false>>>
-      weightBufferWriteReq[2];
-  Connections::Combinational<BufferReadRequest> weightBufferReadAddress[2];
+      weight_buffer_write_req[2];
+  Connections::Combinational<BufferReadRequest> weight_buffer_read_req[2];
   Connections::Combinational<ac_int<WEIGHT_BUFFER_WIDTH, false>> CCS_INIT_S1(
-      weightsFromBuffer);
+      weight_buffer_read_resp);
 
 #if SUPPORT_MX
   WeightScaleController<SCALE_DATATYPE, IC_DIMENSION, OC_DIMENSION,
                         OC_PORT_WIDTH>
-      CCS_INIT_S1(weightScaleController);
+      CCS_INIT_S1(weight_scale_controller);
   DoubleBuffer<WEIGHT_BUFFER_SIZE / IC_DIMENSION,
                SCALE_DATATYPE::width * OC_DIMENSION>
-      CCS_INIT_S1(weightScaleBuffer);
-  Connections::Out<MemoryRequest> CCS_INIT_S1(weightScaleAddressRequest);
-  Connections::In<ac_int<OC_PORT_WIDTH, false>> CCS_INIT_S1(
-      weightScaleDataResponse);
+      CCS_INIT_S1(weight_scale_buffer);
+  Connections::Out<MemoryRequest> CCS_INIT_S1(weight_scale_req);
+  Connections::In<ac_int<OC_PORT_WIDTH, false>> CCS_INIT_S1(weight_scale_resp);
   Connections::Combinational<BufferWriteRequest<SCALE_PORT_TYPE>>
-      weightScaleWriteRequest[2];
-  Connections::Combinational<BufferReadRequest> weightScaleReadAddress[2];
+      weight_scale_write_req[2];
+  Connections::Combinational<BufferReadRequest> weight_scale_read_req[2];
   Connections::Combinational<ac_int<SCALE_PORT_WIDTH, false>> CCS_INIT_S1(
-      weightScaleFromBuffer);
+      weight_scale_read_resp);
 #endif
 
   MatrixProcessor<InputTypeList, WeightTypeList, SA_INPUT_TYPE, SA_WEIGHT_TYPE,
                   ACCUM_DATATYPE, ACCUM_BUFFER_DATATYPE, SCALE_DATATYPE,
                   IC_DIMENSION, OC_DIMENSION, ACCUM_BUFFER_SIZE>
-      CCS_INIT_S1(matrixProcessor);
+      CCS_INIT_S1(matrix_processor);
   Connections::Combinational<Pack1D<ACCUM_BUFFER_DATATYPE, OC_DIMENSION>>
-      CCS_INIT_S1(biasToSystolicArray);
+      CCS_INIT_S1(bias_data);
 
   DualPortBuffer<Pack1D<ACCUM_BUFFER_DATATYPE, OC_DIMENSION>, ACCUM_BUFFER_SIZE>
       CCS_INIT_S1(accumulation_buffer);
@@ -130,120 +129,119 @@ SC_MODULE(MatrixUnit) {
   Connections::SyncIn accumulation_buffer_vu_done[2];
 #endif
 
-  Connections::Out<Pack1D<ACCUM_BUFFER_DATATYPE, OC_DIMENSION>>
-      matrixUnitOutputChannel;
+  Connections::Out<Pack1D<ACCUM_BUFFER_DATATYPE, OC_DIMENSION>> output_channel;
 
-  Connections::SyncOut CCS_INIT_S1(startSignal);
-  Connections::SyncOut CCS_INIT_S1(doneSignal);
+  Connections::SyncOut CCS_INIT_S1(start_signal);
+  Connections::SyncOut CCS_INIT_S1(done_signal);
 
   SC_CTOR(MatrixUnit) {
-    paramsDeserializer.clk(clk);
-    paramsDeserializer.rstn(rstn);
-    paramsDeserializer.serialParamsIn(serialMatrixParamsIn);
+    params_deserializer.clk(clk);
+    params_deserializer.rstn(rstn);
+    params_deserializer.serial_params_in(serial_params_in);
     for (int i = 0; i < PARAMS_MODULE_COUNT; i++) {
-      paramsDeserializer.paramsOut[i](matrixParams[i]);
+      params_deserializer.paramsOut[i](matrix_params[i]);
     }
 
-    inputController.clk(clk);
-    inputController.rstn(rstn);
-    inputController.input_req(inputAddressRequest);
-    inputController.input_resp(inputDataResponse);
-    inputController.params_in(matrixParams[0]);
-    inputController.window_buffer_in(inputsToWindowBuffer);
-    inputController.window_buffer_out(inputsFromBuffer);
+    input_controller.clk(clk);
+    input_controller.rstn(rstn);
+    input_controller.input_req(input_req);
+    input_controller.input_resp(input_resp);
+    input_controller.params_in(matrix_params[0]);
+    input_controller.window_buffer_in(window_buffer_in);
+    input_controller.window_buffer_out(window_buffer_out);
 
-    inputBuffer.clk(clk);
-    inputBuffer.rstn(rstn);
+    input_buffer.clk(clk);
+    input_buffer.rstn(rstn);
     for (int i = 0; i < 2; i++) {
-      inputController.input_write_request[i](inputBufferWriteReq[i]);
-      inputController.input_read_address[i](inputBufferReadAddress[i]);
+      input_controller.input_write_request[i](input_buffer_write_req[i]);
+      input_controller.input_read_address[i](input_buffer_read_req[i]);
 
-      inputBuffer.writeRequest[i](inputBufferWriteReq[i]);
-      inputBuffer.readAddress[i](inputBufferReadAddress[i]);
+      input_buffer.writeRequest[i](input_buffer_write_req[i]);
+      input_buffer.readAddress[i](input_buffer_read_req[i]);
     }
-    inputBuffer.output(inputsToWindowBuffer);
+    input_buffer.output(window_buffer_in);
 
 #if SUPPORT_MX
-    inputScaleController.clk(clk);
-    inputScaleController.rstn(rstn);
-    inputScaleController.scale_req(inputScaleAddressRequest);
-    inputScaleController.scale_resp(inputScaleDataResponse);
-    inputScaleController.params_in(matrixParams[3]);
+    input_scale_controller.clk(clk);
+    input_scale_controller.rstn(rstn);
+    input_scale_controller.scale_req(input_scale_req);
+    input_scale_controller.scale_resp(input_scale_resp);
+    input_scale_controller.params_in(matrix_params[3]);
 
-    inputScaleBuffer.clk(clk);
-    inputScaleBuffer.rstn(rstn);
+    input_scale_buffer.clk(clk);
+    input_scale_buffer.rstn(rstn);
     for (int i = 0; i < 2; i++) {
-      inputScaleController.scale_write_request[i](inputScaleWriteRequest[i]);
-      inputScaleController.scale_read_address[i](inputScaleReadAddress[i]);
+      input_scale_controller.scale_write_request[i](input_scale_write_req[i]);
+      input_scale_controller.scale_read_address[i](input_scale_read_req[i]);
 
-      inputScaleBuffer.writeRequest[i](inputScaleWriteRequest[i]);
-      inputScaleBuffer.readAddress[i](inputScaleReadAddress[i]);
+      input_scale_buffer.writeRequest[i](input_scale_write_req[i]);
+      input_scale_buffer.readAddress[i](input_scale_read_req[i]);
     }
-    inputScaleBuffer.output(inputScaleFromBuffer);
+    input_scale_buffer.output(input_scale_read_resp);
 #endif
 
-    weightController.clk(clk);
-    weightController.rstn(rstn);
-    weightController.weight_req(weightAddressRequest);
-    weightController.weight_resp(weightDataResponse);
-    weightController.params_in(matrixParams[1]);
-    weightController.bias_req(biasAddressRequest);
-    weightController.bias_resp(biasDataResponse);
-    weightController.bias_data(biasToSystolicArray);
+    weight_controller.clk(clk);
+    weight_controller.rstn(rstn);
+    weight_controller.weight_req(weight_req);
+    weight_controller.weight_resp(weight_resp);
+    weight_controller.params_in(matrix_params[1]);
+    weight_controller.bias_req(bias_req);
+    weight_controller.bias_resp(bias_resp);
+    weight_controller.bias_data(bias_data);
 
-    weightBuffer.clk(clk);
-    weightBuffer.rstn(rstn);
+    weight_buffer.clk(clk);
+    weight_buffer.rstn(rstn);
     for (int i = 0; i < 2; i++) {
-      weightController.write_request[i](weightBufferWriteReq[i]);
-      weightController.read_request[i](weightBufferReadAddress[i]);
+      weight_controller.write_request[i](weight_buffer_write_req[i]);
+      weight_controller.read_request[i](weight_buffer_read_req[i]);
 
-      weightBuffer.writeRequest[i](weightBufferWriteReq[i]);
-      weightBuffer.readAddress[i](weightBufferReadAddress[i]);
+      weight_buffer.writeRequest[i](weight_buffer_write_req[i]);
+      weight_buffer.readAddress[i](weight_buffer_read_req[i]);
     }
-    weightBuffer.output(weightsFromBuffer);
+    weight_buffer.output(weight_buffer_read_resp);
 
 #if SUPPORT_MX
-    weightScaleController.clk(clk);
-    weightScaleController.rstn(rstn);
-    weightScaleController.weight_scale_req(weightScaleAddressRequest);
-    weightScaleController.weight_scale_resp(weightScaleDataResponse);
-    weightScaleController.params_in(matrixParams[4]);
+    weight_scale_controller.clk(clk);
+    weight_scale_controller.rstn(rstn);
+    weight_scale_controller.weight_scale_req(weight_scale_req);
+    weight_scale_controller.weight_scale_resp(weight_scale_resp);
+    weight_scale_controller.params_in(matrix_params[4]);
 
-    weightScaleBuffer.clk(clk);
-    weightScaleBuffer.rstn(rstn);
+    weight_scale_buffer.clk(clk);
+    weight_scale_buffer.rstn(rstn);
     for (int i = 0; i < 2; i++) {
-      weightScaleController.write_request[i](weightScaleWriteRequest[i]);
-      weightScaleController.read_request[i](weightScaleReadAddress[i]);
+      weight_scale_controller.write_request[i](weight_scale_write_req[i]);
+      weight_scale_controller.read_request[i](weight_scale_read_req[i]);
 
-      weightScaleBuffer.writeRequest[i](weightScaleWriteRequest[i]);
-      weightScaleBuffer.readAddress[i](weightScaleReadAddress[i]);
+      weight_scale_buffer.writeRequest[i](weight_scale_write_req[i]);
+      weight_scale_buffer.readAddress[i](weight_scale_read_req[i]);
     }
-    weightScaleBuffer.output(weightScaleFromBuffer);
+    weight_scale_buffer.output(weight_scale_read_resp);
 #endif
 
-    matrixProcessor.clk(clk);
-    matrixProcessor.rstn(rstn);
-    matrixProcessor.inputsChannel(inputsFromBuffer);
-    matrixProcessor.weightsChannel(weightsFromBuffer);
-    matrixProcessor.biasChannel(biasToSystolicArray);
-    matrixProcessor.paramsIn(matrixParams[2]);
-    matrixProcessor.startSignal(startSignal);
-    matrixProcessor.doneSignal(doneSignal);
+    matrix_processor.clk(clk);
+    matrix_processor.rstn(rstn);
+    matrix_processor.input_channel(window_buffer_out);
+    matrix_processor.weight_channel(weight_buffer_read_resp);
+    matrix_processor.bias_channel(bias_data);
+    matrix_processor.params_in(matrix_params[2]);
+    matrix_processor.start_signal(start_signal);
+    matrix_processor.done_signal(done_signal);
 
     for (int i = 0; i < ACCUM_BUFFER_BANKS; i++) {
-      matrixProcessor.accumulation_buffer_read_address[i](
+      matrix_processor.accumulation_buffer_read_address[i](
           accumulation_buffer_mu_read_address[i]);
-      matrixProcessor.accumulation_buffer_read_data[i](
+      matrix_processor.accumulation_buffer_read_data[i](
           accumulation_buffer_mu_read_data[i]);
-      matrixProcessor.accumulation_buffer_write_request[i](
+      matrix_processor.accumulation_buffer_write_request[i](
           accumulation_buffer_mu_write_request[i]);
 #if DOUBLE_BUFFERED_ACCUM_BUFFER
-      matrixProcessor.accumulation_buffer_done[i](
+      matrix_processor.accumulation_buffer_done[i](
           accumulation_buffer_mu_done[i]);
 #endif
     }
 
-    matrixProcessor.matrixUnitOutputChannel(matrixUnitOutputChannel);
+    matrix_processor.output_channel(output_channel);
 
     accumulation_buffer.clk(clk);
     accumulation_buffer.rstn(rstn);
@@ -272,8 +270,8 @@ SC_MODULE(MatrixUnit) {
 #endif
 
 #if SUPPORT_MX
-    matrixProcessor.inputScaleChannel(inputScaleFromBuffer);
-    matrixProcessor.weightScaleChannel(weightScaleFromBuffer);
+    matrix_processor.input_scale_channel(input_scale_read_resp);
+    matrix_processor.weight_scale_channel(weight_scale_read_resp);
 #endif
   }
 };

@@ -16,29 +16,29 @@ SC_MODULE(DwCUnit) {
 
   DwCParamsDeserializer CCS_INIT_S1(param_deserializer);
 
-  Connections::In<ac_int<64, false>> CCS_INIT_S1(serialParamsIn);
+  Connections::In<ac_int<64, false>> CCS_INIT_S1(serial_params_in);
 
   Connections::In<ac_int<UNROLLFACTOR * Input::width, false>> CCS_INIT_S1(
-      inputDataResponse);
+      input_resp);
   Connections::In<ac_int<DWC_KERNEL_SIZE * Weight::width, false>> CCS_INIT_S1(
-      weightDataResponse);
-  Connections::In<ac_int<Output::width, false>> CCS_INIT_S1(biasDataResponse);
+      weight_resp);
+  Connections::In<ac_int<Output::width, false>> CCS_INIT_S1(bias_resp);
 
-  Connections::Out<MemoryRequest> CCS_INIT_S1(address_request_weight);
-  Connections::Out<MemoryRequest> CCS_INIT_S1(address_request_bias);
-  Connections::Out<MemoryRequest> CCS_INIT_S1(address_request_input);
+  Connections::Out<MemoryRequest> CCS_INIT_S1(weight_req);
+  Connections::Out<MemoryRequest> CCS_INIT_S1(bias_req);
+  Connections::Out<MemoryRequest> CCS_INIT_S1(input_req);
 #if SUPPORT_MX
-  Connections::Out<MemoryRequest> CCS_INIT_S1(address_request_input_scale);
-  Connections::Out<MemoryRequest> CCS_INIT_S1(address_request_weight_scale);
+  Connections::Out<MemoryRequest> CCS_INIT_S1(input_scale_req);
+  Connections::Out<MemoryRequest> CCS_INIT_S1(weight_scale_req);
   Connections::In<ac_int<SCALE_DATATYPE::width, false>> CCS_INIT_S1(
-      inputScaleDataResponse);
-  Connections::In<ac_int<DWC_KERNEL_SIZE * SCALE_DATATYPE::width, false>> CCS_INIT_S1(
-      weightScaleDataResponse);
+      input_scale_resp);
+  Connections::In<ac_int<DWC_KERNEL_SIZE * SCALE_DATATYPE::width, false>>
+      CCS_INIT_S1(weight_scale_resp);
 #endif
 
-  Connections::Out<Pack1D<Output, OutputWidth>> CCS_INIT_S1(DwC_output);
+  Connections::Out<Pack1D<Output, OutputWidth>> CCS_INIT_S1(dwc_output);
   Connections::Out<ac_int<ADDRESS_WIDTH, false>> CCS_INIT_S1(
-      DwC_output_address_out);
+      dwc_output_address);
 
   Connections::SyncOut CCS_INIT_S1(start);
   Connections::SyncOut CCS_INIT_S1(done);
@@ -85,7 +85,7 @@ SC_MODULE(DwCUnit) {
 #if SUPPORT_MX
   ac_int<SCALE_DATATYPE::width, false> input_scale_buffer[DWC_WIDTH]
                                                          [DWC_KERNEL_DIM - 1];
-  ac_int<SCALE_DATATYPE::width, false> 
+  ac_int<SCALE_DATATYPE::width, false>
       input_scale_shift_old_reg[DWC_KERNEL_DIM - 1][DWC_KERNEL_DIM - 1];
   ac_int<SCALE_DATATYPE::width, false>
       input_scale_shift_new_reg[DWC_KERNEL_DIM];
@@ -100,7 +100,7 @@ SC_MODULE(DwCUnit) {
   SC_CTOR(DwCUnit) {
     param_deserializer.clk(clk);
     param_deserializer.rstn(rstn);
-    param_deserializer.serialParamsIn(serialParamsIn);
+    param_deserializer.serial_params_in(serial_params_in);
     param_deserializer.dwcParamsOut(paramsIn);
 
     MulAddTree<Input, Weight, Psum, Output> *mulAddTree_ptr[UNROLLFACTOR];
@@ -185,10 +185,10 @@ SC_MODULE(DwCUnit) {
   }
 
   void input_addr_gen() {  // input addr gen
-    address_request_input.Reset();
+    input_req.Reset();
     Input_params.ResetRead();
 #if SUPPORT_MX
-    address_request_input_scale.Reset();
+    input_scale_req.Reset();
 #endif
 
     wait();
@@ -261,18 +261,18 @@ SC_MODULE(DwCUnit) {
                   MemoryRequest request = {
                       params.INPUT_OFFSET + address * Input::width / 8,
                       UNROLLFACTOR * Input::width / 8};
-                  address_request_input.Push(request);
+                  input_req.Push(request);
 #if SUPPORT_MX
                   if (use_mx) {
                     ac_int<32, false> address_scale =
-                      (Y1 * input_bounds[1] + X_g - padding[1][0]) *
-                          block_num +
-                      (C_g >> block_size);
+                        (Y1 * input_bounds[1] + X_g - padding[1][0]) *
+                            block_num +
+                        (C_g >> block_size);
                     MemoryRequest request_scale = {
                         params.INPUT_SCALE_OFFSET +
-                        address_scale * SCALE_DATATYPE::width / 8,
+                            address_scale * SCALE_DATATYPE::width / 8,
                         SCALE_DATATYPE::width / 8};
-                    address_request_input_scale.Push(request_scale);
+                    input_scale_req.Push(request_scale);
                   }
 #endif
                 }
@@ -299,11 +299,11 @@ SC_MODULE(DwCUnit) {
   }
 
   void weight_bias_addr_gen() {
-    address_request_weight.Reset();
-    address_request_bias.Reset();
+    weight_req.Reset();
+    bias_req.Reset();
     Weight_params.ResetRead();
 #if SUPPORT_MX
-    address_request_weight_scale.Reset();
+    weight_scale_req.Reset();
 #endif
 
     wait();
@@ -337,19 +337,19 @@ SC_MODULE(DwCUnit) {
           MemoryRequest weight_request = {
               params.WEIGHT_OFFSET + C * DWC_KERNEL_SIZE * Weight::width / 8,
               DWC_KERNEL_SIZE * Weight::width / 8};
-          address_request_weight.Push(weight_request);
+          weight_req.Push(weight_request);
 #if SUPPORT_MX
           if (use_mx) {
             MemoryRequest weight_scale_request = {
-                params.WEIGHT_SCALE_OFFSET + C * DWC_KERNEL_SIZE *
-                SCALE_DATATYPE::width / 8,
+                params.WEIGHT_SCALE_OFFSET +
+                    C * DWC_KERNEL_SIZE * SCALE_DATATYPE::width / 8,
                 DWC_KERNEL_SIZE * SCALE_DATATYPE::width / 8};
-            address_request_weight_scale.Push(weight_scale_request);
+            weight_scale_req.Push(weight_scale_request);
           }
 #endif
           MemoryRequest bias_request = {
               params.BIAS_OFFSET + C * Output::width / 8, Output::width / 8};
-          address_request_bias.Push(bias_request);
+          bias_req.Push(bias_request);
 
           if (loop_counters[1][2] >= loop_bounds[1][2] - 1) {
             break;
@@ -363,12 +363,12 @@ SC_MODULE(DwCUnit) {
   }
 
   void fill_weight_bias() {
-    weightDataResponse.Reset();
-    biasDataResponse.Reset();
+    weight_resp.Reset();
+    bias_resp.Reset();
     DwC_update_weight.ResetRead();
     DwC_kernel_exe.ResetRead();
 #if SUPPORT_MX
-    weightScaleDataResponse.Reset();
+    weight_scale_resp.Reset();
     DwC_use_mx.ResetRead();
 #endif
 
@@ -441,24 +441,27 @@ SC_MODULE(DwCUnit) {
         }
       } else {
         ac_int<DWC_KERNEL_SIZE * Weight::width, false> weight =
-            weightDataResponse.Pop();
+            weight_resp.Pop();
         Pack1D<Weight, DWC_KERNEL_SIZE> weight_tmp;
 #if SUPPORT_MX
         ac_int<DWC_KERNEL_SIZE * SCALE_DATATYPE::width, false> weight_scale;
         Pack1D<SCALE_DATATYPE, DWC_KERNEL_SIZE> weight_scale_tmp;
         if (use_mx) {
-          weight_scale = weightScaleDataResponse.Pop();
+          weight_scale = weight_scale_resp.Pop();
         }
 #endif
         Output bias;
-        bias.set_bits(biasDataResponse.Pop());
+        bias.set_bits(bias_resp.Pop());
 
 #pragma hls_unroll yes
         for (int j = 0; j < DWC_KERNEL_SIZE; j++) {
-          weight_tmp[j].set_bits(weight.template slc<Weight::width>(j * Weight::width));
+          weight_tmp[j].set_bits(
+              weight.template slc<Weight::width>(j * Weight::width));
 #if SUPPORT_MX
           if (use_mx) {
-            weight_scale_tmp[j].set_bits(weight_scale.template slc<SCALE_DATATYPE::width>(j * SCALE_DATATYPE::width));
+            weight_scale_tmp[j].set_bits(
+                weight_scale.template slc<SCALE_DATATYPE::width>(
+                    j * SCALE_DATATYPE::width));
           } else {
             weight_scale_tmp[j] = SCALE_DATATYPE::one();
           }
@@ -477,11 +480,11 @@ SC_MODULE(DwCUnit) {
   void input_buffer_write_addr_gen()  // the dwc execution
   {
     Input_B_params.ResetRead();
-    inputDataResponse.Reset();
+    input_resp.Reset();
     DwC_elem_valid_out.ResetRead();
     DwC_kernel_exe_run.ResetRead();
 #if SUPPORT_MX
-    inputScaleDataResponse.Reset();
+    input_scale_resp.Reset();
 #endif
 
     for (int i = 0; i < UNROLLFACTOR; i++) {
@@ -583,7 +586,7 @@ SC_MODULE(DwCUnit) {
                   (X_g < input_bounds[1] + padding[1][0]) &&
                   (X_g >= padding[1][0])) {
                 ac_int<UNROLLFACTOR * Input::width, false> input =
-                    inputDataResponse.Pop();
+                    input_resp.Pop();
                 input_shift_new_reg[DWC_KERNEL_DIM - 1] = input;
                 write_addr_shift_reg[DWC_KERNEL_DIM - 1][0] = X0;
                 write_addr_shift_reg[DWC_KERNEL_DIM - 1][1] = input_buffer_idx;
@@ -591,7 +594,7 @@ SC_MODULE(DwCUnit) {
 #if SUPPORT_MX
                 if (use_mx) {
                   ac_int<SCALE_DATATYPE::width, false> input_scale =
-                      inputScaleDataResponse.Pop();
+                      input_scale_resp.Pop();
                   input_scale_shift_new_reg[DWC_KERNEL_DIM - 1] = input_scale;
                 }
 #endif
@@ -633,7 +636,7 @@ SC_MODULE(DwCUnit) {
                       if (elem_valid[r * DWC_KERNEL_DIM + c]) {
                         ac_int<1, false> input_buffer_idx_curr =
                             input_buffer_idx + r;
-                        if (r == DWC_KERNEL_DIM - 1) {//TODO
+                        if (r == DWC_KERNEL_DIM - 1) {  // TODO
                           input_per_kernel[r * DWC_KERNEL_DIM + c].set_bits(
                               input_shift_new_reg[c].template slc<Input::width>(
                                   i * Input::width));
@@ -670,18 +673,25 @@ SC_MODULE(DwCUnit) {
                         ac_int<1, false> input_buffer_idx_curr =
                             input_buffer_idx + r;
                         if (r == DWC_KERNEL_DIM - 1) {
-                          input_scale_per_kernel[r * DWC_KERNEL_DIM + c].set_bits(
-                              input_scale_shift_new_reg[c].template slc<SCALE_DATATYPE::width>(
-                                  0));
+                          input_scale_per_kernel[r * DWC_KERNEL_DIM + c]
+                              .set_bits(
+                                  input_scale_shift_new_reg[c]
+                                      .template slc<SCALE_DATATYPE::width>(0));
                         } else {
                           if (c != DWC_KERNEL_DIM - 1) {
-                            input_scale_per_kernel[r * DWC_KERNEL_DIM + c].set_bits(
-                                input_scale_shift_old_reg[input_buffer_idx_curr][c]
-                                    .template slc<SCALE_DATATYPE::width>(0));
+                            input_scale_per_kernel[r * DWC_KERNEL_DIM + c]
+                                .set_bits(
+                                    input_scale_shift_old_reg
+                                        [input_buffer_idx_curr][c]
+                                            .template slc<
+                                                SCALE_DATATYPE::width>(0));
                           } else {
-                            input_scale_per_kernel[r * DWC_KERNEL_DIM + c].set_bits(
-                                input_scale_buffer_read[input_buffer_idx_curr]
-                                    .template slc<SCALE_DATATYPE::width>(0));
+                            input_scale_per_kernel[r * DWC_KERNEL_DIM + c]
+                                .set_bits(
+                                    input_scale_buffer_read
+                                        [input_buffer_idx_curr]
+                                            .template slc<
+                                                SCALE_DATATYPE::width>(0));
                           }
                         }
                       } else {
@@ -739,16 +749,16 @@ SC_MODULE(DwCUnit) {
                 input_shift_old_reg[input_buffer_idx_curr][DWC_KERNEL_DIM - 2] =
                     input_buffer_read[input_buffer_idx_curr];
 #if SUPPORT_MX
-                input_scale_shift_old_reg[input_buffer_idx_curr][DWC_KERNEL_DIM - 2] =
-                    input_scale_buffer_read[input_buffer_idx_curr];
+                input_scale_shift_old_reg
+                    [input_buffer_idx_curr][DWC_KERNEL_DIM - 2] =
+                        input_scale_buffer_read[input_buffer_idx_curr];
 #endif
               }
 #pragma hls_unroll yes
               for (int i = 0; i < DWC_KERNEL_DIM - 1; i++) {  // column
                 input_shift_new_reg[i] = input_shift_new_reg[i + 1];
 #if SUPPORT_MX
-                input_scale_shift_new_reg[i] =
-                    input_scale_shift_new_reg[i + 1];
+                input_scale_shift_new_reg[i] = input_scale_shift_new_reg[i + 1];
 #endif
                 write_addr_shift_reg[i][0] = write_addr_shift_reg[i + 1][0];
                 write_addr_shift_reg[i][1] = write_addr_shift_reg[i + 1][1];
@@ -787,7 +797,7 @@ SC_MODULE(DwCUnit) {
 
   void out_addr_gen()  // Buffer read & write addr gen, output addr gen
   {
-    DwC_output_address_out.Reset();
+    dwc_output_address.Reset();
     Output_params.ResetRead();
 
     done.Reset();
@@ -848,7 +858,7 @@ SC_MODULE(DwCUnit) {
               ac_int<32, false> address =
                   (Y1 * X_g_T + X_g) * input_bounds[2] + C_g;
               ac_int<ADDRESS_WIDTH, false> output_address = address;
-              DwC_output_address_out.Push(output_address);
+              dwc_output_address.Push(output_address);
 
               if (loop_counters[1][1] == X0_T - 1 || X_g == X_g_T - 1) {
                 break;
@@ -872,7 +882,7 @@ SC_MODULE(DwCUnit) {
   }
 
   void get_output() {
-    DwC_output.Reset();
+    dwc_output.Reset();
     for (int i = 0; i < UNROLLFACTOR; i++) {
       MAT_output[i].ResetRead();
     }
@@ -891,7 +901,7 @@ SC_MODULE(DwCUnit) {
           output[i] = Output::zero();
         }
       }
-      DwC_output.Push(output);
+      dwc_output.Push(output);
     }
   }
 

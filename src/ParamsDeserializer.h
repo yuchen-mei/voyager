@@ -14,12 +14,12 @@
 
 template <typename T, unsigned int interfaceWidth>
 ac_int<T::width, false> getSerializedParams(
-    Connections::In<ac_int<64, false>> &serialParamsIn) {
+    Connections::In<ac_int<64, false>> &serial_params_in) {
   ac_int<((T::width + interfaceWidth - 1) / interfaceWidth) * interfaceWidth,
          false>
       serializedParamsPadded;
   for (int i = 0; i < serializedParamsPadded.width / interfaceWidth; i++) {
-    ac_int<interfaceWidth, false> val = serialParamsIn.Pop();
+    ac_int<interfaceWidth, false> val = serial_params_in.Pop();
     serializedParamsPadded.set_slc(i * interfaceWidth, val);
   }
   ac_int<T::width, false> serializedParams =
@@ -72,7 +72,7 @@ SC_MODULE(MatrixParamsDeserializer) {
   sc_in<bool> CCS_INIT_S1(clk);
   sc_in<bool> CCS_INIT_S1(rstn);
 
-  Connections::In<ac_int<64, false>> CCS_INIT_S1(serialParamsIn);
+  Connections::In<ac_int<64, false>> CCS_INIT_S1(serial_params_in);
   Connections::Out<MatrixParams> paramsOut[MODULE_COUNT];
 
   Connections::Combinational<ac_int<MatrixParams::width, false>> paramsBits;
@@ -91,7 +91,7 @@ SC_MODULE(MatrixParamsDeserializer) {
   }
 
   void run() {
-    serialParamsIn.Reset();
+    serial_params_in.Reset();
     paramsBits.ResetWrite();
     convertedParams.ResetRead();
 
@@ -103,7 +103,7 @@ SC_MODULE(MatrixParamsDeserializer) {
 
     while (true) {
       ac_int<MatrixParams::width, false> bits =
-          getSerializedParams<MatrixParams, 64>(serialParamsIn);
+          getSerializedParams<MatrixParams, 64>(serial_params_in);
       paramsBits.Push(bits);
       MatrixParams params = convertedParams.Pop();
 
@@ -124,7 +124,7 @@ SC_MODULE(VectorParamsDeserializer) {
   sc_in<bool> CCS_INIT_S1(clk);
   sc_in<bool> CCS_INIT_S1(rstn);
 
-  Connections::In<ac_int<64, false>> CCS_INIT_S1(serialParamsIn);
+  Connections::In<ac_int<64, false>> CCS_INIT_S1(serial_params_in);
   Connections::Out<VectorParams> CCS_INIT_S1(vectorParamsOut);
   Connections::Out<VectorInstructionConfig> CCS_INIT_S1(vectorInstructionsOut);
 
@@ -157,7 +157,7 @@ SC_MODULE(VectorParamsDeserializer) {
   }
 
   void run() {
-    serialParamsIn.Reset();
+    serial_params_in.Reset();
     vectorInstructionsOut.Reset();
     vectorParamsOut.Reset();
     vectorParamsBits.ResetWrite();
@@ -169,7 +169,7 @@ SC_MODULE(VectorParamsDeserializer) {
 
     while (true) {
       ac_int<VectorParams::width, false> vectorParamsBitsVal =
-          getSerializedParams<VectorParams, 64>(serialParamsIn);
+          getSerializedParams<VectorParams, 64>(serial_params_in);
       vectorParamsBits.Push(vectorParamsBitsVal);
       VectorParams vectorParams = convertedVectorParams.Pop();
 
@@ -183,7 +183,7 @@ SC_MODULE(VectorParamsDeserializer) {
       vectorParamsOut.Push(vectorParams);
 
       ac_int<VectorInstructionConfig::width, false> vectorInstructionsBitsVal =
-          getSerializedParams<VectorInstructionConfig, 64>(serialParamsIn);
+          getSerializedParams<VectorInstructionConfig, 64>(serial_params_in);
       vectorInstructionsBits.Push(vectorInstructionsBitsVal);
       VectorInstructionConfig vectorInstructionConfig =
           convertedVectorInstructions.Pop();
@@ -203,7 +203,7 @@ SC_MODULE(DwCParamsDeserializer) {
   sc_in<bool> CCS_INIT_S1(clk);
   sc_in<bool> CCS_INIT_S1(rstn);
 
-  Connections::In<ac_int<64, false>> CCS_INIT_S1(serialParamsIn);
+  Connections::In<ac_int<64, false>> CCS_INIT_S1(serial_params_in);
   Connections::Out<DwCParams> CCS_INIT_S1(dwcParamsOut);
 
   Connections::Combinational<ac_int<DwCParams::width, false>> CCS_INIT_S1(
@@ -223,7 +223,7 @@ SC_MODULE(DwCParamsDeserializer) {
   }
 
   void run() {
-    serialParamsIn.Reset();
+    serial_params_in.Reset();
     deserializedParams.ResetWrite();
     convertedParams.ResetRead();
     dwcParamsOut.Reset();
@@ -232,7 +232,7 @@ SC_MODULE(DwCParamsDeserializer) {
 
     while (true) {
       ac_int<DwCParams::width, false> dwcParams = 
-          getSerializedParams<DwCParams, 64>(serialParamsIn);
+          getSerializedParams<DwCParams, 64>(serial_params_in);
       deserializedParams.Push(dwcParams);
       DwCParams params = convertedParams.Pop();
 

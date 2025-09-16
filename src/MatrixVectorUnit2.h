@@ -77,7 +77,7 @@ struct MatrixVectorUnit<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
   SC_CTOR(MatrixVectorUnit) {
     params_deserializer.clk(clk);
     params_deserializer.rstn(rstn);
-    params_deserializer.serialParamsIn(serial_params_in);
+    params_deserializer.serial_params_in(serial_params_in);
     params_deserializer.paramsOut[0](params_in);
 
     SC_THREAD(fetch_inputs);

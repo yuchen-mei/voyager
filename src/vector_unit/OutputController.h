@@ -236,24 +236,22 @@ SC_MODULE(OutputController) {
 #pragma hls_pipeline_stall_mode flush
         while (true) {
           ac_int<ADDRESS_WIDTH, false> address = dwc_address_in.Pop();
-          bool found =
-            (send_output_address<OutputTypes, Width, OC_PORT_WIDTH,
-                                OutputTypes...>(
-                params.output_dtype, params.vector_output_offset,
-                address, vector_address_out) ||
-            ...);
+          bool found = (send_output_address<OutputTypes, Width, OC_PORT_WIDTH,
+                                            OutputTypes...>(
+                            params.output_dtype, params.vector_output_offset,
+                            address, vector_address_out) ||
+                        ...);
 
 #ifndef __SYNTHESIS__
-      if (!found) {
-        std::cerr << "Error: output type '" << params.output_dtype
-                  << "' is not valid.\n";
-      }
+          if (!found) {
+            std::cerr << "Error: output type '" << params.output_dtype
+                      << "' is not valid.\n";
+          }
 #endif
 #if SUPPORT_MX
           if (params.quantize_output_mx) {
             scale_address_out.Push(params.mx_scale_offset +
-                                    address / Width * ScaleType::width /
-                                        8);
+                                   address / Width * ScaleType::width / 8);
           }
 #endif
         }

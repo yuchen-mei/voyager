@@ -329,7 +329,8 @@ Tiling get_conv2d_tiling(const codegen::OpOverload param) {
   }
   // conv1
   else if (input_shape[3] == 3 && input_shape[1] == 224 &&
-           input_shape[2] == 224 && (weight_shape[3] == 64 || weight_shape[3] == 32) &&
+           input_shape[2] == 224 &&
+           (weight_shape[3] == 64 || weight_shape[3] == 32) &&
            weight_shape[0] == 7 && weight_shape[1] == 7) {
     int fx;
     if (IC_DIMENSION == 4) {

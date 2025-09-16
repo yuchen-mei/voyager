@@ -379,8 +379,10 @@ SC_MODULE(VectorFetchUnit) {
         }
       }
 
-      vector_fetch_0_packer_done.write(true);
-      vector_fetch_0_data_done.write(2);
+      if (params.vector_fetch_0_mode == 1 || params.vector_fetch_0_mode == 2) {
+        vector_fetch_0_packer_done.write(true);
+        vector_fetch_0_data_done.write(2);
+      }
     }
   }
 
@@ -393,6 +395,10 @@ SC_MODULE(VectorFetchUnit) {
 
     while (true) {
       VectorParams params = vector_fetch_0_packer_params.Pop();
+
+      if (params.vector_fetch_0_mode == 3) {
+        continue;
+      }
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush

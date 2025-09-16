@@ -30,19 +30,19 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
 #endif
 
  private:
-  InputSerializedSkewer<Input, NRows> CCS_INIT_S1(inputSkewer);
+  InputSerializedSkewer<Input, NRows> CCS_INIT_S1(input_skewer);
   Connections::Combinational<Pack1D<PEInput<Input>, NRows>> CCS_INIT_S1(
-      inputSkewerDin);
+      input_skewer_din);
 
-  WeightSerializedSkewer<Weight, NCols> CCS_INIT_S1(weightSkewer);
+  WeightSerializedSkewer<Weight, NCols> CCS_INIT_S1(weight_skewer);
   Connections::Combinational<Pack1D<PEWeight<Weight>, NCols>> CCS_INIT_S1(
-      weightSkewerDin);
+      weight_skewer_din);
 
-  DeserializedSkewer<Psum, NCols> CCS_INIT_S1(psumOutSkewer);
+  DeserializedSkewer<Psum, NCols> CCS_INIT_S1(psum_out_skewer);
   Connections::Combinational<Pack1D<Psum, NCols>> CCS_INIT_S1(
-      psumOutSkewerDout);
+      psum_out_skewer_dout);
 
-  SystolicArray<Input, Weight, Psum, NRows, NCols> CCS_INIT_S1(systolicArray);
+  SystolicArray<Input, Weight, Psum, NRows, NCols> CCS_INIT_S1(systolic_array);
 
   Connections::Fifo<Pack1D<Buffer, NCols>, FIFO_DEPTH> CCS_INIT_S1(
       accumulation_fifo);
@@ -53,12 +53,12 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
   sc_in<bool> CCS_INIT_S1(clk);
   sc_in<bool> CCS_INIT_S1(rstn);
 
-  Connections::In<ac_int<INPUT_BUFFER_WIDTH, false>> CCS_INIT_S1(inputsChannel);
+  Connections::In<ac_int<INPUT_BUFFER_WIDTH, false>> CCS_INIT_S1(input_channel);
   Connections::In<ac_int<WEIGHT_BUFFER_WIDTH, false>> CCS_INIT_S1(
-      weightsChannel);
-  Connections::In<Pack1D<Buffer, NCols>> CCS_INIT_S1(biasChannel);
+      weight_channel);
+  Connections::In<Pack1D<Buffer, NCols>> CCS_INIT_S1(bias_channel);
 
-  Connections::Out<Pack1D<Buffer, NCols>> CCS_INIT_S1(matrixUnitOutputChannel);
+  Connections::Out<Pack1D<Buffer, NCols>> CCS_INIT_S1(output_channel);
 
   Connections::Out<ac_int<16, false>>
       accumulation_buffer_read_address[ACCUM_BUFFER_BANKS];
@@ -71,7 +71,7 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
   Connections::SyncOut accumulation_buffer_done[ACCUM_BUFFER_BANKS];
 #endif
 
-  Connections::In<MatrixParams> CCS_INIT_S1(paramsIn);
+  Connections::In<MatrixParams> CCS_INIT_S1(params_in);
   Connections::Combinational<MatrixParams> CCS_INIT_S1(push_weights_params);
 
   Connections::Fifo<MatrixParams, 1> CCS_INIT_S1(
@@ -83,52 +83,52 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
   Connections::Combinational<MatrixParams> write_back_params_enq;
   Connections::Combinational<MatrixParams> write_back_params_deq;
 
-  Connections::Combinational<PEInput<Input>> inputsToSystolicArray[NRows];
-  Connections::Combinational<PEWeight<Weight>> weightsToSystolicArray[NCols];
-  Connections::Combinational<Psum> psumsToSystolicArray[NCols];
-  Connections::Combinational<Psum> outputsFromSystolicArray[NCols];
+  Connections::Combinational<PEInput<Input>> systolic_array_inputs[NRows];
+  Connections::Combinational<PEWeight<Weight>> systolic_array_weights[NCols];
+  Connections::Combinational<Psum> systolic_array_psums[NCols];
+  Connections::Combinational<Psum> systolic_array_outputs[NCols];
 
 #if SUPPORT_MX
-  Connections::In<ac_int<Scale::width, false>> CCS_INIT_S1(inputScaleChannel);
+  Connections::In<ac_int<Scale::width, false>> CCS_INIT_S1(input_scale_channel);
   Connections::In<ac_int<Scale::width * NCols, false>> CCS_INIT_S1(
-      weightScaleChannel);
+      weight_scale_channel);
 #endif
 
-  Connections::SyncOut CCS_INIT_S1(startSignal);
-  Connections::SyncOut CCS_INIT_S1(doneSignal);
+  Connections::SyncOut CCS_INIT_S1(start_signal);
+  Connections::SyncOut CCS_INIT_S1(done_signal);
 
   SC_CTOR(MatrixProcessor) {
-    inputSkewer.clk(clk);
-    inputSkewer.rstn(rstn);
-    inputSkewer.din(inputSkewerDin);
+    input_skewer.clk(clk);
+    input_skewer.rstn(rstn);
+    input_skewer.din(input_skewer_din);
     for (int i = 0; i < NRows; i++) {
-      inputSkewer.dout[i](inputsToSystolicArray[i]);
+      input_skewer.dout[i](systolic_array_inputs[i]);
     }
 
-    weightSkewer.clk(clk);
-    weightSkewer.rstn(rstn);
-    weightSkewer.din(weightSkewerDin);
+    weight_skewer.clk(clk);
+    weight_skewer.rstn(rstn);
+    weight_skewer.din(weight_skewer_din);
     for (int i = 0; i < NCols; i++) {
-      weightSkewer.dout[i](weightsToSystolicArray[i]);
+      weight_skewer.dout[i](systolic_array_weights[i]);
     }
 
-    psumOutSkewer.clk(clk);
-    psumOutSkewer.rstn(rstn);
+    psum_out_skewer.clk(clk);
+    psum_out_skewer.rstn(rstn);
     for (int i = 0; i < NCols; i++) {
-      psumOutSkewer.din[i](outputsFromSystolicArray[i]);
+      psum_out_skewer.din[i](systolic_array_outputs[i]);
     }
-    psumOutSkewer.dout(psumOutSkewerDout);
+    psum_out_skewer.dout(psum_out_skewer_dout);
 
-    systolicArray.clk(clk);
-    systolicArray.rstn(rstn);
+    systolic_array.clk(clk);
+    systolic_array.rstn(rstn);
     for (int i = 0; i < NRows; i++) {
-      systolicArray.inputs[i](inputsToSystolicArray[i]);
+      systolic_array.inputs[i](systolic_array_inputs[i]);
     }
     for (int i = 0; i < NCols; i++) {
-      systolicArray.outputs[i](outputsFromSystolicArray[i]);
+      systolic_array.outputs[i](systolic_array_outputs[i]);
     }
     for (int i = 0; i < NCols; i++) {
-      systolicArray.weights[i](weightsToSystolicArray[i]);
+      systolic_array.weights[i](systolic_array_weights[i]);
     }
 
     accumulation_fifo.clk(clk);
@@ -165,8 +165,8 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
 
   void push_weights() {
     push_weights_params.ResetRead();
-    weightsChannel.Reset();
-    weightSkewerDin.ResetWrite();
+    weight_channel.Reset();
+    weight_skewer_din.ResetWrite();
 
     wait();
 
@@ -229,7 +229,7 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
       while (step++ < total_loops) {
         for (int weight_count = 0; weight_count < NRows; weight_count++) {
           Pack1D<PEWeight<Weight>, NCols> weights;
-          auto bits = weightsChannel.Pop();
+          auto bits = weight_channel.Pop();
 
           constexpr int weight_width = WEIGHT_BUFFER_WIDTH / NCols;
 
@@ -259,32 +259,32 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
             weights[i].tag = weight_count;
           }
 
-          weightSkewerDin.Push(weights);
+          weight_skewer_din.Push(weights);
         }
       }
     }
   }
 
   void push_inputs() {
-    paramsIn.Reset();
-    inputsChannel.Reset();
-    psumOutSkewerDout.ResetRead();
+    params_in.Reset();
+    input_channel.Reset();
+    psum_out_skewer_dout.ResetRead();
     push_weights_params.ResetWrite();
     process_accumulation_params_enq.ResetWrite();
     write_back_params_enq.ResetWrite();
-    inputSkewerDin.ResetWrite();
+    input_skewer_din.ResetWrite();
 
-    startSignal.Reset();
+    start_signal.Reset();
 
     wait();
 
     while (true) {
-      const MatrixParams params = paramsIn.Pop();
+      const MatrixParams params = params_in.Pop();
       push_weights_params.Push(params);
       process_accumulation_params_enq.Push(params);
       write_back_params_enq.Push(params);
 
-      startSignal.SyncPush();
+      start_signal.SyncPush();
 
       ac_int<LOOP_WIDTH, false> loop_counters[2][6];
 
@@ -328,7 +328,7 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
           inputs[i].swapWeights = swap_weights || step == 0;
         }
 
-        auto bits = inputsChannel.Pop();
+        auto bits = input_channel.Pop();
 
         constexpr int input_width = INPUT_BUFFER_WIDTH / NRows;
 
@@ -355,7 +355,7 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
           }
         }
 
-        inputSkewerDin.Push(inputs);
+        input_skewer_din.Push(inputs);
 
         step++;
         loop_counters[1][5]++;
@@ -381,12 +381,12 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
 
   void process_accumulation() {
     process_accumulation_params_deq.ResetRead();
-    psumOutSkewerDout.ResetRead();
+    psum_out_skewer_dout.ResetRead();
 #if SUPPORT_MX
-    inputScaleChannel.Reset();
-    weightScaleChannel.Reset();
+    input_scale_channel.Reset();
+    weight_scale_channel.Reset();
 #endif
-    biasChannel.Reset();
+    bias_channel.Reset();
     accumulation_buffer_read_data[0].Reset();
     accumulation_buffer_read_address[0].Reset();
 #if DOUBLE_BUFFERED_ACCUM_BUFFER
@@ -455,12 +455,12 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
       while (step < total_ops) {
-        Pack1D<Psum, NCols> outputs = psumOutSkewerDout.Pop();
+        Pack1D<Psum, NCols> outputs = psum_out_skewer_dout.Pop();
 
 #if SUPPORT_MX
         Scale input_scale = Scale::one();
         if (params.is_mx_op) {
-          input_scale.set_bits(inputScaleChannel.Pop());
+          input_scale.set_bits(input_scale_channel.Pop());
         }
 
         bool swap_weights;
@@ -472,7 +472,7 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
         }
 
         if (params.is_mx_op && (swap_weights || step == 0)) {
-          auto bits = weightScaleChannel.Pop();
+          auto bits = weight_scale_channel.Pop();
           weight_scales = BitsToType<Pack1D<Scale, NCols>>(TypeToBits(bits));
         }
 #endif
@@ -499,7 +499,7 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
                              loop_counters[1][bias_reuse_indices[3]] == 0;
 
             if (read_bias) {
-              bias = biasChannel.Pop();
+              bias = bias_channel.Pop();
             }
 
             previous_accumulation = bias;
@@ -580,8 +580,8 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
     accumulation_buffer_done[0].Reset();
     accumulation_buffer_done[1].Reset();
 #endif
-    matrixUnitOutputChannel.Reset();
-    doneSignal.Reset();
+    output_channel.Reset();
+    done_signal.Reset();
 
     bool accumulation_buffer_bank = 0;
 
@@ -642,7 +642,7 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
             (accumulation_finished && DOUBLE_BUFFERED_ACCUM_BUFFER &&
              !params.write_output_to_accum_buffer)) {
           // write out to vector unit directly
-          matrixUnitOutputChannel.Push(previous_accumulation);
+          output_channel.Push(previous_accumulation);
         } else {
           ac_int<16, false> address =
               loop_counters[1][params.weightLoopIndex[1]] * Y0_X0 +
@@ -693,7 +693,7 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
           }
         }
       }
-      doneSignal.SyncPush();
+      done_signal.SyncPush();
     }
   }
 };
