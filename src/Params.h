@@ -59,33 +59,34 @@ struct MatrixParams : BaseParams {
     use_input_codebook = false;
     input_burst_size = 0;
     input_num_beats = 1;
-    input_packing_factor_power = 1;
+    input_pack_factor_lg2 = 1;
 
     weight_dtype = 0;
     use_weight_codebook = false;
     weight_burst_size = 0;
     weight_num_beats = 1;
-    weight_packing_factor_power = 1;
+    weight_pack_factor_lg2 = 1;
 
     for (int i = 0; i < NUM_CODEBOOK_ENTRIES; i++) {
       input_code[i] = 0;
       weight_code[i] = 0;
     }
 
-    head_size_power_of_two = 0;
+    input_code_zero_idx = 0;
 
-    has_bias = false;
-    has_input_transpose = false;
-    has_weight_transpose = false;
+    head_size_lg2 = 0;
 
     is_resnet_replication = false;
     is_generic_replication = false;
     num_channels = 0;
     fx_unrolling_lg2 = 0;
 
-    has_attn_output_permute = false;
+    has_bias = false;
     is_mx_op = false;
     is_fc = false;
+    merge_heads = false;
+    input_transpose = false;
+    weight_transpose = false;
     write_output_to_accum_buffer = false;
   }
 #endif
@@ -124,31 +125,32 @@ struct MatrixParams : BaseParams {
   bool use_input_codebook;
   ac_int<10, false> input_burst_size;
   ac_int<4, false> input_num_beats;
-  ac_int<4, false> input_packing_factor_power;
+  ac_int<4, false> input_pack_factor_lg2;
 
   ac_int<DTYPE_INDEX_WIDTH, false> weight_dtype;
   bool use_weight_codebook;
   ac_int<10, false> weight_burst_size;
   ac_int<4, false> weight_num_beats;
-  ac_int<4, false> weight_packing_factor_power;
+  ac_int<4, false> weight_pack_factor_lg2;
 
   ac_int<DECODED_INPUT_DTYPE_WIDTH, false> input_code[NUM_CODEBOOK_ENTRIES];
   ac_int<DECODED_WEIGHT_DTYPE_WIDTH, false> weight_code[NUM_CODEBOOK_ENTRIES];
 
-  ac_int<8, false> head_size_power_of_two;
+  ac_int<4, false> input_code_zero_idx;
 
-  bool has_bias;
-  bool has_input_transpose;
-  bool has_weight_transpose;
+  ac_int<8, false> head_size_lg2;
 
   bool is_resnet_replication;
   bool is_generic_replication;
   ac_int<2, false> num_channels;
   ac_int<3, false> fx_unrolling_lg2;
 
-  bool has_attn_output_permute;
+  bool has_bias;
   bool is_mx_op;
   bool is_fc;
+  bool merge_heads;
+  bool input_transpose;
+  bool weight_transpose;
   bool write_output_to_accum_buffer;
 
   static const unsigned int base_width =
@@ -160,7 +162,7 @@ struct MatrixParams : BaseParams {
   static const unsigned int extra_width =
       2 * DTYPE_INDEX_WIDTH + 36 +
       NUM_CODEBOOK_ENTRIES * DECODED_INPUT_DTYPE_WIDTH +
-      NUM_CODEBOOK_ENTRIES * DECODED_WEIGHT_DTYPE_WIDTH;
+      NUM_CODEBOOK_ENTRIES * DECODED_WEIGHT_DTYPE_WIDTH + 4;
 
   static const unsigned int width = base_width + extra_width;
 
@@ -220,13 +222,13 @@ struct MatrixParams : BaseParams {
     m & use_input_codebook;
     m & input_burst_size;
     m & input_num_beats;
-    m & input_packing_factor_power;
+    m & input_pack_factor_lg2;
 
     m & weight_dtype;
     m & use_weight_codebook;
     m & weight_burst_size;
     m & weight_num_beats;
-    m & weight_packing_factor_power;
+    m & weight_pack_factor_lg2;
 
     for (int i = 0; i < NUM_CODEBOOK_ENTRIES; i++) {
       m& input_code[i];
@@ -236,18 +238,21 @@ struct MatrixParams : BaseParams {
       m& weight_code[i];
     }
 
-    m & head_size_power_of_two;
+    m & input_code_zero_idx;
 
-    m & has_bias;
-    m & has_input_transpose;
-    m & has_weight_transpose;
+    m & head_size_lg2;
+
     m & is_resnet_replication;
     m & is_generic_replication;
     m & num_channels;
     m & fx_unrolling_lg2;
-    m & has_attn_output_permute;
+
+    m & has_bias;
     m & is_mx_op;
     m & is_fc;
+    m & merge_heads;
+    m & input_transpose;
+    m & weight_transpose;
     m & write_output_to_accum_buffer;
   }
 
@@ -318,14 +323,14 @@ struct MatrixParams : BaseParams {
     os << "input_dtype: " << params.input_dtype << std::endl;
     os << "use_input_codebook: " << params.use_input_codebook << std::endl;
     os << "input_num_beats: " << params.input_num_beats << std::endl;
-    os << "input_packing_factor_power: " << params.input_packing_factor_power
+    os << "input_pack_factor_lg2: " << params.input_pack_factor_lg2
        << std::endl;
     os << "input_burst_size: " << params.input_burst_size << std::endl;
 
     os << "weight_dtype: " << params.weight_dtype << std::endl;
     os << "use_weight_codebook: " << params.use_weight_codebook << std::endl;
     os << "weight_num_beats: " << params.weight_num_beats << std::endl;
-    os << "weight_packing_factor_power: " << params.weight_packing_factor_power
+    os << "weight_pack_factor_lg2: " << params.weight_pack_factor_lg2
        << std::endl;
     os << "weight_burst_size: " << params.weight_burst_size << std::endl;
 
@@ -337,22 +342,23 @@ struct MatrixParams : BaseParams {
       os << "weight_code[" << i << "]: " << params.weight_code[i] << std::endl;
     }
 
-    os << "head_size_power_of_two: " << params.head_size_power_of_two
-       << std::endl;
+    os << "input_code_zero_idx: " << params.input_code_zero_idx << std::endl;
 
-    os << "has_bias: " << params.has_bias << std::endl;
-    os << "has_input_transpose: " << params.has_input_transpose << std::endl;
-    os << "has_weight_transpose: " << params.has_weight_transpose << std::endl;
+    os << "head_size_lg2: " << params.head_size_lg2 << std::endl;
+
     os << "is_resnet_replication: " << params.is_resnet_replication
        << std::endl;
     os << "is_generic_replication: " << params.is_generic_replication
        << std::endl;
     os << "num_channels: " << params.num_channels << std::endl;
     os << "fx_unrolling_lg2: " << params.fx_unrolling_lg2 << std::endl;
-    os << "has_attn_output_permute: " << params.has_attn_output_permute
-       << std::endl;
+
+    os << "has_bias: " << params.has_bias << std::endl;
     os << "is_mx_op: " << params.is_mx_op << std::endl;
     os << "is_fc: " << params.is_fc << std::endl;
+    os << "merge_heads: " << params.merge_heads << std::endl;
+    os << "input_transpose: " << params.input_transpose << std::endl;
+    os << "weight_transpose: " << params.weight_transpose << std::endl;
     os << "write_output_to_accum_buffer: "
        << params.write_output_to_accum_buffer << std::endl;
     return os;
@@ -403,15 +409,13 @@ struct MatrixParams : BaseParams {
     if (lhs.input_dtype != rhs.input_dtype) return false;
     if (lhs.use_input_codebook != rhs.use_input_codebook) return false;
     if (lhs.input_num_beats != rhs.input_num_beats) return false;
-    if (lhs.input_packing_factor_power != rhs.input_packing_factor_power)
-      return false;
+    if (lhs.input_pack_factor_lg2 != rhs.input_pack_factor_lg2) return false;
     if (lhs.input_burst_size != rhs.input_burst_size) return false;
 
     if (lhs.weight_dtype != rhs.weight_dtype) return false;
     if (lhs.use_weight_codebook != rhs.use_weight_codebook) return false;
     if (lhs.weight_num_beats != rhs.weight_num_beats) return false;
-    if (lhs.weight_packing_factor_power != rhs.weight_packing_factor_power)
-      return false;
+    if (lhs.weight_pack_factor_lg2 != rhs.weight_pack_factor_lg2) return false;
     if (lhs.weight_burst_size != rhs.weight_burst_size) return false;
 
     for (int i = 0; i < NUM_CODEBOOK_ENTRIES; i++) {
@@ -419,18 +423,24 @@ struct MatrixParams : BaseParams {
       if (lhs.weight_code[i] != rhs.weight_code[i]) return false;
     }
 
-    if (lhs.head_size_power_of_two != rhs.head_size_power_of_two) return false;
+    if (lhs.input_code_zero_idx != rhs.input_code_zero_idx) return false;
 
-    // Compare boolean values
-    if (lhs.has_bias != rhs.has_bias || lhs.bias_offset != rhs.bias_offset)
-      return false;
-    if (lhs.has_input_transpose != rhs.has_input_transpose) return false;
-    if (lhs.has_weight_transpose != rhs.has_weight_transpose) return false;
+    if (lhs.head_size_lg2 != rhs.head_size_lg2) return false;
+
     if (lhs.is_resnet_replication != rhs.is_resnet_replication) return false;
-    if (lhs.has_attn_output_permute != rhs.has_attn_output_permute)
+    if (lhs.is_generic_replication != rhs.is_generic_replication) return false;
+    if (lhs.num_channels != rhs.num_channels) return false;
+    if (lhs.fx_unrolling_lg2 != rhs.fx_unrolling_lg2) return false;
+
+    if (lhs.has_bias != rhs.has_bias || lhs.bias_offset != rhs.bias_offset)
       return false;
     if (lhs.is_mx_op != rhs.is_mx_op) return false;
     if (lhs.is_fc != rhs.is_fc) return false;
+    if (lhs.merge_heads != rhs.merge_heads) return false;
+    if (lhs.input_transpose != rhs.input_transpose) return false;
+    if (lhs.weight_transpose != rhs.weight_transpose) return false;
+    if (lhs.write_output_to_accum_buffer != rhs.write_output_to_accum_buffer)
+      return false;
 
     // If all members are equal, return true
     return true;
@@ -738,8 +748,8 @@ struct VectorParams : BaseParams {
       padding[i] = 0;
     }
 
-    head_size_power_of_two = 32;
-    has_attn_head_permute = false;
+    head_size_lg2 = 32;
+    transpose_for_scores = false;
 
     quantize_output_mx = false;
     mx_scale_offset = 0;
@@ -831,8 +841,8 @@ struct VectorParams : BaseParams {
   ac_int<8, false> padding[2];
 
   // Transformer head permutation
-  ac_int<4, false> head_size_power_of_two;
-  bool has_attn_head_permute;
+  ac_int<4, false> head_size_lg2;
+  bool transpose_for_scores;
 
   bool quantize_output_mx;
   ac_int<ADDRESS_WIDTH, false> mx_scale_offset;
@@ -983,8 +993,8 @@ struct VectorParams : BaseParams {
     }
 
     // Transformer head permutation flags
-    m & head_size_power_of_two;
-    m & has_attn_head_permute;
+    m & head_size_lg2;
+    m & transpose_for_scores;
 
     m & quantize_output_mx;
     m & mx_scale_offset;
@@ -1155,10 +1165,8 @@ struct VectorParams : BaseParams {
       os << "padding[" << i << "]: " << params.padding[i] << std::endl;
     }
 
-    os << "head_size_power_of_two: " << params.head_size_power_of_two
-       << std::endl;
-    os << "has_attn_head_permute: " << params.has_attn_head_permute
-       << std::endl;
+    os << "head_size_lg2: " << params.head_size_lg2 << std::endl;
+    os << "transpose_for_scores: " << params.transpose_for_scores << std::endl;
 
     os << "quantize_output_mx: " << params.quantize_output_mx << std::endl;
     os << "mx_scale_offset: " << params.mx_scale_offset << std::endl;
@@ -1306,8 +1314,8 @@ struct VectorParams : BaseParams {
       if (lhs.padding[i] != rhs.padding[i]) return false;
     }
 
-    if (lhs.head_size_power_of_two != rhs.head_size_power_of_two) return false;
-    if (lhs.has_attn_head_permute != rhs.has_attn_head_permute) return false;
+    if (lhs.head_size_lg2 != rhs.head_size_lg2) return false;
+    if (lhs.transpose_for_scores != rhs.transpose_for_scores) return false;
 
     if (lhs.quantize_output_mx != rhs.quantize_output_mx) return false;
     if (lhs.mx_scale_offset != rhs.mx_scale_offset) return false;

@@ -351,6 +351,7 @@ void MapMatrixOperation(const Operation &operation,
     oss << tiling;
     spdlog::info("Using tiling: \n{}\n", oss.str());
 
+    // Set input fields
     matrix_params->input_offset = get_address(input);
     matrix_params->input_dtype =
         get_index_from_type_name<INPUT_DATATYPE>(input.dtype());
@@ -362,14 +363,41 @@ void MapMatrixOperation(const Operation &operation,
       const auto size = get_size(code);
 
       float *input_code = read_constant_param(code);
+
+      int zero_idx = -1;
       for (int i = 0; i < size; i++) {
+        if (input_code[i] == 0.0) {
+          zero_idx = i;
+        }
+
         SA_INPUT_TYPE value = input_code[i];
         matrix_params->input_code[i] = value.bits_rep();
       }
 
+      if (zero_idx == -1) {
+        spdlog::warn(
+            "Input codebook does not contain a zero entry. Using "
+            "index 0 as the zero entry.");
+        zero_idx = 0;
+      }
+      matrix_params->input_code_zero_idx = zero_idx;
+
       delete[] input_code;
     }
 
+    int c_bound = tiling.resnet_replication
+                      ? 1
+                      : tiling.loops[1][tiling.reduction_loop_idx[1]];
+    int input_effective_fw;
+    int input_pf =
+        get_packing_factor<IC_DIMENSION, IC_PORT_WIDTH, INPUT_DATATYPE>(
+            matrix_params->input_dtype, c_bound, input_effective_fw);
+
+    matrix_params->input_burst_size = input_effective_fw / 8;
+    matrix_params->input_num_beats = input_effective_fw / IC_PORT_WIDTH;
+    matrix_params->input_pack_factor_lg2 = std::log2(input_pf);
+
+    // Set weight fields
     matrix_params->weight_offset = get_address(weight);
     matrix_params->weight_dtype =
         get_index_from_type_name<WEIGHT_DATATYPE>(weight.dtype());
@@ -389,6 +417,19 @@ void MapMatrixOperation(const Operation &operation,
       delete[] weight_code;
     }
 
+    int k_bound = matrix_params->weight_transpose
+                      ? 1
+                      : tiling.loops[1][tiling.weight_loop_idx[1]];
+    int weight_effective_fw;
+    int weight_pf =
+        get_packing_factor<OC_DIMENSION, OC_PORT_WIDTH, WEIGHT_DATATYPE>(
+            matrix_params->weight_dtype, k_bound, weight_effective_fw);
+
+    matrix_params->weight_burst_size = weight_effective_fw / 8;
+    matrix_params->weight_num_beats = weight_effective_fw / OC_PORT_WIDTH;
+    matrix_params->weight_pack_factor_lg2 = std::log2(weight_pf);
+
+    // Set microscaling fields
     matrix_params->is_mx_op = is_mx_op;
 
     if (is_mx_op) {
@@ -402,6 +443,7 @@ void MapMatrixOperation(const Operation &operation,
       matrix_params->weight_scale_offset = get_address(weight_scale);
     }
 
+    // Set loop bounds
     for (int i = 0; i < 2; i++) {
       for (int j = 0; j < 6; j++) {
         matrix_params->loops[i][j] = tiling.loops[i][j];
@@ -414,8 +456,10 @@ void MapMatrixOperation(const Operation &operation,
       matrix_params->fy_loop_idx[i] = tiling.fy_loop_idx[i];
     }
     matrix_params->fx_loop_idx = tiling.fx_loop_idx;
+    matrix_params->stride = tiling.stride;
+    matrix_params->padding = tiling.padding;
 
-    // set outer loop values
+    // Set weight address generation fields
     for (int j = 0; j < 5; j++) {
       matrix_params->weight_addr_loops[0][j] = tiling.loops[0][j];
     }
@@ -435,10 +479,9 @@ void MapMatrixOperation(const Operation &operation,
       }
     }
 
-    // set outer loop values
-    matrix_params->has_weight_transpose =
-        weight.reshape().target() == "transpose";
-    if (matrix_params->has_weight_transpose) {
+    matrix_params->weight_transpose = weight.reshape().target() == "transpose";
+
+    if (matrix_params->weight_transpose) {
       // for transpose, we need to enforce that the innermost loop is the
       // unrolled reduction loop we can just use the following loop nest: C1, K,
       // FY, FX, C0
@@ -517,14 +560,12 @@ void MapMatrixOperation(const Operation &operation,
       matrix_params->weight_addr_fy_idx[1] = 0;
     }
 
-    matrix_params->stride = tiling.stride;
-    matrix_params->padding = tiling.padding;
     matrix_params->is_resnet_replication = tiling.resnet_replication;
     matrix_params->is_generic_replication = tiling.generic_replication;
     matrix_params->num_channels = tiling.num_channels;
     matrix_params->fx_unrolling_lg2 = std::log2(tiling.fx_unrolling);
 
-    // Permute input for transformer attention outputs
+    // Set input transpose
     if (input.has_reshape()) {
       const auto reshape_op = input.reshape();
       const auto reshape_kwargs = reshape_op.kwargs();
@@ -535,9 +576,9 @@ void MapMatrixOperation(const Operation &operation,
         const int ndim = input.shape_size();
 
         if (is_transpose(dims)) {
-          matrix_params->has_input_transpose = true;
+          matrix_params->input_transpose = true;
         } else if (dims[ndim - 1] == ndim - 1) {
-          matrix_params->has_attn_output_permute = true;
+          matrix_params->merge_heads = true;
         } else {
           throw std::invalid_argument("Unsupported permute operation!");
         }
@@ -549,52 +590,27 @@ void MapMatrixOperation(const Operation &operation,
         }
 
         if (dim0 == input.shape_size() - 2 && dim1 == input.shape_size() - 1) {
-          matrix_params->has_input_transpose = true;
+          matrix_params->input_transpose = true;
         } else if (dim1 != input.shape_size() - 1) {
-          matrix_params->has_attn_output_permute = true;
+          matrix_params->merge_heads = true;
         } else {
           throw std::invalid_argument("Unsupported transpose operation!");
         }
       }
 
-      if (matrix_params->has_attn_output_permute) {
+      if (matrix_params->merge_heads) {
         const auto input_shape = input.shape();
         double result = std::log2(input_shape[input_shape.size() - 1]);
         if (std::fmod(result, 1.0) != 0.0) {
           throw std::runtime_error("Result is not an integer!");
         }
-        matrix_params->head_size_power_of_two = result;
+        matrix_params->head_size_lg2 = result;
       }
     }
 
-    int c_bound = tiling.resnet_replication
-                      ? 1
-                      : tiling.loops[1][tiling.reduction_loop_idx[1]];
-    int input_effective_fw;
-    int input_pf =
-        get_packing_factor<IC_DIMENSION, IC_PORT_WIDTH, INPUT_DATATYPE>(
-            matrix_params->input_dtype, c_bound, input_effective_fw);
-
-    matrix_params->input_burst_size = input_effective_fw / 8;
-    matrix_params->input_num_beats = input_effective_fw / IC_PORT_WIDTH;
-    matrix_params->input_packing_factor_power = std::log2(input_pf);
-
-    int k_bound = matrix_params->has_weight_transpose
-                      ? 1
-                      : tiling.loops[1][tiling.weight_loop_idx[1]];
-    int weight_effective_fw;
-    int weight_pf =
-        get_packing_factor<OC_DIMENSION, OC_PORT_WIDTH, WEIGHT_DATATYPE>(
-            matrix_params->weight_dtype, k_bound, weight_effective_fw);
-
-    matrix_params->weight_burst_size = weight_effective_fw / 8;
-    matrix_params->weight_num_beats = weight_effective_fw / OC_PORT_WIDTH;
-    matrix_params->weight_packing_factor_power = std::log2(weight_pf);
-
-    // bias
+    // Set bias
     if (matrix_op.kwargs().contains("bias")) {
       const auto bias = matrix_op.kwargs().at("bias").tensor();
-      const auto bias_memory = bias.memory();
       matrix_params->has_bias = true;
       matrix_params->bias_offset = get_address(bias);
     }
@@ -675,14 +691,14 @@ void MapMatrixOperation(const Operation &operation,
 
   // Transformer head permutation
   if (output.has_reshape()) {
-    vector_params->has_attn_head_permute = true;
+    vector_params->transpose_for_scores = true;
     const auto permuted_shape =
         output.reshape().kwargs().at("output_shape").int_list().values();
     double result = std::log2(permuted_shape[permuted_shape.size() - 1]);
     if (std::fmod(result, 1.0) != 0.0) {
       throw std::runtime_error("Result is not an integer!");
     }
-    vector_params->head_size_power_of_two = result;
+    vector_params->head_size_lg2 = result;
   }
 
   vector_params->is_dwc = is_dwc;
@@ -715,8 +731,7 @@ void MapMatrixOperation(const Operation &operation,
 
   inst.vdest = VectorInstructions::to_output;
 
-  auto inst_map = get_vector_instruction_mapping();
-
+  auto mapping = get_vector_instruction_mapping();
   int stage = 0;
 
   for (int i = 1; i < op_list.size(); i++) {
@@ -772,7 +787,7 @@ void MapMatrixOperation(const Operation &operation,
 
     spdlog::debug("stage {} target: {}\n", stage, opcode);
 
-    unsigned int vop = inst_map[opcode];
+    unsigned int vop = mapping[opcode];
     if (stage == 0) {
       inst.vector_op0 = opcode == "div" ? VectorInstructions::vmult : vop;
     } else if (stage == 1) {

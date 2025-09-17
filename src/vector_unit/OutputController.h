@@ -286,15 +286,14 @@ SC_MODULE(OutputController) {
                       ac_int<32, false> x = x1 * X0 + x0;
                       ac_int<32, false> k = k2 * K1 + k1 * Width;
 
-                      ac_int<8, false> head_size =
-                          params.head_size_power_of_two;
-                      ac_int<16, false> mask = (1 << head_size) - 1;
-
-                      if (params.has_attn_head_permute) {
+                      if (params.transpose_for_scores) {
                         // k / head_size * (X * head_size) + x * head_size
                         // + k % head_size
-                        address = (((k >> head_size) * X) << head_size) +
-                                  (x << head_size) + (k & mask);
+                        ac_int<16, false> mask =
+                            (1 << params.head_size_lg2) - 1;
+                        address = (((k >> params.head_size_lg2) * X)
+                                   << params.head_size_lg2) +
+                                  (x << params.head_size_lg2) + (k & mask);
                       } else {
                         address = y * X * K + x * K + k;
                       }

@@ -5,7 +5,6 @@
 
 #include "AccelTypes.h"
 #include "ArchitectureParams.h"
-#include "ParamsDeserializer.h"
 #include "Utils.h"
 
 template <typename InputTypeTuple, int NRows, int PortWidth, int BufferWidth>
@@ -158,12 +157,12 @@ struct InputController<std::tuple<InputTypes...>, NRows, PortWidth, BufferWidth>
       loop_bounds[1][params.y_loop_idx[1]] = y_bound + 2 * params.padding;
 
       // reduce the number of iterations by packing factor
-      C1 = C1 >> params.input_packing_factor_power;
+      C1 = C1 >> params.input_pack_factor_lg2;
       loop_bounds[1][params.reduction_loop_idx[1]] = C1;
 
       ac_int<16, false> Y = Y1 * IY0;
       ac_int<16, false> X = X1 * IX0;
-      ac_int<16, false> c_stride = NRows << params.input_packing_factor_power;
+      ac_int<16, false> c_stride = NRows << params.input_pack_factor_lg2;
       ac_int<16, false> C = C2 * C1 * c_stride;
 
 #pragma hls_pipeline_init_interval 1
@@ -228,18 +227,16 @@ struct InputController<std::tuple<InputTypes...>, NRows, PortWidth, BufferWidth>
                                 address =
                                     y * (X >> params.fx_unrolling_lg2) * NRows +
                                     (x >> params.fx_unrolling_lg2) * NRows + c;
-                              }
-
-                              if (params.has_attn_output_permute) {
-                                ac_int<8, false> head_size =
-                                    params.head_size_power_of_two;
-                                ac_int<16, false> mask = (1 << head_size) - 1;
-                                address =
-                                    ((c >> head_size) * (X << head_size)) +
-                                    (x << head_size) + (c & mask);
-                              }
-
-                              if (params.has_input_transpose) {
+                              } else if (params.merge_heads) {
+                                // (c / head_size) * (X * head_size) + (x *
+                                // head_size) + (c % head_size)
+                                ac_int<16, false> mask =
+                                    (1 << params.head_size_lg2) - 1;
+                                address = ((c >> params.head_size_lg2) *
+                                           (X << params.head_size_lg2)) +
+                                          (x << params.head_size_lg2) +
+                                          (c & mask);
+                              } else if (params.input_transpose) {
                                 address =
                                     (c + (x % NRows)) * X + (x / NRows) * NRows;
                               }
@@ -249,7 +246,7 @@ struct InputController<std::tuple<InputTypes...>, NRows, PortWidth, BufferWidth>
                                   address, params.input_burst_size, input_req);
                               fetcher_done.write(false);
 
-                              if (!params.has_input_transpose) {
+                              if (!params.input_transpose) {
                                 fetcher_done_2.write(false);
                               }
                             }
@@ -379,9 +376,9 @@ struct InputController<std::tuple<InputTypes...>, NRows, PortWidth, BufferWidth>
       loop_bounds[1][params.y_loop_idx[1]] = IY0 + params.padding * 2;
 
       // reduce the number of iterations by packing factor
-      C1 = C1 >> params.input_packing_factor_power;
+      C1 = C1 >> params.input_pack_factor_lg2;
       loop_bounds[1][params.reduction_loop_idx[1]] = C1;
-      ac_int<4, false> num_packs = (1 << params.input_packing_factor_power) - 1;
+      ac_int<4, false> num_packs = (1 << params.input_pack_factor_lg2) - 1;
 
       ac_int<16, false> X = X1 * IX0;
       ac_int<16, false> Y = Y1 * IY0;
@@ -425,10 +422,10 @@ struct InputController<std::tuple<InputTypes...>, NRows, PortWidth, BufferWidth>
                               ac_int<BufferWidth, false> data;
 
                               if ((x < 0) || (y < 0) || (x >= X) || (y >= Y)) {
-                                (set_zero<InputTypes, NRows, BufferWidth,
-                                          InputTypes...>(params.input_dtype,
-                                                         data),
-                                 ...);
+                                set_zero<NRows, BufferWidth, InputTypes...>(
+                                    params.input_dtype, data,
+                                    params.use_input_codebook,
+                                    params.input_code_zero_idx);
                               } else {
                                 data = transpose_out.Pop();
                               }
@@ -437,9 +434,9 @@ struct InputController<std::tuple<InputTypes...>, NRows, PortWidth, BufferWidth>
                                   loop_counters[1][params.x_loop_idx[1]];
                               ac_int<16, false> address =
                                   y0 * y_stride + orig_x0 * C1 + c1;
-                              address = (address
-                                         << params.input_packing_factor_power) +
-                                        pack;
+                              address =
+                                  (address << params.input_pack_factor_lg2) +
+                                  pack;
 
                               bool is_last = loop_counters[1][5] ==
                                                  loop_bounds[1][5] - 1 &&
@@ -704,65 +701,29 @@ struct InputController<std::tuple<InputTypes...>, NRows, PortWidth, BufferWidth>
         }
       }
 
-      int unrollingFactor;  // num x values packed in a word
-                            // sent to the
-      // systolic array
-      int additionalUnrollingFactor;  // additional x values
-                                      // packed in a word
-                                      // sent to the
-                                      // systolic array, but
-                                      // are unused by the
-                                      // systolic array
-      constexpr int initialReuseFactor = (NRows == 8) ? 1 : 3;
-      int shiftFactor;
+      // num x values packed in a word sent to the systolic array
+      constexpr int unroll = (NRows == 4)                   ? 1
+                             : (NRows == 8)                 ? 2
+                             : (NRows == 16)                ? 4
+                             : (NRows == 32 || NRows == 64) ? 7
+                                                            : 0;
 
-      if (NRows == 4) {
-        unrollingFactor = 1;
-        additionalUnrollingFactor = 0;
-      } else if (NRows == 8) {
-        unrollingFactor = 2;
-        additionalUnrollingFactor = 0;
-        shiftFactor = 1;
-      } else if (NRows == 16) {
-        unrollingFactor = 4;
-        additionalUnrollingFactor = 1;
-        shiftFactor = 2;
-      } else if (NRows == 32 || NRows == 64) {
-        unrollingFactor = 7;
-        additionalUnrollingFactor = 0;
-        shiftFactor = 2;
-      }
+      // additional x values packed in a word sent to the systolic array, but
+      // are unused by the systolic array
+      constexpr int additional = (NRows == 16) ? 1 : 0;
 
       if (params.is_resnet_replication &&
           (NRows == 16 || NRows == 32 || NRows == 64)) {
-        // #pragma hls_pipeline_init_interval 1
-        // #pragma hls_pipeline_stall_mode flush
-        for (loop_counters[0][0] = 0; loop_counters[0][0] < loop_bounds[0][0];
-             loop_counters[0][0]++) {
-          for (loop_counters[0][1] = 0; loop_counters[0][1] < loop_bounds[0][1];
-               loop_counters[0][1]++) {
-            for (loop_counters[0][2] = 0;
-                 loop_counters[0][2] < loop_bounds[0][2];
-                 loop_counters[0][2]++) {
-              for (loop_counters[0][3] = 0;
-                   loop_counters[0][3] < loop_bounds[0][3];
-                   loop_counters[0][3]++) {
+        for (loop_counters[0][0] = 0;; loop_counters[0][0]++) {
+          for (loop_counters[0][1] = 0;; loop_counters[0][1]++) {
+            for (loop_counters[0][2] = 0;; loop_counters[0][2]++) {
+              for (loop_counters[0][3] = 0;; loop_counters[0][3]++) {
                 // inner memory
-                for (loop_counters[1][0] = 0;
-                     loop_counters[1][0] < loop_bounds[1][0];
-                     loop_counters[1][0]++) {
-                  for (loop_counters[1][1] = 0;
-                       loop_counters[1][1] < loop_bounds[1][1];
-                       loop_counters[1][1]++) {
-                    for (loop_counters[1][2] = 0;
-                         loop_counters[1][2] < loop_bounds[1][2];
-                         loop_counters[1][2]++) {
-                      for (loop_counters[1][3] = 0;
-                           loop_counters[1][3] < loop_bounds[1][3];
-                           loop_counters[1][3]++) {
-                        for (loop_counters[1][4] = 0;
-                             loop_counters[1][4] < loop_bounds[1][4];
-                             loop_counters[1][4]++) {
+                for (loop_counters[1][0] = 0;; loop_counters[1][0]++) {
+                  for (loop_counters[1][1] = 0;; loop_counters[1][1]++) {
+                    for (loop_counters[1][2] = 0;; loop_counters[1][2]++) {
+                      for (loop_counters[1][3] = 0;; loop_counters[1][3]++) {
+                        for (loop_counters[1][4] = 0;; loop_counters[1][4]++) {
                           ac_int<BufferWidth, false> data;
 
                           ac_int<BufferWidth, false> buffer =
@@ -774,25 +735,23 @@ struct InputController<std::tuple<InputTypes...>, NRows, PortWidth, BufferWidth>
                               int dst_idx = x * 3 + dim;
                               int src_idx = (packing_factor - 3 + x) * 3 + dim;
 
-                              auto temp = buffer.template slc<DATA_WIDTH>(
+                              auto bits = buffer.template slc<DATA_WIDTH>(
                                   src_idx * DATA_WIDTH);
-                              data.set_slc(dst_idx * DATA_WIDTH, temp);
+                              data.set_slc(dst_idx * DATA_WIDTH, bits);
                             }
                           }
 
                           buffer = window_buffer_in.Pop();
 #pragma hls_unroll yes
-                          for (int x = 3;
-                               x < unrollingFactor + additionalUnrollingFactor;
-                               x++) {
+                          for (int x = 3; x < unroll + additional; x++) {
 #pragma hls_unroll yes
                             for (int dim = 0; dim < 3; dim++) {
                               int dst_idx = x * 3 + dim;
                               int src_idx = (x - 3) * 3 + dim;
 
-                              auto temp = buffer.template slc<DATA_WIDTH>(
+                              auto bits = buffer.template slc<DATA_WIDTH>(
                                   src_idx * DATA_WIDTH);
-                              data.set_slc(dst_idx * DATA_WIDTH, temp);
+                              data.set_slc(dst_idx * DATA_WIDTH, bits);
                             }
                           }
 
@@ -800,136 +759,170 @@ struct InputController<std::tuple<InputTypes...>, NRows, PortWidth, BufferWidth>
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
-                          for (loop_counters[1][5] = 0;
-                               loop_counters[1][5] < loop_bounds[1][5] * 2 - 2;
+                          for (loop_counters[1][5] = 0;;
                                loop_counters[1][5] += 2) {
                             // shift two pixels over
 #pragma hls_unroll yes
-                            for (int x = 0;
-                                 x <
-                                 packing_factor + additionalUnrollingFactor - 2;
+                            for (int x = 0; x < packing_factor + additional - 2;
                                  x++) {
 #pragma hls_unroll yes
                               for (int dim = 0; dim < 3; dim++) {
-                                // data[x * 3 + dim] =
-                                // data[(x + 2) * 3 + dim];
-
                                 int dst_idx = x * 3 + dim;
                                 int src_idx = (x + 2) * 3 + dim;
 
-                                auto temp = data.template slc<DATA_WIDTH>(
+                                auto bits = data.template slc<DATA_WIDTH>(
                                     src_idx * DATA_WIDTH);
-                                data.set_slc(dst_idx * DATA_WIDTH, temp);
+                                data.set_slc(dst_idx * DATA_WIDTH, bits);
                               }
                             }
 
                             // grab 2 new pixels from buffer
-                            int bufferPosition =
-                                (loop_counters[1][5] + unrollingFactor +
-                                 additionalUnrollingFactor - 3) %
-                                packing_factor;
+                            int buffer_pos = (loop_counters[1][5] + unroll +
+                                              additional - 3) %
+                                             packing_factor;
 #pragma hls_unroll yes
-                            for (int x = unrollingFactor +
-                                         additionalUnrollingFactor - 2;
-                                 x <
-                                 unrollingFactor + additionalUnrollingFactor;
-                                 x++) {
+                            for (int x = unroll + additional - 2;
+                                 x < unroll + additional; x++) {
 #pragma hls_unroll yes
                               for (int dim = 0; dim < 3; dim++) {
                                 int dst_idx = x * 3 + dim;
-                                int src_idx =
-                                    (bufferPosition + x -
-                                     (unrollingFactor +
-                                      additionalUnrollingFactor - 2)) *
-                                        3 +
-                                    dim;
+                                int src_idx = (buffer_pos + x -
+                                               (unroll + additional - 2)) *
+                                                  3 +
+                                              dim;
 
-                                auto temp = buffer.template slc<DATA_WIDTH>(
+                                auto bits = buffer.template slc<DATA_WIDTH>(
                                     src_idx * DATA_WIDTH);
-                                data.set_slc(dst_idx * DATA_WIDTH, temp);
+                                data.set_slc(dst_idx * DATA_WIDTH, bits);
                               }
                             }
 
                             window_buffer_out.Push(data);
 
-                            if (bufferPosition == packing_factor - 2) {
+                            if (buffer_pos == packing_factor - 2) {
                               buffer = window_buffer_in.Pop();
                             }
+
+                            if (loop_counters[1][5] >=
+                                loop_bounds[1][5] * 2 - 4) {
+                              break;
+                            }
+                          }
+                          if (loop_counters[1][4] == loop_bounds[1][4] - 1) {
+                            break;
                           }
                         }
+                        if (loop_counters[1][3] == loop_bounds[1][3] - 1) {
+                          break;
+                        }
+                      }
+                      if (loop_counters[1][2] == loop_bounds[1][2] - 1) {
+                        break;
                       }
                     }
+                    if (loop_counters[1][1] == loop_bounds[1][1] - 1) {
+                      break;
+                    }
+                  }
+                  if (loop_counters[1][0] == loop_bounds[1][0] - 1) {
+                    break;
                   }
                 }
+                if (loop_counters[0][3] == loop_bounds[0][3] - 1) {
+                  break;
+                }
+              }
+              if (loop_counters[0][2] == loop_bounds[0][2] - 1) {
+                break;
               }
             }
+            if (loop_counters[0][1] == loop_bounds[0][1] - 1) {
+              break;
+            }
+          }
+          if (loop_counters[0][0] == loop_bounds[0][0] - 1) {
+            break;
           }
         }
       } else if (params.is_resnet_replication && NRows == 8) {
         // no window buffer reuse, but need to combine
         // multiple words together
-        for (loop_counters[0][0] = 0; loop_counters[0][0] < loop_bounds[0][0];
-             loop_counters[0][0]++) {
-          for (loop_counters[0][1] = 0; loop_counters[0][1] < loop_bounds[0][1];
-               loop_counters[0][1]++) {
-            for (loop_counters[0][2] = 0;
-                 loop_counters[0][2] < loop_bounds[0][2];
-                 loop_counters[0][2]++) {
-              for (loop_counters[0][3] = 0;
-                   loop_counters[0][3] < loop_bounds[0][3];
-                   loop_counters[0][3]++) {
+        for (loop_counters[0][0] = 0;; loop_counters[0][0]++) {
+          for (loop_counters[0][1] = 0;; loop_counters[0][1]++) {
+            for (loop_counters[0][2] = 0;; loop_counters[0][2]++) {
+              for (loop_counters[0][3] = 0;; loop_counters[0][3]++) {
                 // inner memory
-                for (loop_counters[1][0] = 0;
-                     loop_counters[1][0] < loop_bounds[1][0];
-                     loop_counters[1][0]++) {
-                  for (loop_counters[1][1] = 0;
-                       loop_counters[1][1] < loop_bounds[1][1];
-                       loop_counters[1][1]++) {
-                    for (loop_counters[1][2] = 0;
-                         loop_counters[1][2] < loop_bounds[1][2];
-                         loop_counters[1][2]++) {
-                      for (loop_counters[1][3] = 0;
-                           loop_counters[1][3] < loop_bounds[1][3];
-                           loop_counters[1][3]++) {
-                        for (loop_counters[1][4] = 0;
-                             loop_counters[1][4] < loop_bounds[1][4];
-                             loop_counters[1][4]++) {
+                for (loop_counters[1][0] = 0;; loop_counters[1][0]++) {
+                  for (loop_counters[1][1] = 0;; loop_counters[1][1]++) {
+                    for (loop_counters[1][2] = 0;; loop_counters[1][2]++) {
+                      for (loop_counters[1][3] = 0;; loop_counters[1][3]++) {
+                        for (loop_counters[1][4] = 0;; loop_counters[1][4]++) {
                           ac_int<BufferWidth, false> buffer =
                               window_buffer_in.Pop();
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
-                          for (loop_counters[1][5] = 0;
-                               loop_counters[1][5] < loop_bounds[1][5];
+                          for (loop_counters[1][5] = 0;;
                                loop_counters[1][5]++) {
                             ac_int<BufferWidth, false> data;
 #pragma hls_unroll yes
                             for (int dim = 0; dim < 3; dim++) {
-                              auto temp = buffer.template slc<DATA_WIDTH>(
+                              auto bits = buffer.template slc<DATA_WIDTH>(
                                   (dim + 3) * DATA_WIDTH);
-                              data.set_slc(dim * DATA_WIDTH, temp);
+                              data.set_slc(dim * DATA_WIDTH, bits);
                             }
 
                             buffer = window_buffer_in.Pop();
 
 #pragma hls_unroll yes
                             for (int dim = 0; dim < 3; dim++) {
-                              auto temp = buffer.template slc<DATA_WIDTH>(
+                              auto bits = buffer.template slc<DATA_WIDTH>(
                                   dim * DATA_WIDTH);
-                              data.set_slc((3 + dim) * DATA_WIDTH, temp);
+                              data.set_slc((3 + dim) * DATA_WIDTH, bits);
                             }
+
                             window_buffer_out.Push(data);
+
+                            if (loop_counters[1][5] == loop_bounds[1][5] - 1) {
+                              break;
+                            }
+                          }
+                          if (loop_counters[1][4] == loop_bounds[1][4] - 1) {
+                            break;
                           }
                         }
+                        if (loop_counters[1][3] == loop_bounds[1][3] - 1) {
+                          break;
+                        }
+                      }
+                      if (loop_counters[1][2] == loop_bounds[1][2] - 1) {
+                        break;
                       }
                     }
+                    if (loop_counters[1][1] == loop_bounds[1][1] - 1) {
+                      break;
+                    }
+                  }
+                  if (loop_counters[1][0] == loop_bounds[1][0] - 1) {
+                    break;
                   }
                 }
+                if (loop_counters[0][3] == loop_bounds[0][3] - 1) {
+                  break;
+                }
+              }
+              if (loop_counters[0][2] == loop_bounds[0][2] - 1) {
+                break;
               }
             }
+            if (loop_counters[0][1] == loop_bounds[0][1] - 1) {
+              break;
+            }
+          }
+          if (loop_counters[0][0] == loop_bounds[0][0] - 1) {
+            break;
           }
         }
-
       } else {  // bypass
         ac_int<32, false> total_count =
             loop_bounds[0][0] * loop_bounds[0][1] * loop_bounds[0][2] *
@@ -997,7 +990,7 @@ struct InputController<std::tuple<InputTypes...>, NRows, PortWidth, BufferWidth>
       loop_bounds[1][params.fx_loop_idx] = 1;
       loop_bounds[1][params.fy_loop_idx[1]] = 1;
 
-      if (params.has_input_transpose && NRows <= 32) {
+      if (params.input_transpose && NRows <= 32) {
         ac_int<DATA_WIDTH> transpose_buffer[NRows][NRows];
 
         ac_int<32, false> total_count =
@@ -1044,10 +1037,8 @@ struct InputController<std::tuple<InputTypes...>, NRows, PortWidth, BufferWidth>
             transpose_out.Push(transposed);
           }
         }
-
       } else {  // passthrough
-        ac_int<4, false> num_packs =
-            (1 << params.input_packing_factor_power) - 1;
+        ac_int<4, false> num_packs = (1 << params.input_pack_factor_lg2) - 1;
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush

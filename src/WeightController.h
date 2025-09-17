@@ -5,7 +5,6 @@
 
 #include "AccelTypes.h"
 #include "ArchitectureParams.h"
-#include "ParamsDeserializer.h"
 
 template <typename WeightTypeTuple, typename Bias, int NRows, int NCols,
           int PortWidth, int BufferWidth>
@@ -121,10 +120,10 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
           params.weight_addr_loops[1][params.weight_addr_weight_loop_idx[1]];
 
       // reduce the number of iterations by packing factor
-      K1 = K1 >> params.weight_packing_factor_power;
+      K1 = K1 >> params.weight_pack_factor_lg2;
       loop_bounds[1][params.weight_addr_weight_loop_idx[1]] = K1 - 1;
 
-      ac_int<16, false> k_stride = NCols << params.weight_packing_factor_power;
+      ac_int<16, false> k_stride = NCols << params.weight_pack_factor_lg2;
       ac_int<24, false> c_stride = K2 * K1 * k_stride;
       ac_int<24, false> fx_stride = C2 * C1 * C0 * c_stride;
       ac_int<24, false> fy_stride = FX * fx_stride;
@@ -166,7 +165,7 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
                                                       fx * fx_stride +
                                                       c * c_stride + k;
 
-                          if (params.has_weight_transpose) {
+                          if (params.weight_transpose) {
                             address =
                                 ((k + c0) * C2 * C1 + c2 * C1 + c1) * NCols;
                           }
@@ -175,7 +174,7 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
                               params.weight_dtype, params.weight_offset,
                               address, params.weight_burst_size, weight_req);
                           fetcher_done.write(false);
-                          if (!params.has_weight_transpose) {
+                          if (!params.weight_transpose) {
                             fetcher_done_2.write(false);
                           }
 
@@ -262,10 +261,9 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
           params.weight_addr_loops[1][params.weight_addr_weight_loop_idx[1]];
 
       // reduce the number of iterations by packing factor
-      K1 = K1 >> params.weight_packing_factor_power;
+      K1 = K1 >> params.weight_pack_factor_lg2;
       loop_bounds[1][params.weight_addr_weight_loop_idx[1]] = K1 - 1;
-      ac_int<4, false> num_packs =
-          (1 << params.weight_packing_factor_power) - 1;
+      ac_int<4, false> num_packs = (1 << params.weight_pack_factor_lg2) - 1;
 
       ac_int<24, false> fx_stride = C1 * C0 * K1;
       ac_int<24, false> fy_stride = FX * fx_stride;
@@ -302,9 +300,9 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
                             ac_int<16, false> c = c1 * C0 + c0;
                             ac_int<16, false> address =
                                 fy0 * fy_stride + fx * fx_stride + c * K1 + k1;
-                            address = (address
-                                       << params.weight_packing_factor_power) +
-                                      pack;
+                            address =
+                                (address << params.weight_pack_factor_lg2) +
+                                pack;
 
                             BufferWriteRequest<ac_int<BufferWidth, false>> req;
                             req.address = address;
@@ -398,7 +396,7 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
       // when NCols > NRows
       int rep_bound = 1;
 
-      if (params.has_weight_transpose && NCols > NRows) {
+      if (params.weight_transpose && NCols > NRows) {
         if (loop_bounds[0][params.reduction_loop_idx[0]] >= (NCols / NRows)) {
           // we are able to reuse the weights already in the buffer
           loop_bounds[0][params.reduction_loop_idx[0]] /= (NCols / NRows);
@@ -606,7 +604,7 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
                                         (fy0 * FX * C * K1) + (fx * C * K1) +
                                         ((c + c1 * C0) * K1) + k1;
 
-                                    if (params.has_weight_transpose &&
+                                    if (params.weight_transpose &&
                                         NCols > NRows) {
                                       address =
                                           (fy0 * FX * C * rep_bound * K1) +
@@ -752,7 +750,7 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
 
       // don't support transpose when systolic array is larger
       // than 32x32, as it will require a very large buffer
-      if (params.has_weight_transpose && NRows < 64 && NCols < 64) {
+      if (params.weight_transpose && NRows < 64 && NCols < 64) {
         // we need a square buffer to store the transpose
         ac_int<DATA_WIDTH, false>
             transpose_buffer[NRows > NCols ? NRows : NCols]
@@ -801,10 +799,8 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
             transpose_out.Push(transposed);
           }
         }
-
       } else {  // passthrough
-        ac_int<4, false> num_packs =
-            (1 << params.weight_packing_factor_power) - 1;
+        ac_int<4, false> num_packs = (1 << params.weight_pack_factor_lg2) - 1;
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush

@@ -191,7 +191,7 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
       // NCols > NRows
       int rep_bound = 1;
 
-      if (params.has_weight_transpose && NCols > NRows) {
+      if (params.weight_transpose && NCols > NRows) {
         if (loop_bounds[0][params.reduction_loop_idx[0]] >= (NCols / NRows)) {
           // we are able to reuse the weights already in the buffer
           loop_bounds[0][params.reduction_loop_idx[0]] /= (NCols / NRows);

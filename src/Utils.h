@@ -126,18 +126,39 @@ void process_packed_response(
   }
 }
 
-template <typename T, size_t N, int width, typename... Ts>
-bool set_zero(ac_int<DTYPE_INDEX_WIDTH, false> dtype,
-              ac_int<width, false>& outputs) {
-  if (get_type_index<T, Ts...>() != dtype) {
-    return false;
+template <typename T, int width, typename... Ts>
+bool get_zero(ac_int<DTYPE_INDEX_WIDTH, false> dtype,
+              ac_int<width, false>& bits) {
+  if (get_type_index<T, Ts...>() == dtype) {
+    bits = T::zero().bits_rep();
+    return true;
   }
-  constexpr int output_width = width / N;
+  return false;
+}
+
+template <size_t N, int buf_width, typename... Ts>
+void set_zero(ac_int<DTYPE_INDEX_WIDTH, false> dtype,
+              ac_int<buf_width, false>& outputs, bool codebook,
+              ac_int<4, false> zero_idx) {
+  constexpr int width = buf_width / N;
+  ac_int<width, false> zero_bits;
+
+  if (codebook) {
+    zero_bits = zero_idx;
+  } else {
+    bool handled = (get_zero<Ts, width, Ts...>(dtype, zero_bits) || ...);
+#ifndef __SYNTHESIS__
+    if (!handled) {
+      throw std::runtime_error("Unsupported dtype for matrix input: " +
+                               std::to_string(dtype));
+    }
+#endif
+  }
+
 #pragma hls_unroll yes
   for (int i = 0; i < N; i++) {
-    outputs.set_slc(i * output_width, T::zero().bits_rep());
+    outputs.set_slc(i * width, zero_bits);
   }
-  return true;
 }
 
 template <typename T1, typename T2, int width, typename... Ts>

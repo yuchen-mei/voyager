@@ -5,7 +5,6 @@
 
 #include "AccelTypes.h"
 #include "ArchitectureParams.h"
-#include "ParamsDeserializer.h"
 
 template <typename Scale, int NRows, int NCols, int PortWidth>
 SC_MODULE(WeightScaleController) {
@@ -347,7 +346,7 @@ SC_MODULE(WeightScaleController) {
       // when NCols > NRows
       int rep_bound = 1;
 
-      if (params.has_weight_transpose && NCols > NRows) {
+      if (params.weight_transpose && NCols > NRows) {
         if (loop_bounds[0][params.reduction_loop_idx[0]] >= (NCols / NRows)) {
           // we are able to reuse the weights already in the buffer
           loop_bounds[0][params.reduction_loop_idx[0]] /= (NCols / NRows);

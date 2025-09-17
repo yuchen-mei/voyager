@@ -4,7 +4,6 @@
 #include <systemc.h>
 
 #include "AccelTypes.h"
-#include "ParamsDeserializer.h"
 
 template <typename Scale, int NRows>
 SC_MODULE(InputScaleController) {
@@ -189,18 +188,14 @@ SC_MODULE(InputScaleController) {
                                 address =
                                     y * (X >> params.fx_unrolling_lg2) * NRows +
                                     (x >> params.fx_unrolling_lg2) * NRows + c;
-                              }
-
-                              if (params.has_attn_output_permute) {
-                                ac_int<8, false> head_size =
-                                    params.head_size_power_of_two;
-                                ac_int<16, false> mask = (1 << head_size) - 1;
-                                address =
-                                    ((c >> head_size) * (X << head_size)) +
-                                    (x << head_size) + (c & mask);
-                              }
-
-                              if (params.has_input_transpose) {
+                              } else if (params.merge_heads) {
+                                ac_int<16, false> mask =
+                                    (1 << params.head_size_lg2) - 1;
+                                address = ((c >> params.head_size_lg2) *
+                                           (X << params.head_size_lg2)) +
+                                          (x << params.head_size_lg2) +
+                                          (c & mask);
+                              } else if (params.input_transpose) {
                                 address =
                                     (c + (x % NRows)) * X + (x / NRows) * NRows;
                               }

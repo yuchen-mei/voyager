@@ -437,23 +437,13 @@ void MapVectorOperations(const codegen::Operation &param,
   vector_params->output_dtype =
       get_index_from_type_name<OUTPUT_DATATYPES>(output.dtype());
 
-  if (output.has_reshape()) {
-    // if we have permutation, we need to configure the address generators
-    // accordingly we need to make sure the output is split into 32x32 blocks
-    vector_params->has_attn_head_permute = true;
-    vector_params->output_loops[1][1] = output.shape(1);
-    vector_params->output_loops[1][2] =
-        output.shape(2) * output.shape(3) / OC_DIMENSION;
-  }
-
   VectorInstructions inst;
   inst.op_type = VectorInstructions::vector;
   inst.inst_count = get_size(output) / VECTOR_UNIT_WIDTH;
   inst.vector_op0_src0 = VectorInstructions::from_vector_fetch_0;
   inst.vdest = VectorInstructions::to_output;
 
-  auto inst_map = get_vector_instruction_mapping();
-
+  auto mapping = get_vector_instruction_mapping();
   int stage = 0;
 
   for (int i = 0; i < op_list.size(); i++) {
@@ -509,7 +499,7 @@ void MapVectorOperations(const codegen::Operation &param,
 
     spdlog::debug("stage {} target: {}\n", stage, opcode);
 
-    unsigned int vop = inst_map[opcode];
+    unsigned int vop = mapping[opcode];
     if (stage == 0) {
       inst.vector_op0 = opcode == "div" ? VectorInstructions::vmult : vop;
     } else if (stage == 1) {

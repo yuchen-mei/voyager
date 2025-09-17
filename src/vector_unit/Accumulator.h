@@ -103,7 +103,6 @@ SC_MODULE(VectorAccumulator) {
             output_to_pipeline.Push(outputs);
           }
         }
-
       } else if (inst.reduce_op == VectorInstructions::rmax) {
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush

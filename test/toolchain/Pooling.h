@@ -9,7 +9,6 @@ void MapPoolingOperation(const codegen::Operation &param,
   VectorParams *vector_params = new VectorParams;
   VectorInstructionConfig *vector_instruction_config =
       new VectorInstructionConfig;
-  AcceleratorMemoryMap accelerator_memory_map;
 
   const auto op_list = get_op_list(param);
   const auto pooling_op = op_list.front();
@@ -21,8 +20,6 @@ void MapPoolingOperation(const codegen::Operation &param,
   const int output_dim = output.shape(3);
 
   // input
-  const auto input_memory = input.memory();
-  accelerator_memory_map["vector0"] = get_partition(input_memory.partition());
   vector_params->vector_fetch_0_offset = get_address(input);
   vector_params->vector_fetch_0_mode = 1;
   vector_params->vector_fetch_0_dtype =
@@ -30,12 +27,12 @@ void MapPoolingOperation(const codegen::Operation &param,
 
   int packing_factor = OC_DIMENSION / VECTOR_UNIT_WIDTH;
   int vector_fetch_0_input_width =
-      OC_DIMENSION *
+      VECTOR_UNIT_WIDTH *
       get_type_width<VU_INPUT_TYPES>(vector_params->vector_fetch_0_dtype);
   vector_params->vector_fetch_0_burst_size = vector_fetch_0_input_width / 8;
   vector_params->vector_fetch_0_num_beats =
       vector_fetch_0_input_width / OC_PORT_WIDTH;
-  vector_params->vector_fetch_0_packing_factor = packing_factor;
+  vector_params->vector_fetch_0_packing_factor = 1;
 
   for (int i = 0; i < 2; i++) {
     vector_params->vector_fetch_0_loops[i][0] =
@@ -57,8 +54,6 @@ void MapPoolingOperation(const codegen::Operation &param,
   vector_params->padding[0] = tiling.padding;  // y
 
   // output
-  const auto output_memory = output.memory();
-  accelerator_memory_map["outputs"] = get_partition(output_memory.partition());
   vector_params->vector_output_offset = get_address(output);
 
   for (int i = 0; i < 3; i++) {
@@ -90,8 +85,8 @@ void MapPoolingOperation(const codegen::Operation &param,
   // perform max/sum accumulation
   VectorInstructions vinst0;
   vinst0.op_type = VectorInstructions::accumulation;
-  vinst0.inst_count = inst_count;
-  vinst0.reduce_count = reduce_count * packing_factor;
+  vinst0.inst_count = inst_count * packing_factor;
+  vinst0.reduce_count = reduce_count;
   vinst0.reduce_op =
       is_max_pool ? VectorInstructions::rmax : VectorInstructions::radd;
   vinst0.rdest = VectorInstructions::to_memory;
@@ -119,5 +114,4 @@ void MapPoolingOperation(const codegen::Operation &param,
 
   mapped_params.push_back(vector_params);
   mapped_params.push_back(vector_instruction_config);
-  memory_maps.push_back(accelerator_memory_map);
 }
