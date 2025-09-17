@@ -588,6 +588,7 @@ struct MatrixVectorUnit<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
   }
 
   void send_outputs() {
+    send_outputs_param.ResetRead();
     bias_data.ResetRead();
     accumulation_out.ResetRead();
     matrix_out.Reset();
