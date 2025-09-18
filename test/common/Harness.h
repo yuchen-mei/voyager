@@ -183,19 +183,19 @@ SC_MODULE(Harness) {
   Accelerator CCS_INIT_S1(accelerator);
 #endif
 
-  template <int Width>
+  template <int width>
   void process_read_request(
       Connections::Combinational<MemoryRequest> * request_out,
-      sc_fifo<ac_int<Width, false>> * data_fifo);
+      sc_fifo<ac_int<width, false>> * data_fifo);
 
-  template <int Width>
+  template <int width>
   void send_data_response(
-      sc_fifo<ac_int<Width, false>> * data_fifo,
-      Connections::Combinational<ac_int<Width, false>> * response);
+      sc_fifo<ac_int<width, false>> * data_fifo,
+      Connections::Combinational<ac_int<width, false>> * response);
 
-  template <int Width>
+  template <int width>
   void process_write_request(
-      Connections::Combinational<ac_int<Width, false>> * data_out,
+      Connections::Combinational<ac_int<width, false>> * data_out,
       Connections::Combinational<ac_int<ADDRESS_WIDTH, false>> * address_out);
 
   void read_input_request();

@@ -8,7 +8,7 @@
 #include "VectorOps.h"
 
 template <typename VectorType, typename BufferType, typename ScaleType,
-          int Width, int OcDimension>
+          int vu_width, int mu_width>
 SC_MODULE(VectorPipeline) {
   sc_in<bool> clk;
   sc_in<bool> rstn;
@@ -16,36 +16,36 @@ SC_MODULE(VectorPipeline) {
   // Inputs
   Connections::In<VectorInstructions> instr;
   Connections::In<ApproxUnitConfig> approx_unit_config;
-  Connections::In<Pack1D<BufferType, Width>> matrix_unit_output;
+  Connections::In<Pack1D<BufferType, vu_width>> matrix_unit_output;
 
 #if DOUBLE_BUFFERED_ACCUM_BUFFER
-  Connections::In<Pack1D<BufferType, Width>> accumulation_buffer_output;
+  Connections::In<Pack1D<BufferType, vu_width>> accumulation_buffer_output;
 #endif
 
 #if SUPPORT_MVM
-  Connections::In<Pack1D<VectorType, Width>> matrix_vector_unit_data;
+  Connections::In<Pack1D<VectorType, vu_width>> matrix_vector_unit_data;
 #endif
 
 #if SUPPORT_DWC
-  Connections::In<Pack1D<BufferType, Width>> dwc_unit_in;
+  Connections::In<Pack1D<BufferType, vu_width>> dwc_unit_in;
 #endif
 
-  Connections::In<Pack1D<VectorType, Width>> vector_fetch_0_data;
-  Connections::In<Pack1D<VectorType, Width>> vector_fetch_1_data;
-  Connections::In<Pack1D<VectorType, Width>> vector_fetch_2_data;
+  Connections::In<Pack1D<VectorType, vu_width>> vector_fetch_0_data;
+  Connections::In<Pack1D<VectorType, vu_width>> vector_fetch_1_data;
+  Connections::In<Pack1D<VectorType, vu_width>> vector_fetch_2_data;
 
-  Connections::In<Pack1D<VectorType, Width>> accumulator_output;
-  Connections::In<Pack1D<VectorType, Width>> reducer_output_0;
-  Connections::In<Pack1D<VectorType, Width>> reducer_output_1;
+  Connections::In<Pack1D<VectorType, vu_width>> accumulator_output;
+  Connections::In<Pack1D<VectorType, vu_width>> reducer_output_0;
+  Connections::In<Pack1D<VectorType, vu_width>> reducer_output_1;
 
   // Outputs to other submodules
   Connections::Out<ScaleType> mx_scale;
-  Connections::Out<Pack1D<VectorType, Width>> vector_unit_output;
+  Connections::Out<Pack1D<VectorType, vu_width>> vector_unit_output;
 
-  Connections::Out<Pack1D<VectorType, Width>> reducer_input;
-  Connections::Out<Pack1D<VectorType, Width>> accumulator_input;
+  Connections::Out<Pack1D<VectorType, vu_width>> reducer_input;
+  Connections::Out<Pack1D<VectorType, vu_width>> accumulator_input;
 
-  using StageInput = Transaction<VectorType, Width>;
+  using StageInput = Transaction<VectorType, vu_width>;
   Connections::Combinational<Pack1D<StageInput, 4>> stage0_input;
   Connections::Combinational<Pack1D<StageInput, 3>> stage1_input;
   Connections::Combinational<Pack1D<StageInput, 3>> stage2_input;
@@ -54,7 +54,7 @@ SC_MODULE(VectorPipeline) {
   Connections::Combinational<VectorInstructions> stage2_inst;
 
 #if SUPPORT_MX && VECTOR_UNIT_WIDTH != OC_DIMENSION
-  Connections::Fifo<Pack1D<StageInput, 2>, OcDimension / Width>
+  Connections::Fifo<Pack1D<StageInput, 2>, mu_width / vu_width>
       stage3_input_fifo;
   Connections::Combinational<Pack1D<StageInput, 2>> stage3_input_fifo_in;
   Connections::Combinational<Pack1D<StageInput, 2>> stage3_input_fifo_out;
@@ -128,22 +128,22 @@ SC_MODULE(VectorPipeline) {
 
       while (counter++ < total_values) {
         // Vector unit inputs
-        Pack1D<VectorType, Width> op0_src0;
-        Pack1D<VectorType, Width> op0_src1;
-        Pack1D<VectorType, Width> op2_src1;
-        Pack1D<VectorType, Width> op3_src1;
+        Pack1D<VectorType, vu_width> op0_src0;
+        Pack1D<VectorType, vu_width> op0_src1;
+        Pack1D<VectorType, vu_width> op2_src1;
+        Pack1D<VectorType, vu_width> op3_src1;
 
         if (inst.vector_op0_src0 == VectorInstructions::from_matrix_unit ||
             inst.vector_op0_src1 == VectorInstructions::from_matrix_unit) {
-          Pack1D<BufferType, Width> sa_output = matrix_unit_output.Pop();
+          Pack1D<BufferType, vu_width> sa_output = matrix_unit_output.Pop();
 
-          Pack1D<VectorType, Width> temp;
+          Pack1D<VectorType, vu_width> temp;
           if (inst.vdequantize) {
-            vdequantize<BufferType, VectorType, Width>(sa_output, temp,
-                                                       inst.vector_dq_scale);
+            vdequantize<BufferType, VectorType, vu_width>(sa_output, temp,
+                                                          inst.vector_dq_scale);
           } else {
 #pragma hls_unroll yes
-            for (int i = 0; i < Width; i++) {
+            for (int i = 0; i < vu_width; i++) {
               temp[i] = sa_output[i];
             }
           }
@@ -159,16 +159,16 @@ SC_MODULE(VectorPipeline) {
                 VectorInstructions::from_accumulation_buffer ||
             inst.vector_op0_src1 ==
                 VectorInstructions::from_accumulation_buffer) {
-          Pack1D<BufferType, Width> sa_output =
+          Pack1D<BufferType, vu_width> sa_output =
               accumulation_buffer_output.Pop();
 
-          Pack1D<VectorType, Width> temp;
+          Pack1D<VectorType, vu_width> temp;
           if (inst.vdequantize) {
-            vdequantize<BufferType, VectorType, Width>(sa_output, temp,
-                                                       inst.vector_dq_scale);
+            vdequantize<BufferType, VectorType, vu_width>(sa_output, temp,
+                                                          inst.vector_dq_scale);
           } else {
 #pragma hls_unroll yes
-            for (int i = 0; i < Width; i++) {
+            for (int i = 0; i < vu_width; i++) {
               temp[i] = sa_output[i];
             }
           }
@@ -187,7 +187,7 @@ SC_MODULE(VectorPipeline) {
                 VectorInstructions::from_matrix_vector_unit ||
             inst.vector_op0_src1 ==
                 VectorInstructions::from_matrix_vector_unit) {
-          Pack1D<VectorType, Width> temp = matrix_vector_unit_data.Pop();
+          Pack1D<VectorType, vu_width> temp = matrix_vector_unit_data.Pop();
           if (inst.vector_op0_src0 ==
               VectorInstructions::from_matrix_vector_unit) {
             op0_src0 = temp;
@@ -198,24 +198,21 @@ SC_MODULE(VectorPipeline) {
 #endif
 
 #if SUPPORT_DWC
-        if (inst.vector_op0_src0 ==
-                VectorInstructions::from_dwc_unit ||
-            inst.vector_op0_src1 ==
-                VectorInstructions::from_dwc_unit) {
-          Pack1D<BufferType, Width> sa_output = dwc_unit_in.Pop();
-          Pack1D<VectorType, Width> temp;
+        if (inst.vector_op0_src0 == VectorInstructions::from_dwc_unit ||
+            inst.vector_op0_src1 == VectorInstructions::from_dwc_unit) {
+          Pack1D<BufferType, vu_width> sa_output = dwc_unit_in.Pop();
+          Pack1D<VectorType, vu_width> temp;
           if (inst.vdequantize) {
-            vdequantize<BufferType, VectorType, Width>(sa_output, temp,
-                                                       inst.vector_dq_scale);
+            vdequantize<BufferType, VectorType, vu_width>(sa_output, temp,
+                                                          inst.vector_dq_scale);
           } else {
 #pragma hls_unroll yes
-            for (int i = 0; i < Width; i++) {
+            for (int i = 0; i < vu_width; i++) {
               temp[i] = sa_output[i];
             }
           }
 
-          if (inst.vector_op0_src0 ==
-              VectorInstructions::from_dwc_unit) {
+          if (inst.vector_op0_src0 == VectorInstructions::from_dwc_unit) {
             op0_src0 = temp;
           } else {
             op0_src1 = temp;
@@ -225,7 +222,7 @@ SC_MODULE(VectorPipeline) {
 
         if (inst.vector_op0_src0 == VectorInstructions::from_vector_fetch_0 ||
             inst.vector_op0_src1 == VectorInstructions::from_vector_fetch_0) {
-          Pack1D<VectorType, Width> temp = vector_fetch_0_data.Pop();
+          Pack1D<VectorType, vu_width> temp = vector_fetch_0_data.Pop();
           if (inst.vector_op0_src0 == VectorInstructions::from_vector_fetch_0) {
             op0_src0 = temp;
           } else {
@@ -235,7 +232,7 @@ SC_MODULE(VectorPipeline) {
 
         if (inst.vector_op0_src0 == VectorInstructions::from_vector_fetch_1 ||
             inst.vector_op0_src1 == VectorInstructions::from_vector_fetch_1) {
-          Pack1D<VectorType, Width> temp = vector_fetch_1_data.Pop();
+          Pack1D<VectorType, vu_width> temp = vector_fetch_1_data.Pop();
           if (inst.vector_op0_src0 == VectorInstructions::from_vector_fetch_1) {
             op0_src0 = temp;
           } else {
@@ -245,7 +242,7 @@ SC_MODULE(VectorPipeline) {
 
         if (inst.vector_op2_src1 == VectorInstructions::from_vector_fetch_2 ||
             inst.vector_op3_src1 == VectorInstructions::from_vector_fetch_2) {
-          Pack1D<VectorType, Width> temp = vector_fetch_2_data.Pop();
+          Pack1D<VectorType, vu_width> temp = vector_fetch_2_data.Pop();
           if (inst.vector_op2_src1 == VectorInstructions::from_vector_fetch_2) {
             op2_src1 = temp;
           } else {
@@ -256,7 +253,7 @@ SC_MODULE(VectorPipeline) {
         if (inst.vector_op0_src0 == VectorInstructions::from_accumulation ||
             inst.vector_op0_src1 == VectorInstructions::from_accumulation ||
             inst.vector_op2_src1 == VectorInstructions::from_accumulation) {
-          Pack1D<VectorType, Width> temp = accumulator_output.Pop();
+          Pack1D<VectorType, vu_width> temp = accumulator_output.Pop();
           if (inst.vector_op0_src0 == VectorInstructions::from_accumulation) {
             op0_src0 = temp;
           } else if (inst.vector_op0_src1 ==
@@ -270,7 +267,7 @@ SC_MODULE(VectorPipeline) {
         if (inst.vector_op0_src0 == VectorInstructions::from_reduction_0 ||
             inst.vector_op0_src1 == VectorInstructions::from_reduction_0 ||
             inst.vector_op2_src1 == VectorInstructions::from_reduction_0) {
-          Pack1D<VectorType, Width> temp = reducer_output_0.Pop();
+          Pack1D<VectorType, vu_width> temp = reducer_output_0.Pop();
           if (inst.vector_op0_src0 == VectorInstructions::from_reduction_0) {
             op0_src0 = temp;
           } else if (inst.vector_op0_src1 ==
@@ -287,9 +284,9 @@ SC_MODULE(VectorPipeline) {
 
         if (inst.vector_op0_src0 == VectorInstructions::from_immediate_0 ||
             inst.vector_op0_src1 == VectorInstructions::from_immediate_0) {
-          Pack1D<VectorType, Width> temp;
+          Pack1D<VectorType, vu_width> temp;
 #pragma hls_unroll yes
-          for (int i = 0; i < Width; i++) {
+          for (int i = 0; i < vu_width; i++) {
             temp[i].set_bits(inst.immediate0);
           }
 
@@ -302,14 +299,14 @@ SC_MODULE(VectorPipeline) {
 
         if (inst.vector_op2_src1 == VectorInstructions::from_immediate_1) {
 #pragma hls_unroll yes
-          for (int i = 0; i < Width; i++) {
+          for (int i = 0; i < vu_width; i++) {
             op2_src1[i].set_bits(inst.immediate1);
           }
         }
 
         if (inst.vector_op3_src1 == VectorInstructions::from_immediate_2) {
 #pragma hls_unroll yes
-          for (int i = 0; i < Width; i++) {
+          for (int i = 0; i < vu_width; i++) {
             op3_src1[i].set_bits(inst.immediate2);
           }
         }
@@ -336,21 +333,21 @@ SC_MODULE(VectorPipeline) {
     while (1) {
       Pack1D<StageInput, 4> transactions = stage0_input.Pop();
       decltype(VectorInstructions::vector_op0) op0 = transactions[0].op;
-      Pack1D<VectorType, Width> op0_src0 = transactions[0].payload;
-      Pack1D<VectorType, Width> op0_src1 = transactions[1].payload;
-      Pack1D<VectorType, Width> res0;
+      Pack1D<VectorType, vu_width> op0_src0 = transactions[0].payload;
+      Pack1D<VectorType, vu_width> op0_src1 = transactions[1].payload;
+      Pack1D<VectorType, vu_width> res0;
 
       // Stage 0: add, sub, mult
       if (op0 == VectorInstructions::vadd || op0 == VectorInstructions::vsub) {
         if (op0 == VectorInstructions::vsub) {
 #pragma hls_unroll yes
-          for (int i = 0; i < Width; i++) {
+          for (int i = 0; i < vu_width; i++) {
             op0_src1[i] = op0_src1[i].negate();
           }
         }
-        res0 = vadd<VectorType, Width>(op0_src0, op0_src1);
+        res0 = vadd<VectorType, vu_width>(op0_src0, op0_src1);
       } else if (op0 == VectorInstructions::vmult) {
-        res0 = vmul<VectorType, Width>(op0_src0, op0_src1);
+        res0 = vmul<VectorType, vu_width>(op0_src0, op0_src1);
       } else {
         res0 = op0_src0;
       }
@@ -384,17 +381,18 @@ SC_MODULE(VectorPipeline) {
       while (counter++ < total_values) {
         Pack1D<StageInput, 3> transactions = stage1_input.Pop();
         decltype(VectorInstructions::vector_op1) op1 = transactions[0].op;
-        Pack1D<VectorType, Width> op1_src0 = transactions[0].payload;
-        Pack1D<VectorType, Width> res1;
+        Pack1D<VectorType, vu_width> op1_src0 = transactions[0].payload;
+        Pack1D<VectorType, vu_width> res1;
 
         // Stage 1: exp, abs, activations
         if (op1 == VectorInstructions::vpoly) {
-          res1 = vpoly<VectorType, Width>(op1_src0, config.maxes, config.ranges,
+          res1 =
+              vpoly<VectorType, vu_width>(op1_src0, config.maxes, config.ranges,
                                           config.clamp_min, config.clamp_max);
         } else if (op1 == VectorInstructions::vabs) {
-          res1 = vabs<VectorType, Width>(op1_src0);
+          res1 = vabs<VectorType, vu_width>(op1_src0);
         } else if (op1 == VectorInstructions::vrelu) {
-          res1 = vrelu<VectorType, Width>(op1_src0);
+          res1 = vrelu<VectorType, vu_width>(op1_src0);
         } else {
           res1 = op1_src0;
         }
@@ -419,19 +417,19 @@ SC_MODULE(VectorPipeline) {
       Pack1D<StageInput, 3> transactions = stage2_input.Pop();
       decltype(VectorInstructions::vector_op2) op2 = transactions[1].op;
       decltype(VectorInstructions::vdest) vdest = transactions[1].immediate;
-      Pack1D<VectorType, Width> op2_src0 = transactions[0].payload;
-      Pack1D<VectorType, Width> op2_src1 = transactions[1].payload;
-      Pack1D<VectorType, Width> res2;
+      Pack1D<VectorType, vu_width> op2_src0 = transactions[0].payload;
+      Pack1D<VectorType, vu_width> op2_src1 = transactions[1].payload;
+      Pack1D<VectorType, vu_width> res2;
 
       // Stage 2: add, mult, square
       if (op2 == VectorInstructions::vadd) {
-        res2 = vadd<VectorType, Width>(op2_src0, op2_src1);
+        res2 = vadd<VectorType, vu_width>(op2_src0, op2_src1);
       } else if (op2 == VectorInstructions::vmult ||
                  op2 == VectorInstructions::vsquare) {
         if (op2 == VectorInstructions::vsquare) {
           op2_src1 = op2_src0;
         }
-        res2 = vmul<VectorType, Width>(op2_src0, op2_src1);
+        res2 = vmul<VectorType, vu_width>(op2_src0, op2_src1);
       } else {
         res2 = op2_src0;
       }
@@ -467,21 +465,21 @@ SC_MODULE(VectorPipeline) {
       decltype(VectorInstructions::vector_op3) op3 = transactions[1].op;
       decltype(VectorInstructions::immediate2) qparam =
           transactions[1].immediate;
-      Pack1D<VectorType, Width> op3_src0 = transactions[0].payload;
+      Pack1D<VectorType, vu_width> op3_src0 = transactions[0].payload;
 
       if (op3 == VectorInstructions::vquantize_mx) {
-        Pack1D<VectorType, Width> temp;
+        Pack1D<VectorType, vu_width> temp;
 #pragma hls_unroll yes
-        for (int i = 0; i < Width; i++) {
+        for (int i = 0; i < vu_width; i++) {
           temp[i] = op3_src0[i].abs();
         }
         VectorType amax = tree_max(temp);
         amax_history = count == 0 ? amax : std::max(amax, amax_history);
         count = count + 1;
 
-        if (count == OcDimension / Width) {
-          ScaleType scale =
-              compute_scale<VectorType, ScaleType, Width>(amax_history, qparam);
+        if (count == mu_width / vu_width) {
+          ScaleType scale = compute_scale<VectorType, ScaleType, vu_width>(
+              amax_history, qparam);
           stage3_scale.Push(scale);
           count = 0;
         }
@@ -519,9 +517,9 @@ SC_MODULE(VectorPipeline) {
       decltype(VectorInstructions::vector_op3) op3 = transactions[1].op;
       decltype(VectorInstructions::immediate2) qparam =
           transactions[1].immediate;
-      Pack1D<VectorType, Width> op3_src0 = transactions[0].payload;
-      Pack1D<VectorType, Width> op3_src1 = transactions[1].payload;
-      Pack1D<VectorType, Width> res3;
+      Pack1D<VectorType, vu_width> op3_src0 = transactions[0].payload;
+      Pack1D<VectorType, vu_width> op3_src1 = transactions[1].payload;
+      Pack1D<VectorType, vu_width> res3;
 
 #if SUPPORT_MX
       if (op3 == VectorInstructions::vquantize_mx) {
@@ -532,17 +530,17 @@ SC_MODULE(VectorPipeline) {
         }
 
         count = count + 1;
-        if (count == OcDimension / Width) {
+        if (count == mu_width / vu_width) {
           count = 0;
         }
 #else
-        ScaleType scale =
-            calculate_mx_scale<VectorType, ScaleType, Width>(op3_src0, qparam);
+        ScaleType scale = calculate_mx_scale<VectorType, ScaleType, vu_width>(
+            op3_src0, qparam);
         mx_scale.Push(scale);
 #endif
 
 #pragma hls_unroll yes
-        for (int i = 0; i < Width; i++) {
+        for (int i = 0; i < vu_width; i++) {
           op3_src1[i] = scale;
         }
       }
@@ -551,7 +549,7 @@ SC_MODULE(VectorPipeline) {
       // Stage 3: div, quantize
       if (op3 == VectorInstructions::vdiv ||
           op3 == VectorInstructions::vquantize_mx) {
-        res3 = vdiv<VectorType, Width>(op3_src0, op3_src1);
+        res3 = vdiv<VectorType, vu_width>(op3_src0, op3_src1);
       } else {
         res3 = op3_src0;
       }

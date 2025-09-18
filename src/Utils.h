@@ -24,9 +24,9 @@ bool fetch_matrix_input(ac_int<DTYPE_INDEX_WIDTH, false> dtype,
   return true;
 }
 
-template <typename T, size_t N, int port_width, int buf_width>
+template <typename T, size_t N, int port_width, int buffer_width>
 void process_matrix_input(Connections::In<ac_int<port_width, false>>& response,
-                          ac_int<buf_width, false>& outputs) {
+                          ac_int<buffer_width, false>& outputs) {
   constexpr int num_words = (T::width * N + port_width - 1) / port_width;
 
   ac_int<num_words * port_width, false> bits;
@@ -35,7 +35,7 @@ void process_matrix_input(Connections::In<ac_int<port_width, false>>& response,
     bits.set_slc(i * port_width, response.Pop());
   }
 
-  constexpr int data_width = buf_width / N;
+  constexpr int data_width = buffer_width / N;
 
 #pragma hls_unroll yes
   for (int i = 0; i < N; i++) {
@@ -43,15 +43,16 @@ void process_matrix_input(Connections::In<ac_int<port_width, false>>& response,
   }
 }
 
-template <typename T, size_t N, int port_width, int buf_width, typename... Ts>
+template <typename T, size_t N, int port_width, int buffer_width,
+          typename... Ts>
 bool process_matrix_input(ac_int<DTYPE_INDEX_WIDTH, false> dtype,
                           Connections::In<ac_int<port_width, false>>& response,
-                          ac_int<buf_width, false>& outputs) {
+                          ac_int<buffer_width, false>& outputs) {
   if (get_type_index<T, Ts...>() != dtype) {
     return false;
   }
 
-  process_matrix_input<T, N, port_width, buf_width>(response, outputs);
+  process_matrix_input<T, N, port_width, buffer_width>(response, outputs);
   return true;
 }
 
@@ -67,16 +68,17 @@ void send_packed_request(ac_int<DTYPE_INDEX_WIDTH, false> dtype,
 }
 
 // Unpack bits into outputs for a specific type
-template <typename T, size_t N, int buf_width, int bits_width, typename... Ts>
+template <typename T, size_t N, int buffer_width, int bits_width,
+          typename... Ts>
 bool unpack_bits(ac_int<DTYPE_INDEX_WIDTH, false> dtype,
                  const ac_int<bits_width, false> bits,
-                 ac_int<buf_width, false>& outputs,
+                 ac_int<buffer_width, false>& outputs,
                  ac_int<4, false> packing_index) {
   if (get_type_index<T, Ts...>() != dtype) {
     return false;
   }
 
-  constexpr int data_width = buf_width / N;
+  constexpr int data_width = buffer_width / N;
   ac_int<10, false> offset = packing_index * T::width * N;
 
 #pragma hls_unroll yes
@@ -88,12 +90,12 @@ bool unpack_bits(ac_int<DTYPE_INDEX_WIDTH, false> dtype,
   return true;
 }
 
-template <size_t N, int port_width, int buf_width, typename... Ts>
+template <size_t N, int port_width, int buffer_width, typename... Ts>
 void process_packed_response(
     ac_int<DTYPE_INDEX_WIDTH, false> dtype, ac_int<4, false> num_fetches,
     ac_int<4, false> packing_factor,
     Connections::In<ac_int<port_width, false>>& response,
-    Connections::Combinational<ac_int<buf_width, false>>& output) {
+    Connections::Combinational<ac_int<buffer_width, false>>& output) {
   constexpr int max_fetch_width =
       std::max({dtype_fetch_config<Ts, N, port_width>::max_fetch_width...});
   ac_int<max_fetch_width, false> bits;
@@ -107,8 +109,8 @@ void process_packed_response(
 
   // Unpack bits into outputs based on dtype
   for (ac_int<4, false> i = 0;; i++) {
-    ac_int<buf_width, false> outputs = 0;
-    bool handled = (unpack_bits<Ts, N, buf_width, max_fetch_width, Ts...>(
+    ac_int<buffer_width, false> outputs = 0;
+    bool handled = (unpack_bits<Ts, N, buffer_width, max_fetch_width, Ts...>(
                         dtype, bits, outputs, i) ||
                     ...);
 
@@ -136,11 +138,11 @@ bool get_zero(ac_int<DTYPE_INDEX_WIDTH, false> dtype,
   return false;
 }
 
-template <size_t N, int buf_width, typename... Ts>
+template <size_t N, int buffer_width, typename... Ts>
 void set_zero(ac_int<DTYPE_INDEX_WIDTH, false> dtype,
-              ac_int<buf_width, false>& outputs, bool codebook,
+              ac_int<buffer_width, false>& outputs, bool codebook,
               ac_int<4, false> zero_idx) {
-  constexpr int width = buf_width / N;
+  constexpr int width = buffer_width / N;
   ac_int<width, false> zero_bits;
 
   if (codebook) {

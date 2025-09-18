@@ -5,30 +5,30 @@
 
 #include "Repeater.h"
 
-template <typename VectorType, int Width>
+template <typename T, int width>
 SC_MODULE(VectorReducer) {
   sc_in<bool> clk;
   sc_in<bool> rstn;
 
   Connections::In<VectorInstructions> instr;
-  Connections::In<Pack1D<VectorType, Width>> input;
+  Connections::In<Pack1D<T, width>> input;
 
-  Connections::Out<Pack1D<VectorType, Width>> output_to_stage0;
-  Connections::Out<Pack1D<VectorType, Width>> output_to_stage2;
-  Connections::Out<Pack1D<VectorType, Width>> output_to_memory;
+  Connections::Out<Pack1D<T, width>> output_to_stage0;
+  Connections::Out<Pack1D<T, width>> output_to_stage2;
+  Connections::Out<Pack1D<T, width>> output_to_memory;
 
-  Repeater<Pack1D<VectorType, Width>> CCS_INIT_S1(repeater_0);
+  Repeater<Pack1D<T, width>> CCS_INIT_S1(repeater_0);
   Connections::Combinational<ac_int<16, false>> repeat_count_0;
-  Connections::Combinational<Pack1D<VectorType, Width>> repeat_input_0;
+  Connections::Combinational<Pack1D<T, width>> repeat_input_0;
 
-  Repeater<Pack1D<VectorType, Width>> CCS_INIT_S1(repeater_1);
+  Repeater<Pack1D<T, width>> CCS_INIT_S1(repeater_1);
   Connections::Combinational<ac_int<16, false>> repeat_count_1;
-  Connections::Combinational<Pack1D<VectorType, Width>> repeat_input_1;
+  Connections::Combinational<Pack1D<T, width>> repeat_input_1;
 
 #if VECTOR_UNIT_WIDTH != OC_DIMENSION
-  Repeater<Pack1D<VectorType, Width>> CCS_INIT_S1(repeater_2);
+  Repeater<Pack1D<T, width>> CCS_INIT_S1(repeater_2);
   Connections::Combinational<ac_int<16, false>> repeat_count_2;
-  Connections::Combinational<Pack1D<VectorType, Width>> repeat_input_2;
+  Connections::Combinational<Pack1D<T, width>> repeat_input_2;
 #endif
 
   static constexpr int N = 2;
@@ -86,28 +86,28 @@ SC_MODULE(VectorReducer) {
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
       while (counter++ < total_values) {
-        Pack1D<VectorType, Width> res;
+        Pack1D<T, width> res;
         for (ac_int<8, false> i = 0;; i++) {
-          Pack1D<VectorType, N> acc_old;
+          Pack1D<T, N> acc_old;
 
 #pragma hls_unroll yes
           for (int j = 0; j < N; j++) {
             if (inst.reduce_op == VectorInstructions::radd) {
-              acc_old[j] = VectorType::zero();
+              acc_old[j] = T::zero();
             } else {  // rmax
-              acc_old[j] = VectorType::min();
+              acc_old[j] = T::min();
             }
           }
 
           for (decltype(inst.reduce_count) j = 0;; j++) {
-            Pack1D<VectorType, Width> reduce_input = input.Pop();
+            Pack1D<T, width> reduce_input = input.Pop();
 
-            VectorType acc;
+            T acc;
             if (inst.reduce_op == VectorInstructions::radd) {
-              VectorType sum = tree_sum(reduce_input);
+              T sum = tree_sum(reduce_input);
               acc = j < N ? sum : acc_old[last] + sum;
             } else {  // rmax
-              VectorType max = tree_max(reduce_input);
+              T max = tree_max(reduce_input);
               acc = j < N ? max : std::max(acc_old[last], max);
             }
 
@@ -123,7 +123,7 @@ SC_MODULE(VectorReducer) {
             }
           }
 
-          VectorType output;
+          T output;
           if (inst.reduce_op == VectorInstructions::radd) {
             output = tree_sum(acc_old);
           } else {  // rmax
@@ -135,25 +135,24 @@ SC_MODULE(VectorReducer) {
           }
 
           if (inst.rreciprocal) {
-            output =
-                output.is_zero() ? VectorType::zero() : output.reciprocal();
+            output = output.is_zero() ? T::zero() : output.reciprocal();
           }
 
           if (inst.rscale) {
-            VectorType scale;
+            T scale;
             scale.set_bits(inst.immediate1);
             output = output * scale;
           }
 
           res[i] = output;
-          if (inst.rduplicate || i == Width - 1) {
+          if (inst.rduplicate || i == width - 1) {
             break;
           }
         }
 
         if (inst.rduplicate) {
 #pragma hls_unroll yes
-          for (int i = 0; i < Width; i++) {
+          for (int i = 0; i < width; i++) {
             res[i] = res[0];
           }
         }
@@ -168,7 +167,7 @@ SC_MODULE(VectorReducer) {
 #if VECTOR_UNIT_WIDTH == OC_DIMENSION
           output_to_memory.Push(res);
 #else
-          repeat_count_2.Push(inst.rduplicate ? OC_DIMENSION / Width : 1);
+          repeat_count_2.Push(inst.rduplicate ? OC_DIMENSION / width : 1);
           repeat_input_2.Push(res);
 #endif
         }

@@ -6,32 +6,32 @@
 #include "AccelTypes.h"
 #include "ArchitectureParams.h"
 
-template <typename WeightTypeTuple, typename Bias, int NRows, int NCols,
-          int PortWidth, int BufferWidth>
+template <typename WeightTypeTuple, typename Bias, int rows, int cols,
+          int port_width, int buffer_width>
 struct WeightController;
 
-template <typename... WeightTypes, typename Bias, int NRows, int NCols,
-          int PortWidth, int BufferWidth>
-struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
-                        PortWidth, BufferWidth> : public sc_module {
+template <typename... WeightTypes, typename Bias, int rows, int cols,
+          int port_width, int buffer_width>
+struct WeightController<std::tuple<WeightTypes...>, Bias, rows, cols,
+                        port_width, buffer_width> : public sc_module {
   static constexpr int LOOP_WIDTH = 10;
-  static constexpr int DATA_WIDTH = BufferWidth / NCols;
+  static constexpr int DATA_WIDTH = buffer_width / cols;
   static constexpr int MAX_FETCH_WIDTH = std::max(
-      {dtype_fetch_config<WeightTypes, NCols, PortWidth>::max_fetch_width...});
+      {dtype_fetch_config<WeightTypes, cols, port_width>::max_fetch_width...});
 
   sc_in<bool> CCS_INIT_S1(clk);
   sc_in<bool> CCS_INIT_S1(rstn);
 
   Connections::Out<MemoryRequest> CCS_INIT_S1(weight_req);
-  Connections::In<ac_int<PortWidth, false>> CCS_INIT_S1(weight_resp);
+  Connections::In<ac_int<port_width, false>> CCS_INIT_S1(weight_resp);
 
-  Connections::Out<BufferWriteRequest<ac_int<BufferWidth, false>>>
+  Connections::Out<BufferWriteRequest<ac_int<buffer_width, false>>>
       write_request[2];
   Connections::Out<BufferReadRequest> read_request[2];
 
   Connections::Out<MemoryRequest> CCS_INIT_S1(bias_req);
   Connections::In<ac_int<OC_PORT_WIDTH, false>> CCS_INIT_S1(bias_resp);
-  Connections::Out<Pack1D<Bias, NCols>> CCS_INIT_S1(bias_data);
+  Connections::Out<Pack1D<Bias, cols>> CCS_INIT_S1(bias_data);
 
   Connections::In<MatrixParams> CCS_INIT_S1(params_in);
   Connections::Combinational<MatrixParams> CCS_INIT_S1(fetcher_params);
@@ -46,7 +46,7 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
   sc_fifo<bool> fetcher_done_2;
 
   Connections::Combinational<ac_int<MAX_FETCH_WIDTH, false>> packed_bits;
-  Connections::Combinational<ac_int<BufferWidth, false>> transpose_out;
+  Connections::Combinational<ac_int<buffer_width, false>> transpose_out;
 
   SC_CTOR(WeightController) {
     SC_THREAD(read_params);
@@ -123,7 +123,7 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
       K1 = K1 >> params.weight_pack_factor_lg2;
       loop_bounds[1][params.weight_addr_weight_loop_idx[1]] = K1 - 1;
 
-      ac_int<16, false> k_stride = NCols << params.weight_pack_factor_lg2;
+      ac_int<16, false> k_stride = cols << params.weight_pack_factor_lg2;
       ac_int<24, false> c_stride = K2 * K1 * k_stride;
       ac_int<24, false> fx_stride = C2 * C1 * C0 * c_stride;
       ac_int<24, false> fy_stride = FX * fx_stride;
@@ -167,7 +167,7 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
 
                           if (params.weight_transpose) {
                             address =
-                                ((k + c0) * C2 * C1 + c2 * C1 + c1) * NCols;
+                                ((k + c0) * C2 * C1 + c2 * C1 + c1) * cols;
                           }
 
                           send_packed_request<WeightTypes...>(
@@ -294,7 +294,7 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
                             ac_int<LOOP_WIDTH, false> k1 = loop_counters
                                 [1][params.weight_addr_weight_loop_idx[1]];
 
-                            ac_int<BufferWidth, false> data =
+                            ac_int<buffer_width, false> data =
                                 transpose_out.Pop();
 
                             ac_int<16, false> c = c1 * C0 + c0;
@@ -304,7 +304,7 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
                                 (address << params.weight_pack_factor_lg2) +
                                 pack;
 
-                            BufferWriteRequest<ac_int<BufferWidth, false>> req;
+                            BufferWriteRequest<ac_int<buffer_width, false>> req;
                             req.address = address;
                             req.data = data;
                             req.last =
@@ -393,14 +393,14 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
       loop_bounds[1][params.weight_reuse_idx[1]] = 1;
 
       // extra loop to control reuse which only occurs during transpose and
-      // when NCols > NRows
+      // when cols > rows
       int rep_bound = 1;
 
-      if (params.weight_transpose && NCols > NRows) {
-        if (loop_bounds[0][params.reduction_loop_idx[0]] >= (NCols / NRows)) {
+      if (params.weight_transpose && cols > rows) {
+        if (loop_bounds[0][params.reduction_loop_idx[0]] >= (cols / rows)) {
           // we are able to reuse the weights already in the buffer
-          loop_bounds[0][params.reduction_loop_idx[0]] /= (NCols / NRows);
-          rep_bound = (NCols / NRows);
+          loop_bounds[0][params.reduction_loop_idx[0]] /= (cols / rows);
+          rep_bound = (cols / rows);
         }
       }
 
@@ -452,12 +452,12 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
                                  * split it into 4 filters and 3 filters
                                  */
                                 ac_int<4, false> replication_bound = 1;
-                                ac_int<8, false> c_end = NRows;
+                                ac_int<8, false> c_end = rows;
                                 if (params.is_resnet_replication) {
                                   c_end = 3;
-                                  if (NRows == 4) {
+                                  if (rows == 4) {
                                     replication_bound = 1;
-                                  } else if (NRows == 8) {
+                                  } else if (rows == 8) {
                                     // last iteration only unrolls 1 fx
                                     if (loop_counters[1][params.fx_loop_idx] ==
                                         3) {
@@ -465,14 +465,14 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
                                     } else {
                                       replication_bound = 2;
                                     }
-                                  } else if (NRows == 16) {
+                                  } else if (rows == 16) {
                                     if (loop_counters[1][params.fx_loop_idx] ==
                                         0) {
                                       replication_bound = 4;
                                     } else {
                                       replication_bound = 3;
                                     }
-                                  } else if (NRows == 32 || NRows == 64) {
+                                  } else if (rows == 32 || rows == 64) {
                                     replication_bound = 7;
                                   }
                                 } else if (params.is_generic_replication) {
@@ -483,7 +483,7 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
 
                                 ac_int<LOOP_WIDTH, false> fx_repl = 0;
                                 ac_int<LOOP_WIDTH, false> c = 0;
-                                for (int row = 0; row < NRows; row++) {
+                                for (int row = 0; row < rows; row++) {
                                   ac_int<LOOP_WIDTH, false> k2 =
                                       loop_counters[0]
                                                    [params.weight_loop_idx[0]];
@@ -498,30 +498,30 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
                                                    [params.weight_loop_idx[1]];
 
                                   ac_int<16, false> k =
-                                      k2 * K1 * NCols + k1 * NCols;
+                                      k2 * K1 * cols + k1 * cols;
 
-                                  ac_int<LOOP_WIDTH, false> C = NRows * C1;
-                                  ac_int<LOOP_WIDTH, false> C0 = NRows;
+                                  ac_int<LOOP_WIDTH, false> C = rows * C1;
+                                  ac_int<LOOP_WIDTH, false> C0 = rows;
 
                                   if (params.is_resnet_replication ||
                                       params.is_generic_replication) {
                                     if (params.is_resnet_replication) {
                                       C = 3;
                                       C0 = 3;
-                                      if (NRows == 4) {
+                                      if (rows == 4) {
                                         fx = loop_counters[1]
                                                           [params.fx_loop_idx];
-                                      } else if (NRows == 8) {
+                                      } else if (rows == 8) {
                                         fx = loop_counters[1]
                                                           [params.fx_loop_idx] *
                                                  2 +
                                              fx_repl;
-                                      } else if (NRows == 16) {
+                                      } else if (rows == 16) {
                                         fx = loop_counters[1]
                                                           [params.fx_loop_idx] *
                                                  4 +
                                              fx_repl;
-                                      } else if (NRows == 32 || NRows == 64) {
+                                      } else if (rows == 32 || rows == 64) {
                                         fx = fx_repl;
                                       }
                                       FX = 7;
@@ -541,7 +541,7 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
                                           c * K1 + k1;
                                       BufferReadRequest req;
                                       req.address = address;
-                                      req.last = row == NRows - 1 &&
+                                      req.last = row == rows - 1 &&
                                                  loop_counters[1][5] ==
                                                      loop_bounds[1][5] - 1 &&
                                                  loop_counters[1][4] ==
@@ -561,7 +561,7 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
                                     } else {
                                       BufferReadRequest req;
                                       req.address = 0xFFFF;
-                                      req.last = row == NRows - 1 &&
+                                      req.last = row == rows - 1 &&
                                                  loop_counters[1][5] ==
                                                      loop_bounds[1][5] - 1 &&
                                                  loop_counters[1][4] ==
@@ -595,11 +595,11 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
                                         ((c + c1 * C0) * K1) + k1;
 
                                     if (params.weight_transpose &&
-                                        NCols > NRows) {
+                                        cols > rows) {
                                       address =
                                           (fy0 * FX * C * rep_bound * K1) +
                                           (fx * C * rep_bound * K1) +
-                                          ((c + rep * NRows) +
+                                          ((c + rep * rows) +
                                            c1 * C0 * rep_bound) *
                                               K1 +
                                           k1;
@@ -607,7 +607,7 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
 
                                     BufferReadRequest req;
                                     req.address = address;
-                                    req.last = row == NRows - 1 &&
+                                    req.last = row == rows - 1 &&
                                                loop_counters[1][5] ==
                                                    loop_bounds[1][5] - 1 &&
                                                loop_counters[1][4] ==
@@ -701,7 +701,7 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
         ac_int<MAX_FETCH_WIDTH, false> bits;
 
         for (ac_int<4, false> i = 0;; i++) {
-          bits.set_slc(i * PortWidth, weight_resp.Pop());
+          bits.set_slc(i * port_width, weight_resp.Pop());
           if (i == params.weight_num_beats - 1) {
             break;
           }
@@ -740,26 +740,25 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
 
       // don't support transpose when systolic array is larger
       // than 32x32, as it will require a very large buffer
-      if (params.weight_transpose && NRows < 64 && NCols < 64) {
+      if (params.weight_transpose && rows < 64 && cols < 64) {
         // we need a square buffer to store the transpose
-        ac_int<DATA_WIDTH, false>
-            transpose_buffer[NRows > NCols ? NRows : NCols]
-                            [NRows > NCols ? NRows : NCols];
+        ac_int<DATA_WIDTH, false> transpose_buffer[rows > cols ? rows : cols]
+                                                  [rows > cols ? rows : cols];
 
 #ifndef __SYNTHESIS__
         // Assume that the innermost loop is the c0 loop
         // Must be true for the transpose case
-        assert(loop_bounds[1][4] == NCols);
+        assert(loop_bounds[1][4] == cols);
 #endif
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
         while (count++ < total_values) {
-          for (int c0 = 0; c0 < NCols; c0++) {
-            ac_int<BufferWidth, false> bits = packed_bits.Pop();
+          for (int c0 = 0; c0 < cols; c0++) {
+            ac_int<buffer_width, false> bits = packed_bits.Pop();
 
-            ac_int<BufferWidth, false> outputs = 0;
-            bool handled = (unpack_bits<WeightTypes, NCols, BufferWidth,
+            ac_int<buffer_width, false> outputs = 0;
+            bool handled = (unpack_bits<WeightTypes, cols, buffer_width,
                                         MAX_FETCH_WIDTH, WeightTypes...>(
                                 params.weight_dtype, bits, outputs, 0) ||
                             ...);
@@ -772,17 +771,17 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
 #endif
 
 #pragma hls_unroll yes
-            for (int dim = 0; dim < NCols; dim++) {
+            for (int dim = 0; dim < cols; dim++) {
               transpose_buffer[dim][c0] =
                   outputs.template slc<DATA_WIDTH>(dim * DATA_WIDTH);
             }
           }
 
-          for (int c0 = 0; c0 < NCols; c0++) {
-            ac_int<BufferWidth, false> transposed;
+          for (int c0 = 0; c0 < cols; c0++) {
+            ac_int<buffer_width, false> transposed;
 
 #pragma hls_unroll yes
-            for (int dim = 0; dim < NCols; dim++) {
+            for (int dim = 0; dim < cols; dim++) {
               transposed.set_slc(dim * DATA_WIDTH, transpose_buffer[c0][dim]);
             }
 
@@ -799,8 +798,8 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
 
           // Unpack bits into outputs based on dtype
           for (ac_int<4, false> i = 0;; i++) {
-            ac_int<BufferWidth, false> outputs = 0;
-            bool handled = (unpack_bits<WeightTypes, NCols, BufferWidth,
+            ac_int<buffer_width, false> outputs = 0;
+            bool handled = (unpack_bits<WeightTypes, cols, buffer_width,
                                         MAX_FETCH_WIDTH, WeightTypes...>(
                                 params.weight_dtype, bits, outputs, i) ||
                             ...);
@@ -869,12 +868,11 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
                         ac_int<LOOP_WIDTH, false> k1 =
                             loop_counters[1][params.weight_loop_idx[1]];
 
-                        ac_int<16, false> address =
-                            k2 * K1 * NCols + k1 * NCols;
+                        ac_int<16, false> address = k2 * K1 * cols + k1 * cols;
 
                         MemoryRequest request = {
                             params.bias_offset + address * Bias::width / 8,
-                            NCols * Bias::width / 8};
+                            cols * Bias::width / 8};
 
                         bias_req.Push(request);
 
@@ -956,14 +954,14 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
                   for (loop_counters[1][3] = 0;; loop_counters[1][3]++) {
                     for (loop_counters[1][4] = 0;; loop_counters[1][4]++) {
                       for (loop_counters[1][5] = 0;; loop_counters[1][5]++) {
-                        ac_int<Bias::width * NCols, false> bits;
+                        ac_int<Bias::width * cols, false> bits;
 
-                        process_matrix_input<Bias, NCols, PortWidth,
-                                             Bias::width * NCols>(bias_resp,
-                                                                  bits);
+                        process_matrix_input<Bias, cols, port_width,
+                                             Bias::width * cols>(bias_resp,
+                                                                 bits);
 
-                        Pack1D<Bias, NCols> biases =
-                            BitsToType<Pack1D<Bias, NCols>>(TypeToBits(bits));
+                        Pack1D<Bias, cols> biases =
+                            BitsToType<Pack1D<Bias, cols>>(TypeToBits(bits));
 
                         bias_data.Push(biases);
                         if (loop_counters[1][5] == loop_bounds[1][5]) {

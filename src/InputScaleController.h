@@ -5,7 +5,7 @@
 
 #include "AccelTypes.h"
 
-template <typename Scale, int NRows>
+template <typename Scale, int rows>
 SC_MODULE(InputScaleController) {
   sc_in<bool> CCS_INIT_S1(clk);
   sc_in<bool> CCS_INIT_S1(rstn);
@@ -25,21 +25,21 @@ SC_MODULE(InputScaleController) {
   static constexpr int LOOP_WIDTH = 10;
 
   // num x values packed in a word
-  static constexpr int packing_factor = (NRows == 4)    ? 1
-                                        : (NRows == 8)  ? 2
-                                        : (NRows == 16) ? 4
-                                        : (NRows == 32) ? 8
-                                        : (NRows == 64) ? 8
-                                                        : 0;
+  static constexpr int packing_factor = (rows == 4)    ? 1
+                                        : (rows == 8)  ? 2
+                                        : (rows == 16) ? 4
+                                        : (rows == 32) ? 8
+                                        : (rows == 64) ? 8
+                                                       : 0;
 
   // num words needed to store the boundary pixels. essentially
   // ceil(3/packing_factor)
-  static constexpr int boundary_words = (NRows == 4)    ? 3
-                                        : (NRows == 8)  ? 2
-                                        : (NRows == 16) ? 1
-                                        : (NRows == 32) ? 1
-                                        : (NRows == 64) ? 1
-                                                        : 0;
+  static constexpr int boundary_words = (rows == 4)    ? 3
+                                        : (rows == 8)  ? 2
+                                        : (rows == 16) ? 1
+                                        : (rows == 32) ? 1
+                                        : (rows == 64) ? 1
+                                                       : 0;
 
   SC_CTOR(InputScaleController) {
     SC_THREAD(read_params);
@@ -182,12 +182,12 @@ SC_MODULE(InputScaleController) {
                               ac_int<32, false> address = y * X * C + x * C + c;
 
                               if (params.is_resnet_replication) {
-                                address = y * (X / packing_factor) * NRows +
-                                          (x / packing_factor) * NRows + c;
+                                address = y * (X / packing_factor) * rows +
+                                          (x / packing_factor) * rows + c;
                               } else if (params.is_generic_replication) {
                                 address =
-                                    y * (X >> params.fx_unrolling_lg2) * NRows +
-                                    (x >> params.fx_unrolling_lg2) * NRows + c;
+                                    y * (X >> params.fx_unrolling_lg2) * rows +
+                                    (x >> params.fx_unrolling_lg2) * rows + c;
                               } else if (params.merge_heads) {
                                 ac_int<16, false> mask =
                                     (1 << params.head_size_lg2) - 1;
@@ -197,7 +197,7 @@ SC_MODULE(InputScaleController) {
                                           (c & mask);
                               } else if (params.input_transpose) {
                                 address =
-                                    (c + (x % NRows)) * X + (x / NRows) * NRows;
+                                    (c + (x % rows)) * X + (x / rows) * rows;
                               }
 
                               send_input_request<Scale, 1>(
@@ -457,12 +457,12 @@ SC_MODULE(InputScaleController) {
         }
       }
 
-      if (params.is_resnet_replication && NRows >= 16) {
+      if (params.is_resnet_replication && rows >= 16) {
         loop_bounds[1][params.x_loop_idx[1]] =
             (loop_bounds[1][params.x_loop_idx[1]] * params.stride /
              packing_factor) +
             2;
-      } else if (params.is_resnet_replication && NRows == 8) {
+      } else if (params.is_resnet_replication && rows == 8) {
         loop_bounds[1][params.x_loop_idx[1]] =
             (loop_bounds[1][params.x_loop_idx[1]] * params.stride /
              packing_factor) +
@@ -519,7 +519,7 @@ SC_MODULE(InputScaleController) {
                             ac_int<16, false> x = STRIDE * x0 + fx;
                             ac_int<16, false> y = STRIDE * y0 + fy;
                             ac_int<16, false> address;
-                            if (params.is_resnet_replication && NRows >= 8) {
+                            if (params.is_resnet_replication && rows >= 8) {
                               address = y * y_stride + (x0 + fx) * C1 + c1;
                             } else if (is_downsample) {
                               address = y0 * X0 * C1 + x0 * C1 + c1;

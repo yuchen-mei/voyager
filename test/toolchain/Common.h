@@ -322,14 +322,14 @@ void set_quantize_params(const codegen::Operation &param,
   }
 }
 
-template <typename T, size_t N, int PortWidth, typename... Ts>
+template <typename T, size_t N, int port_width, typename... Ts>
 bool try_fetch_params_for_type(ac_int<DTYPE_INDEX_WIDTH, false> dtype,
                                int loop_bound, int &out_pf, int &out_fw) {
   if (get_type_index<T, Ts...>() != dtype) {
     return false;
   }
 
-  using cfg = dtype_fetch_config<T, N, PortWidth>;
+  using cfg = dtype_fetch_config<T, N, port_width>;
   constexpr int pf = cfg::packing_factor;
 
   // decide if we can do a full pack
@@ -346,13 +346,13 @@ bool try_fetch_params_for_type(ac_int<DTYPE_INDEX_WIDTH, false> dtype,
   return true;
 }
 
-template <size_t N, int PortWidth, typename... Ts>
+template <size_t N, int port_width, typename... Ts>
 int get_packing_factor(ac_int<DTYPE_INDEX_WIDTH, false> dtype, int loop_bound,
                        int &effective_fetch_width) {
   int pf = 1;
 
   // fold: try each Ts in turn. ||-fold stops updating pf once one returns true.
-  bool found = (try_fetch_params_for_type<Ts, N, PortWidth, Ts...>(
+  bool found = (try_fetch_params_for_type<Ts, N, port_width, Ts...>(
                     dtype, loop_bound, pf, effective_fetch_width) ||
                 ...);
 

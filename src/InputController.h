@@ -7,48 +7,48 @@
 #include "ArchitectureParams.h"
 #include "Utils.h"
 
-template <typename InputTypeTuple, int NRows, int PortWidth, int BufferWidth>
+template <typename InputTypeTuple, int rows, int port_width, int buffer_width>
 struct InputController;
 
-template <typename... InputTypes, int NRows, int PortWidth, int BufferWidth>
-struct InputController<std::tuple<InputTypes...>, NRows, PortWidth, BufferWidth>
-    : public sc_module {
+template <typename... InputTypes, int rows, int port_width, int buffer_width>
+struct InputController<std::tuple<InputTypes...>, rows, port_width,
+                       buffer_width> : public sc_module {
   static constexpr int LOOP_WIDTH = 10;
-  static constexpr int DATA_WIDTH = BufferWidth / NRows;
+  static constexpr int DATA_WIDTH = buffer_width / rows;
   static constexpr int MAX_FETCH_WIDTH = std::max(
-      {dtype_fetch_config<InputTypes, NRows, PortWidth>::max_fetch_width...});
+      {dtype_fetch_config<InputTypes, rows, port_width>::max_fetch_width...});
 
   // num x values packed in a word for replication
-  static constexpr int packing_factor = (NRows == 4)    ? 1
-                                        : (NRows == 8)  ? 2
-                                        : (NRows == 16) ? 4
-                                        : (NRows == 32) ? 8
-                                        : (NRows == 64) ? 8
-                                                        : 0;
+  static constexpr int packing_factor = (rows == 4)    ? 1
+                                        : (rows == 8)  ? 2
+                                        : (rows == 16) ? 4
+                                        : (rows == 32) ? 8
+                                        : (rows == 64) ? 8
+                                                       : 0;
 
   // num words needed to store the boundary pixels. essentially
   // ceil(3/packing_factor)
-  static constexpr int boundary_words = (NRows == 4)    ? 3
-                                        : (NRows == 8)  ? 2
-                                        : (NRows == 16) ? 1
-                                        : (NRows == 32) ? 1
-                                        : (NRows == 64) ? 1
-                                                        : 0;
+  static constexpr int boundary_words = (rows == 4)    ? 3
+                                        : (rows == 8)  ? 2
+                                        : (rows == 16) ? 1
+                                        : (rows == 32) ? 1
+                                        : (rows == 64) ? 1
+                                                       : 0;
 
   sc_in<bool> CCS_INIT_S1(clk);
   sc_in<bool> CCS_INIT_S1(rstn);
 
   Connections::Out<MemoryRequest> CCS_INIT_S1(input_req);
-  Connections::In<ac_int<PortWidth, false>> CCS_INIT_S1(input_resp);
+  Connections::In<ac_int<port_width, false>> CCS_INIT_S1(input_resp);
   sc_fifo<bool> fetcher_done;
   sc_fifo<bool> fetcher_done_2;
 
-  Connections::Out<BufferWriteRequest<ac_int<BufferWidth, false>>>
+  Connections::Out<BufferWriteRequest<ac_int<buffer_width, false>>>
       write_request[2];
   Connections::Out<BufferReadRequest> read_request[2];
 
-  Connections::In<ac_int<BufferWidth, false>> CCS_INIT_S1(window_buffer_in);
-  Connections::Out<ac_int<BufferWidth, false>> CCS_INIT_S1(window_buffer_out);
+  Connections::In<ac_int<buffer_width, false>> CCS_INIT_S1(window_buffer_in);
+  Connections::Out<ac_int<buffer_width, false>> CCS_INIT_S1(window_buffer_out);
 
   Connections::In<MatrixParams> CCS_INIT_S1(params_in);
   Connections::Combinational<MatrixParams> CCS_INIT_S1(fetcher_params);
@@ -59,7 +59,7 @@ struct InputController<std::tuple<InputTypes...>, NRows, PortWidth, BufferWidth>
   Connections::Combinational<MatrixParams> CCS_INIT_S1(transposer_params);
 
   Connections::Combinational<ac_int<MAX_FETCH_WIDTH, false>> packed_bits;
-  Connections::Combinational<ac_int<BufferWidth, false>> transpose_out;
+  Connections::Combinational<ac_int<buffer_width, false>> transpose_out;
 
   SC_CTOR(InputController) {
     SC_THREAD(read_params);
@@ -162,7 +162,7 @@ struct InputController<std::tuple<InputTypes...>, NRows, PortWidth, BufferWidth>
 
       ac_int<16, false> Y = Y1 * IY0;
       ac_int<16, false> X = X1 * IX0;
-      ac_int<16, false> c_stride = NRows << params.input_pack_factor_lg2;
+      ac_int<16, false> c_stride = rows << params.input_pack_factor_lg2;
       ac_int<16, false> C = C2 * C1 * c_stride;
 
 #pragma hls_pipeline_init_interval 1
@@ -221,12 +221,12 @@ struct InputController<std::tuple<InputTypes...>, NRows, PortWidth, BufferWidth>
                               ac_int<32, false> address = y * X * C + x * C + c;
 
                               if (params.is_resnet_replication) {
-                                address = y * (X / packing_factor) * NRows +
-                                          (x / packing_factor) * NRows + c;
+                                address = y * (X / packing_factor) * rows +
+                                          (x / packing_factor) * rows + c;
                               } else if (params.is_generic_replication) {
                                 address =
-                                    y * (X >> params.fx_unrolling_lg2) * NRows +
-                                    (x >> params.fx_unrolling_lg2) * NRows + c;
+                                    y * (X >> params.fx_unrolling_lg2) * rows +
+                                    (x >> params.fx_unrolling_lg2) * rows + c;
                               } else if (params.merge_heads) {
                                 // (c / head_size) * (X * head_size) + (x *
                                 // head_size) + (c % head_size)
@@ -238,7 +238,7 @@ struct InputController<std::tuple<InputTypes...>, NRows, PortWidth, BufferWidth>
                                           (c & mask);
                               } else if (params.input_transpose) {
                                 address =
-                                    (c + (x % NRows)) * X + (x / NRows) * NRows;
+                                    (c + (x % rows)) * X + (x / rows) * rows;
                               }
 
                               send_packed_request<InputTypes...>(
@@ -419,10 +419,10 @@ struct InputController<std::tuple<InputTypes...>, NRows, PortWidth, BufferWidth>
                               ac_int<16, true> x = x1 * IX0 + x0 - x_padding;
                               ac_int<16, true> y = y1 * IY0 + y0 - y_padding;
 
-                              ac_int<BufferWidth, false> data;
+                              ac_int<buffer_width, false> data;
 
                               if ((x < 0) || (y < 0) || (x >= X) || (y >= Y)) {
-                                set_zero<NRows, BufferWidth, InputTypes...>(
+                                set_zero<rows, buffer_width, InputTypes...>(
                                     params.input_dtype, data,
                                     params.use_input_codebook,
                                     params.input_code_zero_idx);
@@ -452,7 +452,7 @@ struct InputController<std::tuple<InputTypes...>, NRows, PortWidth, BufferWidth>
                                                  loop_bounds[1][0] - 1 &&
                                              pack == num_packs;
 
-                              BufferWriteRequest<ac_int<BufferWidth, false>>
+                              BufferWriteRequest<ac_int<buffer_width, false>>
                                   req;
                               req.address = address;
                               req.data = data;
@@ -535,12 +535,12 @@ struct InputController<std::tuple<InputTypes...>, NRows, PortWidth, BufferWidth>
         }
       }
 
-      if (params.is_resnet_replication && NRows >= 16) {
+      if (params.is_resnet_replication && rows >= 16) {
         loop_bounds[1][params.x_loop_idx[1]] =
             (loop_bounds[1][params.x_loop_idx[1]] * params.stride /
              packing_factor) +
             2;
-      } else if (params.is_resnet_replication && NRows == 8) {
+      } else if (params.is_resnet_replication && rows == 8) {
         loop_bounds[1][params.x_loop_idx[1]] =
             (loop_bounds[1][params.x_loop_idx[1]] * params.stride /
              packing_factor) +
@@ -597,7 +597,7 @@ struct InputController<std::tuple<InputTypes...>, NRows, PortWidth, BufferWidth>
                             ac_int<16, false> x = STRIDE * x0 + fx;
                             ac_int<16, false> y = STRIDE * y0 + fy0;
                             ac_int<16, false> address;
-                            if (params.is_resnet_replication && NRows >= 8) {
+                            if (params.is_resnet_replication && rows >= 8) {
                               address = y * y_stride + (x0 + fx) * C1 + c1;
                             } else if (is_downsample) {
                               address = y0 * X0 * C1 + x0 * C1 + c1;
@@ -702,18 +702,18 @@ struct InputController<std::tuple<InputTypes...>, NRows, PortWidth, BufferWidth>
       }
 
       // num x values packed in a word sent to the systolic array
-      constexpr int unroll = (NRows == 4)                   ? 1
-                             : (NRows == 8)                 ? 2
-                             : (NRows == 16)                ? 4
-                             : (NRows == 32 || NRows == 64) ? 7
-                                                            : 0;
+      constexpr int unroll = (rows == 4)                  ? 1
+                             : (rows == 8)                ? 2
+                             : (rows == 16)               ? 4
+                             : (rows == 32 || rows == 64) ? 7
+                                                          : 0;
 
       // additional x values packed in a word sent to the systolic array, but
       // are unused by the systolic array
-      constexpr int additional = (NRows == 16) ? 1 : 0;
+      constexpr int additional = (rows == 16) ? 1 : 0;
 
       if (params.is_resnet_replication &&
-          (NRows == 16 || NRows == 32 || NRows == 64)) {
+          (rows == 16 || rows == 32 || rows == 64)) {
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
         for (loop_counters[0][0] = 0;; loop_counters[0][0]++) {
@@ -726,8 +726,8 @@ struct InputController<std::tuple<InputTypes...>, NRows, PortWidth, BufferWidth>
                     for (loop_counters[1][2] = 0;; loop_counters[1][2]++) {
                       for (loop_counters[1][3] = 0;; loop_counters[1][3]++) {
                         for (loop_counters[1][4] = 0;; loop_counters[1][4]++) {
-                          ac_int<BufferWidth, false> data;
-                          ac_int<BufferWidth, false> buffer;
+                          ac_int<buffer_width, false> data;
+                          ac_int<buffer_width, false> buffer;
 
                           for (loop_counters[1][5] = 0;;
                                loop_counters[1][5]++) {
@@ -847,7 +847,7 @@ struct InputController<std::tuple<InputTypes...>, NRows, PortWidth, BufferWidth>
             break;
           }
         }
-      } else if (params.is_resnet_replication && NRows == 8) {
+      } else if (params.is_resnet_replication && rows == 8) {
         // no window buffer reuse, but need to combine
         // multiple words together
         for (loop_counters[0][0] = 0;; loop_counters[0][0]++) {
@@ -860,14 +860,14 @@ struct InputController<std::tuple<InputTypes...>, NRows, PortWidth, BufferWidth>
                     for (loop_counters[1][2] = 0;; loop_counters[1][2]++) {
                       for (loop_counters[1][3] = 0;; loop_counters[1][3]++) {
                         for (loop_counters[1][4] = 0;; loop_counters[1][4]++) {
-                          ac_int<BufferWidth, false> buffer =
+                          ac_int<buffer_width, false> buffer =
                               window_buffer_in.Pop();
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
                           for (loop_counters[1][5] = 0;;
                                loop_counters[1][5]++) {
-                            ac_int<BufferWidth, false> data;
+                            ac_int<buffer_width, false> data;
 #pragma hls_unroll yes
                             for (int dim = 0; dim < 3; dim++) {
                               auto bits = buffer.template slc<DATA_WIDTH>(
@@ -957,7 +957,7 @@ struct InputController<std::tuple<InputTypes...>, NRows, PortWidth, BufferWidth>
         ac_int<MAX_FETCH_WIDTH, false> bits;
 
         for (ac_int<4, false> i = 0;; i++) {
-          bits.set_slc(i * PortWidth, input_resp.Pop());
+          bits.set_slc(i * port_width, input_resp.Pop());
           if (i == params.input_num_beats - 1) {
             break;
           }
@@ -993,25 +993,25 @@ struct InputController<std::tuple<InputTypes...>, NRows, PortWidth, BufferWidth>
       loop_bounds[1][params.fx_loop_idx] = 1;
       loop_bounds[1][params.fy_loop_idx[1]] = 1;
 
-      if (params.input_transpose && NRows <= 32) {
-        ac_int<DATA_WIDTH> transpose_buffer[NRows][NRows];
+      if (params.input_transpose && rows <= 32) {
+        ac_int<DATA_WIDTH> transpose_buffer[rows][rows];
 
         ac_int<32, false> total_count =
             loop_bounds[0][0] * loop_bounds[0][1] * loop_bounds[0][2] *
             loop_bounds[0][3] * loop_bounds[1][0] * loop_bounds[1][1] *
             loop_bounds[1][2] * loop_bounds[1][3] * loop_bounds[1][4] *
-            loop_bounds[1][5] / NRows;
+            loop_bounds[1][5] / rows;
 
         ac_int<32, false> count = 0;
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
         while (count++ < total_count) {
-          for (int c0 = 0; c0 < NRows; c0++) {
+          for (int c0 = 0; c0 < rows; c0++) {
             auto bits = packed_bits.Pop();
 
-            ac_int<BufferWidth, false> outputs = 0;
-            bool handled = (unpack_bits<InputTypes, NRows, BufferWidth,
+            ac_int<buffer_width, false> outputs = 0;
+            bool handled = (unpack_bits<InputTypes, rows, buffer_width,
                                         MAX_FETCH_WIDTH, InputTypes...>(
                                 params.input_dtype, bits, outputs, 0) ||
                             ...);
@@ -1024,17 +1024,17 @@ struct InputController<std::tuple<InputTypes...>, NRows, PortWidth, BufferWidth>
 #endif
 
 #pragma hls_unroll yes
-            for (int dim = 0; dim < NRows; dim++) {
+            for (int dim = 0; dim < rows; dim++) {
               transpose_buffer[dim][c0] =
                   outputs.template slc<DATA_WIDTH>(dim * DATA_WIDTH);
             }
           }
 
           // Write out from tranpose buffer
-          for (int c0 = 0; c0 < NRows; c0++) {
-            ac_int<BufferWidth, false> transposed;
+          for (int c0 = 0; c0 < rows; c0++) {
+            ac_int<buffer_width, false> transposed;
 #pragma hls_unroll yes
-            for (int dim = 0; dim < NRows; dim++) {
+            for (int dim = 0; dim < rows; dim++) {
               transposed.set_slc(dim * DATA_WIDTH, transpose_buffer[c0][dim]);
             }
             transpose_out.Push(transposed);
@@ -1050,8 +1050,8 @@ struct InputController<std::tuple<InputTypes...>, NRows, PortWidth, BufferWidth>
 
           // Unpack bits into outputs based on dtype
           for (ac_int<4, false> i = 0;; i++) {
-            ac_int<BufferWidth, false> outputs = 0;
-            bool handled = (unpack_bits<InputTypes, NRows, BufferWidth,
+            ac_int<buffer_width, false> outputs = 0;
+            bool handled = (unpack_bits<InputTypes, rows, buffer_width,
                                         MAX_FETCH_WIDTH, InputTypes...>(
                                 params.input_dtype, bits, outputs, i) ||
                             ...);

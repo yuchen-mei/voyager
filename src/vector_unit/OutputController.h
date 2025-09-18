@@ -6,7 +6,7 @@
 #include "../ArchitectureParams.h"
 #include "VectorOps.h"
 
-template <typename VectorType, typename ScaleType, int Width,
+template <typename VectorType, typename ScaleType, int width,
           typename... OutputTypes>
 SC_MODULE(OutputController) {
   sc_in<bool> CCS_INIT_S1(clk);
@@ -16,8 +16,8 @@ SC_MODULE(OutputController) {
   Connections::Combinational<VectorParams> CCS_INIT_S1(send_data_params);
   Connections::Combinational<VectorParams> CCS_INIT_S1(quantizer_params);
 
-  Connections::In<Pack1D<VectorType, Width>> CCS_INIT_S1(vector_in);
-  Connections::Combinational<Pack1D<VectorType, Width>> CCS_INIT_S1(
+  Connections::In<Pack1D<VectorType, width>> CCS_INIT_S1(vector_in);
+  Connections::Combinational<Pack1D<VectorType, width>> CCS_INIT_S1(
       quantized_data);
 
   Connections::Fifo<ScaleType, 16> CCS_INIT_S1(scale_fifo);
@@ -90,13 +90,13 @@ SC_MODULE(OutputController) {
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
         while (counter++ < num_outputs) {
-          Pack1D<VectorType, Width> outputs = vector_in.Pop();
+          Pack1D<VectorType, width> outputs = vector_in.Pop();
 
-          Pack1D<ac_float_t, Width> ac_float_outputs;
-          Pack1D<ac_int<4, false>, Width> indices;
+          Pack1D<ac_float_t, width> ac_float_outputs;
+          Pack1D<ac_int<4, false>, width> indices;
 
 #pragma hls_unroll yes
-          for (int i = 0; i < Width; i++) {
+          for (int i = 0; i < width; i++) {
             ac_float_outputs[i] = ac_float_t(outputs[i].float_val);
             indices[i] = 0;
           }
@@ -104,14 +104,14 @@ SC_MODULE(OutputController) {
 #pragma hls_unroll 4
           for (int j = 0; j < NUM_CODEBOOK_ENTRIES - 1; j++) {
 #pragma hls_unroll yes
-            for (int i = 0; i < Width; i++) {
+            for (int i = 0; i < width; i++) {
               indices[i] += ac_float_outputs[i] > midpoints[j];
             }
           }
 
-          Pack1D<VectorType, Width> quantized_outputs;
+          Pack1D<VectorType, width> quantized_outputs;
 #pragma hls_unroll yes
-          for (int i = 0; i < Width; i++) {
+          for (int i = 0; i < width; i++) {
             quantized_outputs[i].set_bits(indices[i]);
           }
           quantized_data.Push(quantized_outputs);
@@ -123,7 +123,7 @@ SC_MODULE(OutputController) {
 #pragma hls_pipeline_stall_mode flush
         while (counter++ < num_outputs) {
           // Pass through
-          Pack1D<VectorType, Width> outputs = vector_in.Pop();
+          Pack1D<VectorType, width> outputs = vector_in.Pop();
           quantized_data.Push(outputs);
         }
       }
@@ -160,9 +160,9 @@ SC_MODULE(OutputController) {
         }
 #endif
 
-        Pack1D<VectorType, Width> outputs = quantized_data.Pop();
+        Pack1D<VectorType, width> outputs = quantized_data.Pop();
 
-        bool found = (send_output_data<OutputTypes, Width, VectorType,
+        bool found = (send_output_data<OutputTypes, width, VectorType,
                                        OC_PORT_WIDTH, OutputTypes...>(
                           params.output_dtype, params.use_output_codebook,
                           outputs, vector_out) ||
@@ -219,7 +219,7 @@ SC_MODULE(OutputController) {
       ac_int<LOOP_WIDTH, false> X0 =
           params.output_loops[1][params.output_x_loop_idx[1]];
       ac_int<16, false> K1 =
-          params.output_loops[1][params.output_k_loop_idx[1]] * Width;
+          params.output_loops[1][params.output_k_loop_idx[1]] * width;
 
       ac_int<16, false> X = X0 * X1;
       ac_int<16, false> K = K2 * K1;
@@ -237,7 +237,7 @@ SC_MODULE(OutputController) {
 #pragma hls_pipeline_stall_mode flush
         while (true) {
           ac_int<ADDRESS_WIDTH, false> address = dwc_address_in.Pop();
-          bool found = (send_output_address<OutputTypes, Width, OC_PORT_WIDTH,
+          bool found = (send_output_address<OutputTypes, width, OC_PORT_WIDTH,
                                             OutputTypes...>(
                             params.output_dtype, params.vector_output_offset,
                             address, vector_address_out) ||
@@ -252,7 +252,7 @@ SC_MODULE(OutputController) {
 #if SUPPORT_MX
           if (params.quantize_output_mx) {
             scale_address_out.Push(params.mx_scale_offset +
-                                   address / Width * ScaleType::width / 8);
+                                   address / width * ScaleType::width / 8);
           }
 #endif
         }
@@ -284,7 +284,7 @@ SC_MODULE(OutputController) {
 
                       ac_int<32, false> y = y1 * Y0 + y0;
                       ac_int<32, false> x = x1 * X0 + x0;
-                      ac_int<32, false> k = k2 * K1 + k1 * Width;
+                      ac_int<32, false> k = k2 * K1 + k1 * width;
 
                       if (params.transpose_for_scores) {
                         // k / head_size * (X * head_size) + x * head_size
@@ -304,19 +304,19 @@ SC_MODULE(OutputController) {
                                  loop_counters[1][0] * loop_bound_3 +
                                  loop_counters[1][1] * loop_bound_4 +
                                  loop_counters[1][2]) *
-                                Width;
+                                width;
                     }
 
 #if SUPPORT_MX
                     if (params.quantize_output_mx) {
                       scale_address_out.Push(params.mx_scale_offset +
-                                             address / Width *
+                                             address / width *
                                                  ScaleType::width / 8);
                     }
 #endif
 
                     bool found =
-                        (send_output_address<OutputTypes, Width, OC_PORT_WIDTH,
+                        (send_output_address<OutputTypes, width, OC_PORT_WIDTH,
                                              OutputTypes...>(
                              params.output_dtype, params.vector_output_offset,
                              address, vector_address_out) ||

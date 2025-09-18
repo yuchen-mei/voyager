@@ -11,15 +11,15 @@
 
 template <typename InputTypeTuple, typename WeightTypeTuple, typename Input,
           typename Weight, typename Psum, typename Buffer, typename Scale,
-          int NRows, int NCols, int BufferSize>
+          int rows, int cols, int buffer_size>
 struct MatrixProcessor;
 
 template <typename... InputTypes, typename... WeightTypes, typename Input,
           typename Weight, typename Psum, typename Buffer, typename Scale,
-          int NRows, int NCols, int BufferSize>
+          int rows, int cols, int buffer_size>
 struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
-                       Input, Weight, Psum, Buffer, Scale, NRows, NCols,
-                       BufferSize> : public sc_module {
+                       Input, Weight, Psum, Buffer, Scale, rows, cols,
+                       buffer_size> : public sc_module {
   static constexpr int LOOP_WIDTH = 10;
   static constexpr int FIFO_DEPTH = SUPPORT_MX ? 16 : 1;
 
@@ -30,24 +30,24 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
 #endif
 
  private:
-  InputSerializedSkewer<Input, NRows> CCS_INIT_S1(input_skewer);
-  Connections::Combinational<Pack1D<PEInput<Input>, NRows>> CCS_INIT_S1(
+  InputSerializedSkewer<Input, rows> CCS_INIT_S1(input_skewer);
+  Connections::Combinational<Pack1D<PEInput<Input>, rows>> CCS_INIT_S1(
       input_skewer_din);
 
-  WeightSerializedSkewer<Weight, NCols> CCS_INIT_S1(weight_skewer);
-  Connections::Combinational<Pack1D<PEWeight<Weight>, NCols>> CCS_INIT_S1(
+  WeightSerializedSkewer<Weight, cols> CCS_INIT_S1(weight_skewer);
+  Connections::Combinational<Pack1D<PEWeight<Weight>, cols>> CCS_INIT_S1(
       weight_skewer_din);
 
-  DeserializedSkewer<Psum, NCols> CCS_INIT_S1(psum_out_skewer);
-  Connections::Combinational<Pack1D<Psum, NCols>> CCS_INIT_S1(
+  DeserializedSkewer<Psum, cols> CCS_INIT_S1(psum_out_skewer);
+  Connections::Combinational<Pack1D<Psum, cols>> CCS_INIT_S1(
       psum_out_skewer_dout);
 
-  SystolicArray<Input, Weight, Psum, NRows, NCols> CCS_INIT_S1(systolic_array);
+  SystolicArray<Input, Weight, Psum, rows, cols> CCS_INIT_S1(systolic_array);
 
-  Connections::Fifo<Pack1D<Buffer, NCols>, FIFO_DEPTH> CCS_INIT_S1(
+  Connections::Fifo<Pack1D<Buffer, cols>, FIFO_DEPTH> CCS_INIT_S1(
       accumulation_fifo);
-  Connections::Combinational<Pack1D<Buffer, NCols>> accumulation_enq;
-  Connections::Combinational<Pack1D<Buffer, NCols>> accumulation_deq;
+  Connections::Combinational<Pack1D<Buffer, cols>> accumulation_enq;
+  Connections::Combinational<Pack1D<Buffer, cols>> accumulation_deq;
 
  public:
   sc_in<bool> CCS_INIT_S1(clk);
@@ -56,15 +56,15 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
   Connections::In<ac_int<INPUT_BUFFER_WIDTH, false>> CCS_INIT_S1(input_channel);
   Connections::In<ac_int<WEIGHT_BUFFER_WIDTH, false>> CCS_INIT_S1(
       weight_channel);
-  Connections::In<Pack1D<Buffer, NCols>> CCS_INIT_S1(bias_channel);
+  Connections::In<Pack1D<Buffer, cols>> CCS_INIT_S1(bias_channel);
 
-  Connections::Out<Pack1D<Buffer, NCols>> CCS_INIT_S1(output_channel);
+  Connections::Out<Pack1D<Buffer, cols>> CCS_INIT_S1(output_channel);
 
   Connections::Out<ac_int<16, false>>
       accumulation_buffer_read_address[ACCUM_BUFFER_BANKS];
-  Connections::In<Pack1D<Buffer, NCols>>
+  Connections::In<Pack1D<Buffer, cols>>
       accumulation_buffer_read_data[ACCUM_BUFFER_BANKS];
-  Connections::Out<BufferWriteRequest<Pack1D<Buffer, NCols>>>
+  Connections::Out<BufferWriteRequest<Pack1D<Buffer, cols>>>
       accumulation_buffer_write_request[ACCUM_BUFFER_BANKS];
 
 #if DOUBLE_BUFFERED_ACCUM_BUFFER
@@ -83,14 +83,14 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
   Connections::Combinational<MatrixParams> write_back_params_enq;
   Connections::Combinational<MatrixParams> write_back_params_deq;
 
-  Connections::Combinational<PEInput<Input>> systolic_array_inputs[NRows];
-  Connections::Combinational<PEWeight<Weight>> systolic_array_weights[NCols];
-  Connections::Combinational<Psum> systolic_array_psums[NCols];
-  Connections::Combinational<Psum> systolic_array_outputs[NCols];
+  Connections::Combinational<PEInput<Input>> systolic_array_inputs[rows];
+  Connections::Combinational<PEWeight<Weight>> systolic_array_weights[cols];
+  Connections::Combinational<Psum> systolic_array_psums[cols];
+  Connections::Combinational<Psum> systolic_array_outputs[cols];
 
 #if SUPPORT_MX
   Connections::In<ac_int<Scale::width, false>> CCS_INIT_S1(input_scale_channel);
-  Connections::In<ac_int<Scale::width * NCols, false>> CCS_INIT_S1(
+  Connections::In<ac_int<Scale::width * cols, false>> CCS_INIT_S1(
       weight_scale_channel);
 #endif
 
@@ -101,33 +101,33 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
     input_skewer.clk(clk);
     input_skewer.rstn(rstn);
     input_skewer.din(input_skewer_din);
-    for (int i = 0; i < NRows; i++) {
+    for (int i = 0; i < rows; i++) {
       input_skewer.dout[i](systolic_array_inputs[i]);
     }
 
     weight_skewer.clk(clk);
     weight_skewer.rstn(rstn);
     weight_skewer.din(weight_skewer_din);
-    for (int i = 0; i < NCols; i++) {
+    for (int i = 0; i < cols; i++) {
       weight_skewer.dout[i](systolic_array_weights[i]);
     }
 
     psum_out_skewer.clk(clk);
     psum_out_skewer.rstn(rstn);
-    for (int i = 0; i < NCols; i++) {
+    for (int i = 0; i < cols; i++) {
       psum_out_skewer.din[i](systolic_array_outputs[i]);
     }
     psum_out_skewer.dout(psum_out_skewer_dout);
 
     systolic_array.clk(clk);
     systolic_array.rstn(rstn);
-    for (int i = 0; i < NRows; i++) {
+    for (int i = 0; i < rows; i++) {
       systolic_array.inputs[i](systolic_array_inputs[i]);
     }
-    for (int i = 0; i < NCols; i++) {
+    for (int i = 0; i < cols; i++) {
       systolic_array.outputs[i](systolic_array_outputs[i]);
     }
-    for (int i = 0; i < NCols; i++) {
+    for (int i = 0; i < cols; i++) {
       systolic_array.weights[i](systolic_array_weights[i]);
     }
 
@@ -188,14 +188,14 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
       loop_bounds[1][params.weight_reuse_idx[1]] = 1;
 
       // extra loop to control reuse which only occurs during transpose and when
-      // NCols > NRows
+      // cols > rows
       int rep_bound = 1;
 
-      if (params.weight_transpose && NCols > NRows) {
-        if (loop_bounds[0][params.reduction_loop_idx[0]] >= (NCols / NRows)) {
+      if (params.weight_transpose && cols > rows) {
+        if (loop_bounds[0][params.reduction_loop_idx[0]] >= (cols / rows)) {
           // we are able to reuse the weights already in the buffer
-          loop_bounds[0][params.reduction_loop_idx[0]] /= (NCols / NRows);
-          rep_bound = (NCols / NRows);
+          loop_bounds[0][params.reduction_loop_idx[0]] /= (cols / rows);
+          rep_bound = (cols / rows);
         }
       }
 
@@ -227,14 +227,14 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
       while (step++ < total_loops) {
-        for (int weight_count = 0; weight_count < NRows; weight_count++) {
-          Pack1D<PEWeight<Weight>, NCols> weights;
+        for (int weight_count = 0; weight_count < rows; weight_count++) {
+          Pack1D<PEWeight<Weight>, cols> weights;
           auto bits = weight_channel.Pop();
 
-          constexpr int weight_width = WEIGHT_BUFFER_WIDTH / NCols;
+          constexpr int weight_width = WEIGHT_BUFFER_WIDTH / cols;
 
 #pragma hls_unroll yes
-          for (int i = 0; i < NCols; i++) {
+          for (int i = 0; i < cols; i++) {
             auto data = bits.template slc<weight_width>(i * weight_width);
 
 #if SUPPORT_CODEBOOK_QUANT
@@ -313,7 +313,7 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
         }
 #endif
 
-        Pack1D<PEInput<Input>, NRows> inputs;
+        Pack1D<PEInput<Input>, rows> inputs;
 
         bool swap_weights;
         if (params.weight_reuse_idx[0] != params.weight_reuse_idx[1]) {
@@ -324,16 +324,16 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
         }
 
 #pragma hls_unroll yes
-        for (int i = 0; i < NRows; i++) {
+        for (int i = 0; i < rows; i++) {
           inputs[i].swapWeights = swap_weights || step == 0;
         }
 
         auto bits = input_channel.Pop();
 
-        constexpr int input_width = INPUT_BUFFER_WIDTH / NRows;
+        constexpr int input_width = INPUT_BUFFER_WIDTH / rows;
 
 #pragma hls_unroll yes
-        for (int i = 0; i < NRows; i++) {
+        for (int i = 0; i < rows; i++) {
           auto data = bits.template slc<input_width>(i * input_width);
 #if SUPPORT_CODEBOOK_QUANT
           if (params.use_input_codebook) {
@@ -439,11 +439,11 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
       ac_int<LOOP_WIDTH, false> X0 = params.loops[1][params.x_loop_idx[1]];
       ac_int<16, false> Y0_X0 = Y0 * X0;
 
-      Pack1D<Buffer, NCols> bias;
-      Pack1D<Scale, NCols> weight_scales;
+      Pack1D<Buffer, cols> bias;
+      Pack1D<Scale, cols> weight_scales;
 
 #pragma hls_unroll yes
-      for (int i = 0; i < NCols; i++) {
+      for (int i = 0; i < cols; i++) {
         weight_scales[i] = Scale::one();
       }
 
@@ -456,7 +456,7 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
       while (step < total_ops) {
-        Pack1D<Psum, NCols> outputs = psum_out_skewer_dout.Pop();
+        Pack1D<Psum, cols> outputs = psum_out_skewer_dout.Pop();
 
 #if SUPPORT_MX
         Scale input_scale = Scale::one();
@@ -474,7 +474,7 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
 
         if (params.is_mx_op && (swap_weights || step == 0)) {
           auto bits = weight_scale_channel.Pop();
-          weight_scales = BitsToType<Pack1D<Scale, NCols>>(TypeToBits(bits));
+          weight_scales = BitsToType<Pack1D<Scale, cols>>(TypeToBits(bits));
         }
 #endif
 
@@ -485,10 +485,10 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
             loop_counters[0][params.fy_loop_idx[0]] == 0 &&
             loop_counters[1][params.fy_loop_idx[1]] == 0;
 
-        Pack1D<Buffer, NCols> previous_accumulation;
+        Pack1D<Buffer, cols> previous_accumulation;
 
 #pragma hls_unroll yes
-        for (int i = 0; i < NCols; i++) {
+        for (int i = 0; i < cols; i++) {
           previous_accumulation[i] = Buffer::zero();
         }
 
@@ -519,14 +519,14 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
 
 #if SUPPORT_MX
 #pragma hls_unroll yes
-        for (int i = 0; i < NCols; i++) {
+        for (int i = 0; i < cols; i++) {
           previous_accumulation[i] =
               dequantize_mx_op(outputs[i], input_scale, weight_scales[i],
                                previous_accumulation[i]);
         }
 #else
 #pragma hls_unroll yes
-        for (int i = 0; i < NCols; i++) {
+        for (int i = 0; i < cols; i++) {
           previous_accumulation[i] += static_cast<Buffer>(outputs[i]);
         }
 #endif
@@ -631,7 +631,7 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
       while (step < total_ops) {
-        Pack1D<Buffer, NCols> previous_accumulation = accumulation_deq.Pop();
+        Pack1D<Buffer, cols> previous_accumulation = accumulation_deq.Pop();
 
         bool accumulation_finished =
             (loop_counters[0][params.reduction_loop_idx[0]] == c2_bound) &&
@@ -651,7 +651,7 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
               loop_counters[1][params.y_loop_idx[1]] * X0 +
               loop_counters[1][params.x_loop_idx[1]];
 
-          BufferWriteRequest<Pack1D<Buffer, NCols>> req;
+          BufferWriteRequest<Pack1D<Buffer, cols>> req;
           req.address = address;
           req.data = previous_accumulation;
           accumulation_buffer_write_request[accumulation_buffer_bank].Push(req);

@@ -13,11 +13,11 @@ T add(T op0, T op1) {
   return op0 + op1;
 }
 
-template <typename T, size_t Width>
-Pack1D<T, Width> vadd(const Pack1D<T, Width> op0, const Pack1D<T, Width> op1) {
-  Pack1D<T, Width> res;
+template <typename T, size_t width>
+Pack1D<T, width> vadd(const Pack1D<T, width> op0, const Pack1D<T, width> op1) {
+  Pack1D<T, width> res;
 #pragma hls_unroll yes
-  for (int i = 0; i < Width; i++) {
+  for (int i = 0; i < width; i++) {
     res[i] = add(op0[i], op1[i]);
   }
   return res;
@@ -29,11 +29,11 @@ T mul(T op0, T op1) {
   return op0 * op1;
 }
 
-template <typename T, size_t Width>
-Pack1D<T, Width> vmul(const Pack1D<T, Width> op0, const Pack1D<T, Width> op1) {
-  Pack1D<T, Width> res;
+template <typename T, size_t width>
+Pack1D<T, width> vmul(const Pack1D<T, width> op0, const Pack1D<T, width> op1) {
+  Pack1D<T, width> res;
 #pragma hls_unroll yes
-  for (int i = 0; i < Width; i++) {
+  for (int i = 0; i < width; i++) {
     res[i] = mul(op0[i], op1[i]);
   }
   return res;
@@ -49,72 +49,72 @@ T div(T op0, T op1) {
   return op0 / op1;
 }
 
-template <typename T, size_t Width>
-Pack1D<T, Width> vdiv(const Pack1D<T, Width> op0, const Pack1D<T, Width> op1) {
-  Pack1D<T, Width> res;
+template <typename T, size_t width>
+Pack1D<T, width> vdiv(const Pack1D<T, width> op0, const Pack1D<T, width> op1) {
+  Pack1D<T, width> res;
 #pragma hls_unroll yes
-  for (int i = 0; i < Width; i++) {
+  for (int i = 0; i < width; i++) {
     res[i] = div(op0[i], op1[i]);
   }
   return res;
 }
 
-template <typename T, size_t Width>
-Pack1D<T, Width> vexp(const Pack1D<T, Width> op0) {
-  Pack1D<T, Width> res;
+template <typename T, size_t width>
+Pack1D<T, width> vexp(const Pack1D<T, width> op0) {
+  Pack1D<T, width> res;
 #pragma hls_unroll yes
-  for (int i = 0; i < Width; i++) {
+  for (int i = 0; i < width; i++) {
     res[i] = op0[i].exponential();
   }
   return res;
 }
 
-template <typename T, size_t Width>
-Pack1D<T, Width> vabs(Pack1D<T, Width> op0) {
-  Pack1D<T, Width> res;
+template <typename T, size_t width>
+Pack1D<T, width> vabs(Pack1D<T, width> op0) {
+  Pack1D<T, width> res;
 #pragma hls_unroll yes
-  for (int i = 0; i < Width; i++) {
+  for (int i = 0; i < width; i++) {
     res[i] = op0[i].abs();
   }
   return res;
 }
 
-template <typename T, size_t Width>
-Pack1D<T, Width> vrelu(Pack1D<T, Width> op0) {
-  Pack1D<T, Width> res;
+template <typename T, size_t width>
+Pack1D<T, width> vrelu(Pack1D<T, width> op0) {
+  Pack1D<T, width> res;
 #pragma hls_unroll yes
-  for (int i = 0; i < Width; i++) {
+  for (int i = 0; i < width; i++) {
     res[i] = op0[i].relu();
   }
   return res;
 }
 
-template <typename T, size_t Width>
-Pack1D<T, Width> vgelu(Pack1D<T, Width> op0) {
-  Pack1D<T, Width> res;
+template <typename T, size_t width>
+Pack1D<T, width> vgelu(Pack1D<T, width> op0) {
+  Pack1D<T, width> res;
 #pragma hls_unroll yes
-  for (int i = 0; i < Width; i++) {
+  for (int i = 0; i < width; i++) {
     res[i] = op0[i].gelu();
   }
   return res;
 }
 
-template <typename T, size_t Width>
-Pack1D<T, Width> vsilu(Pack1D<T, Width> op0) {
-  Pack1D<T, Width> res;
+template <typename T, size_t width>
+Pack1D<T, width> vsilu(Pack1D<T, width> op0) {
+  Pack1D<T, width> res;
 #pragma hls_unroll yes
-  for (int i = 0; i < Width; i++) {
+  for (int i = 0; i < width; i++) {
     res[i] = op0[i].silu();
   }
   return res;
 }
 
 #pragma hls_design ccore
-template <typename T, size_t Width>
-Pack1D<T, Width> vmax(const Pack1D<T, Width> op0, const Pack1D<T, Width> op1) {
-  Pack1D<T, Width> res;
+template <typename T, size_t width>
+Pack1D<T, width> vmax(const Pack1D<T, width> op0, const Pack1D<T, width> op1) {
+  Pack1D<T, width> res;
 #pragma hls_unroll yes
-  for (int i = 0; i < Width; i++) {
+  for (int i = 0; i < width; i++) {
     res[i] = std::max(op0[i], op1[i]);
   }
   return res;
@@ -122,14 +122,14 @@ Pack1D<T, Width> vmax(const Pack1D<T, Width> op0, const Pack1D<T, Width> op1) {
 
 // For approximated functions (e.g. exp, gelu, silu, etc.)
 #pragma hls_design ccore
-template <typename T, size_t Width>
-Pack1D<T, Width> vpoly(const Pack1D<T, Width>& op0, const T maxes[NUM_MAXES],
+template <typename T, size_t width>
+Pack1D<T, width> vpoly(const Pack1D<T, width>& op0, const T maxes[NUM_MAXES],
                        const T ranges[NUM_RANGES][NUM_COEFFS],
                        const ac_int<1, false> clamp_min,
                        const ac_int<1, false> clamp_max) {
-  Pack1D<T, Width> res;
+  Pack1D<T, width> res;
 #pragma hls_unroll yes
-  for (int i = 0; i < Width; i++) {
+  for (int i = 0; i < width; i++) {
     res[i] = vepoly<T>(op0[i], maxes, ranges, clamp_min, clamp_max);
   }
   return res;
@@ -217,8 +217,8 @@ Output dequantize(Input input, Output scale) {
   return (Output)input * scale;
 }
 
-template <typename Input, typename Output, int Width>
-void vdequantize(const Pack1D<Input, Width>& op0, Pack1D<Output, Width>& res,
+template <typename Input, typename Output, int width>
+void vdequantize(const Pack1D<Input, width>& op0, Pack1D<Output, width>& res,
                  ac_int<Output::width, false> scale_bits) {
   Output scale;
   scale.set_bits(scale_bits);
@@ -227,12 +227,12 @@ void vdequantize(const Pack1D<Input, Width>& op0, Pack1D<Output, Width>& res,
   }
 
 #pragma hls_unroll yes
-  for (int i = 0; i < Width; i++) {
+  for (int i = 0; i < width; i++) {
     res[i] = dequantize(op0[i], scale);
   }
 }
 
-template <typename VectorType, typename ScaleType, int Width>
+template <typename VectorType, typename ScaleType, int width>
 ScaleType compute_scale(const VectorType amax, ac_int<16> qparam) {
   ScaleType scale;
 
@@ -256,17 +256,17 @@ ScaleType compute_scale(const VectorType amax, ac_int<16> qparam) {
   return scale.is_zero() ? ScaleType::one() : scale;
 }
 
-template <typename VectorType, typename ScaleType, int Width>
-ScaleType calculate_mx_scale(const Pack1D<VectorType, Width>& op0,
+template <typename VectorType, typename ScaleType, int width>
+ScaleType calculate_mx_scale(const Pack1D<VectorType, width>& op0,
                              ac_int<16> qparam) {
   ScaleType scale;
 
   if constexpr (ScaleType::width == ScaleType::e_width) {
     using exp_t = ac_int<VectorType::e_width, false>;
 
-    Pack1D<exp_t, Width> exponents;
+    Pack1D<exp_t, width> exponents;
 #pragma hls_unroll yes
-    for (int i = 0; i < Width; i++) {
+    for (int i = 0; i < width; i++) {
       exponents[i] = op0[i].unbiased_exponent();
     }
 
@@ -281,9 +281,9 @@ ScaleType calculate_mx_scale(const Pack1D<VectorType, Width>& op0,
 
     scale.set_bits(scaled_exp);
   } else {
-    Pack1D<VectorType, Width> temp;
+    Pack1D<VectorType, width> temp;
 #pragma hls_unroll yes
-    for (int i = 0; i < Width; i++) {
+    for (int i = 0; i < width; i++) {
       temp[i] = op0[i].abs();
     }
 
@@ -341,17 +341,17 @@ T2 cast_output(T1 input, bool is_codebook_quant) {
   return output;
 }
 
-template <typename T, size_t N, typename VectorType, unsigned PortWidth,
+template <typename T, size_t N, typename VectorType, unsigned port_width,
           typename... Ts>
 bool send_output_data(
     ac_int<4, false> dtype, bool is_codebook_quant,
     Pack1D<VectorType, N> inputs,
-    Connections::Out<ac_int<PortWidth, false>>& output_channel) {
+    Connections::Out<ac_int<port_width, false>>& output_channel) {
   if (get_type_index<T, Ts...>() != dtype) {
     return false;
   }
 
-  constexpr int num_words = (T::width * N + PortWidth - 1) / PortWidth;
+  constexpr int num_words = (T::width * N + port_width - 1) / port_width;
 
   Pack1D<T, N> outputs;
 
@@ -364,13 +364,13 @@ bool send_output_data(
   bits = BitsToType<decltype(bits)>(TypeToBits(outputs));
 
   for (unsigned i = 0; i < num_words; i++) {
-    output_channel.Push(bits.template slc<PortWidth>(i * PortWidth));
+    output_channel.Push(bits.template slc<port_width>(i * port_width));
   }
 
   return true;
 }
 
-template <typename T, size_t N, unsigned PortWidth, typename... Ts>
+template <typename T, size_t N, unsigned port_width, typename... Ts>
 bool send_output_address(
     ac_int<4, false> dtype, ac_int<ADDRESS_WIDTH, false> offset,
     ac_int<32, false> address,
@@ -379,10 +379,10 @@ bool send_output_address(
     return false;
   }
 
-  constexpr int num_words = (T::width * N + PortWidth - 1) / PortWidth;
+  constexpr int num_words = (T::width * N + port_width - 1) / port_width;
 
   for (int i = 0; i < num_words; i++) {
-    address_channel.Push(offset + address * T::width / 8 + i * PortWidth / 8);
+    address_channel.Push(offset + address * T::width / 8 + i * port_width / 8);
   }
 
   return true;

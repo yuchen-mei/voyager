@@ -292,13 +292,13 @@ Harness::Harness(sc_module_name name, std::vector<Operation> operations,
 #endif
 }
 
-template <int Width>
+template <int width>
 void Harness::process_read_request(
     Connections::Combinational<MemoryRequest> *request_out,
-    sc_fifo<ac_int<Width, false>> *data_fifo) {
+    sc_fifo<ac_int<width, false>> *data_fifo) {
   request_out->ResetRead();
 
-  constexpr int num_bytes = Width / 8;
+  constexpr int num_bytes = width / 8;
 
   const auto array_memory = (ArrayMemory *)(dataloader->memory_interface);
   const int mem_idx = is_soc_sim() ? 1 : 0;
@@ -315,7 +315,7 @@ void Harness::process_read_request(
 
     access_counter->increment(std::string(name()), total_bytes);
 
-    ac_int<Width, false> bits;
+    ac_int<width, false> bits;
 
     for (int i = 0; i < num_words; i++) {
       for (int j = 0; j < num_bytes; j++) {
@@ -330,10 +330,10 @@ void Harness::process_read_request(
   }
 }
 
-template <int Width>
+template <int width>
 void Harness::send_data_response(
-    sc_fifo<ac_int<Width, false>> *data_fifo,
-    Connections::Combinational<ac_int<Width, false>> *response) {
+    sc_fifo<ac_int<width, false>> *data_fifo,
+    Connections::Combinational<ac_int<width, false>> *response) {
   response->ResetWrite();
 
   wait();
@@ -343,14 +343,14 @@ void Harness::send_data_response(
   }
 }
 
-template <int Width>
+template <int width>
 void Harness::process_write_request(
-    Connections::Combinational<ac_int<Width, false>> *data_out,
+    Connections::Combinational<ac_int<width, false>> *data_out,
     Connections::Combinational<ac_int<ADDRESS_WIDTH, false>> *address_out) {
   data_out->ResetRead();
   address_out->ResetRead();
 
-  constexpr int num_bytes = Width / 8;
+  constexpr int num_bytes = width / 8;
 
   const auto array_memory = (ArrayMemory *)(dataloader->memory_interface);
   const int mem_idx = is_soc_sim() ? 1 : 0;

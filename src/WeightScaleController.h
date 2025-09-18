@@ -6,15 +6,15 @@
 #include "AccelTypes.h"
 #include "ArchitectureParams.h"
 
-template <typename Scale, int NRows, int NCols, int PortWidth>
+template <typename Scale, int rows, int cols, int port_width>
 SC_MODULE(WeightScaleController) {
   sc_in<bool> CCS_INIT_S1(clk);
   sc_in<bool> CCS_INIT_S1(rstn);
 
   Connections::Out<MemoryRequest> CCS_INIT_S1(weight_scale_req);
-  Connections::In<ac_int<PortWidth, false>> CCS_INIT_S1(weight_scale_resp);
+  Connections::In<ac_int<port_width, false>> CCS_INIT_S1(weight_scale_resp);
 
-  Connections::Out<BufferWriteRequest<ac_int<Scale::width * NCols, false>>>
+  Connections::Out<BufferWriteRequest<ac_int<Scale::width * cols, false>>>
       write_request[2];
   Connections::Out<BufferReadRequest> read_request[2];
 
@@ -24,7 +24,7 @@ SC_MODULE(WeightScaleController) {
   Connections::Combinational<MatrixParams> CCS_INIT_S1(reader_params);
 
   static constexpr int LOOP_WIDTH = 10;
-  static constexpr int BLOCK_SIZE = NRows > NCols ? NRows : NCols;
+  static constexpr int BLOCK_SIZE = rows > cols ? rows : cols;
 
   SC_CTOR(WeightScaleController) {
     SC_THREAD(read_params);
@@ -81,7 +81,7 @@ SC_MODULE(WeightScaleController) {
       ac_int<LOOP_WIDTH, false> K1 =
           params.weight_addr_loops[1][params.weight_addr_weight_loop_idx[1]];
 
-      ac_int<24, false> c_stride = K2 * K1 * NCols;
+      ac_int<24, false> c_stride = K2 * K1 * cols;
       ac_int<24, false> fx_stride = C2 * C1 * C0 / BLOCK_SIZE * c_stride;
       ac_int<24, false> fy_stride = FX * fx_stride;
 
@@ -115,7 +115,7 @@ SC_MODULE(WeightScaleController) {
                           ac_int<LOOP_WIDTH, false> k1 = loop_counters
                               [1][params.weight_addr_weight_loop_idx[1]];
 
-                          ac_int<16, false> k = (k2 * K1 + k1) * NCols;
+                          ac_int<16, false> k = (k2 * K1 + k1) * cols;
                           ac_int<16, false> c = (c2 * C1 + c1) * C0 + c0;
                           ac_int<16, false> fy = fy0 * FY1 + fy1;
 
@@ -124,7 +124,7 @@ SC_MODULE(WeightScaleController) {
                                 fy * fy_stride + fx * fx_stride +
                                 c / BLOCK_SIZE * c_stride + k;
 
-                            send_input_request<Scale, NCols>(
+                            send_input_request<Scale, cols>(
                                 params.weight_scale_offset, address,
                                 weight_scale_req);
                           }
@@ -218,7 +218,7 @@ SC_MODULE(WeightScaleController) {
       ac_int<32, false> num_total_writes =
           params.weight_addr_loops[1][0] * params.weight_addr_loops[1][1] *
           params.weight_addr_loops[1][2] * params.weight_addr_loops[1][3] *
-          params.weight_addr_loops[1][4] / NCols;
+          params.weight_addr_loops[1][4] / cols;
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
@@ -247,7 +247,7 @@ SC_MODULE(WeightScaleController) {
                           ac_int<LOOP_WIDTH, false> k1 = loop_counters
                               [1][params.weight_addr_weight_loop_idx[1]];
 
-                          ac_int<16, false> k = (k2 * K1 + k1) * NCols;
+                          ac_int<16, false> k = (k2 * K1 + k1) * cols;
                           ac_int<16, false> c = c1 * C0 + c0;
 
                           if (c % BLOCK_SIZE == 0) {
@@ -255,13 +255,13 @@ SC_MODULE(WeightScaleController) {
                                 fy0 * fy_stride + fx * fx_stride +
                                 c / BLOCK_SIZE * K1 + k1;
 
-                            ac_int<Scale::width * NCols, false> data;
-                            process_matrix_input<Scale, NCols, PortWidth,
-                                                 Scale::width * NCols>(
+                            ac_int<Scale::width * cols, false> data;
+                            process_matrix_input<Scale, cols, port_width,
+                                                 Scale::width * cols>(
                                 weight_scale_resp, data);
 
                             BufferWriteRequest<
-                                ac_int<Scale::width * NCols, false>>
+                                ac_int<Scale::width * cols, false>>
                                 req;
                             req.address = address;
                             req.data = data;
@@ -343,14 +343,14 @@ SC_MODULE(WeightScaleController) {
       loop_bounds[1][params.weight_reuse_idx[1]] = 1;
 
       // extra loop to control reuse which only occurs during transpose and
-      // when NCols > NRows
+      // when cols > rows
       int rep_bound = 1;
 
-      if (params.weight_transpose && NCols > NRows) {
-        if (loop_bounds[0][params.reduction_loop_idx[0]] >= (NCols / NRows)) {
+      if (params.weight_transpose && cols > rows) {
+        if (loop_bounds[0][params.reduction_loop_idx[0]] >= (cols / rows)) {
           // we are able to reuse the weights already in the buffer
-          loop_bounds[0][params.reduction_loop_idx[0]] /= (NCols / NRows);
-          rep_bound = (NCols / NRows);
+          loop_bounds[0][params.reduction_loop_idx[0]] /= (cols / rows);
+          rep_bound = (cols / rows);
         }
       }
 
@@ -413,7 +413,7 @@ SC_MODULE(WeightScaleController) {
                                     loop_counters[1][params.weight_loop_idx[1]];
 
                                 ac_int<16, false> k =
-                                    k2 * K1 * NCols + k1 * NCols;
+                                    k2 * K1 * cols + k1 * cols;
 
                                 ac_int<16, false> address = fy0 * fy_stride +
                                                             fx * fx_stride +

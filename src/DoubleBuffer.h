@@ -9,21 +9,21 @@
 #include "test/common/AccessCounter.h"
 #endif
 
-template <int Depth, int Width>
+template <int depth, int width>
 SC_MODULE(DoubleBuffer) {
  private:
-  ac_int<Width, false> mem0[Depth];
-  ac_int<Width, false> mem1[Depth];
+  ac_int<width, false> mem0[depth];
+  ac_int<width, false> mem1[depth];
 
  public:
   sc_in<bool> CCS_INIT_S1(clk);
   sc_in<bool> CCS_INIT_S1(rstn);
 
-  Connections::In<BufferWriteRequest<ac_int<Width, false>>> write_request[2];
+  Connections::In<BufferWriteRequest<ac_int<width, false>>> write_request[2];
   Connections::In<BufferReadRequest> read_request[2];
-  Connections::Combinational<BufferReadResponse<ac_int<Width, false>>>
+  Connections::Combinational<BufferReadResponse<ac_int<width, false>>>
       read_data[2];
-  Connections::Out<ac_int<Width, false>> CCS_INIT_S1(output);
+  Connections::Out<ac_int<width, false>> CCS_INIT_S1(output);
 
 #ifndef __SYNTHESIS__
   AccessCounter *access_counter;
@@ -60,7 +60,7 @@ SC_MODULE(DoubleBuffer) {
     while (true) {
       bool done = false;
       while (!done) {
-        BufferWriteRequest<ac_int<Width, false>> req =
+        BufferWriteRequest<ac_int<width, false>> req =
             write_request[port].Pop();
         if (req.last) {
           done = true;
@@ -69,13 +69,13 @@ SC_MODULE(DoubleBuffer) {
         ac_int<16, false> address = req.address;
 
 #ifndef __SYNTHESIS__
-        if (address > Depth) {
+        if (address > depth) {
           CCS_LOG("Address " << address << " is out of bounds!");
           throw std::runtime_error("Address out of bounds");
         }
 #endif
 
-        ac_int<Width, false> data = req.data;
+        ac_int<width, false> data = req.data;
 
         if constexpr (port == 0) {
           mem0[address] = data;
@@ -93,10 +93,10 @@ SC_MODULE(DoubleBuffer) {
         }
 
 #ifndef __SYNTHESIS__
-        access_counter->increment(name(), Width);
+        access_counter->increment(name(), width);
 #endif
 
-        BufferReadResponse<ac_int<Width, false>> response;
+        BufferReadResponse<ac_int<width, false>> response;
         response.last = req.last;
 
         if (address != 0xFFFF) {
@@ -131,7 +131,7 @@ SC_MODULE(DoubleBuffer) {
     while (true) {
       bool done = false;
       while (!done) {
-        BufferReadResponse<ac_int<Width, false>> response =
+        BufferReadResponse<ac_int<width, false>> response =
             read_data[bank_sel].Pop();
         if (response.last) {
           done = true;
