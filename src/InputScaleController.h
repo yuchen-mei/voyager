@@ -4,9 +4,8 @@
 #include <systemc.h>
 
 #include "AccelTypes.h"
-#include "ParamsDeserializer.h"
 
-template <typename Scale, int NRows>
+template <typename Scale, int rows>
 SC_MODULE(InputScaleController) {
   sc_in<bool> CCS_INIT_S1(clk);
   sc_in<bool> CCS_INIT_S1(rstn);
@@ -15,8 +14,8 @@ SC_MODULE(InputScaleController) {
   Connections::In<ac_int<Scale::width, false>> CCS_INIT_S1(scale_resp);
 
   Connections::Out<BufferWriteRequest<ac_int<Scale::width, false>>>
-      scale_write_request[2];
-  Connections::Out<BufferReadRequest> scale_read_address[2];
+      write_request[2];
+  Connections::Out<BufferReadRequest> read_request[2];
 
   Connections::In<MatrixParams> CCS_INIT_S1(params_in);
   Connections::Combinational<MatrixParams> CCS_INIT_S1(fetcher_params);
@@ -26,21 +25,21 @@ SC_MODULE(InputScaleController) {
   static constexpr int LOOP_WIDTH = 10;
 
   // num x values packed in a word
-  static constexpr int packing_factor = (NRows == 4)    ? 1
-                                        : (NRows == 8)  ? 2
-                                        : (NRows == 16) ? 4
-                                        : (NRows == 32) ? 8
-                                        : (NRows == 64) ? 8
-                                                        : 0;
+  static constexpr int packing_factor = (rows == 4)    ? 1
+                                        : (rows == 8)  ? 2
+                                        : (rows == 16) ? 4
+                                        : (rows == 32) ? 8
+                                        : (rows == 64) ? 8
+                                                       : 0;
 
   // num words needed to store the boundary pixels. essentially
   // ceil(3/packing_factor)
-  static constexpr int boundary_words = (NRows == 4)    ? 3
-                                        : (NRows == 8)  ? 2
-                                        : (NRows == 16) ? 1
-                                        : (NRows == 32) ? 1
-                                        : (NRows == 64) ? 1
-                                                        : 0;
+  static constexpr int boundary_words = (rows == 4)    ? 3
+                                        : (rows == 8)  ? 2
+                                        : (rows == 16) ? 1
+                                        : (rows == 32) ? 1
+                                        : (rows == 64) ? 1
+                                                       : 0;
 
   SC_CTOR(InputScaleController) {
     SC_THREAD(read_params);
@@ -81,20 +80,20 @@ SC_MODULE(InputScaleController) {
       }
 
       // set irrelevant loop bounds to 1
-      loop_bounds[1][params.weightLoopIndex[1]] = 1;
-      loop_bounds[1][params.fxIndex] = 1;
-      loop_bounds[1][params.fyIndex[1]] = 1;
+      loop_bounds[1][params.weight_loop_idx[1]] = 1;
+      loop_bounds[1][params.fx_loop_idx] = 1;
+      loop_bounds[1][params.fy_loop_idx[1]] = 1;
 
-      ac_int<LOOP_WIDTH, false> Y1 = params.loops[0][params.inputYLoopIndex[0]];
-      ac_int<LOOP_WIDTH, false> X1 = params.loops[0][params.inputXLoopIndex[0]];
+      ac_int<LOOP_WIDTH, false> Y1 = params.loops[0][params.y_loop_idx[0]];
+      ac_int<LOOP_WIDTH, false> X1 = params.loops[0][params.x_loop_idx[0]];
       ac_int<LOOP_WIDTH, false> C2 =
-          params.loops[0][params.reductionLoopIndex[0]];
+          params.loops[0][params.reduction_loop_idx[0]];
       ac_int<LOOP_WIDTH, false> C1 =
-          params.loops[1][params.reductionLoopIndex[1]];
-      ac_int<16, false> Y0 = params.loops[1][params.inputYLoopIndex[1]];
-      ac_int<16, false> X0 = params.loops[1][params.inputXLoopIndex[1]];
-      ac_int<4, false> FX = params.loops[1][params.fxIndex];
-      ac_int<4, false> FY0 = params.loops[1][params.fyIndex[1]];
+          params.loops[1][params.reduction_loop_idx[1]];
+      ac_int<16, false> Y0 = params.loops[1][params.y_loop_idx[1]];
+      ac_int<16, false> X0 = params.loops[1][params.x_loop_idx[1]];
+      ac_int<4, false> FX = params.loops[1][params.fx_loop_idx];
+      ac_int<4, false> FY0 = params.loops[1][params.fy_loop_idx[1]];
       ac_int<5, false> STRIDE = params.stride;
 
       if (params.is_resnet_replication) {
@@ -116,14 +115,14 @@ SC_MODULE(InputScaleController) {
         x_bound /= packing_factor;
       }
 
-      loop_bounds[1][params.inputXLoopIndex[1]] = x_bound;
+      loop_bounds[1][params.x_loop_idx[1]] = x_bound;
       if (params.is_resnet_replication) {
-        loop_bounds[1][params.inputXLoopIndex[1]] += 2 * boundary_words;
+        loop_bounds[1][params.x_loop_idx[1]] += 2 * boundary_words;
       } else {
-        loop_bounds[1][params.inputXLoopIndex[1]] += 2 * params.padding;
+        loop_bounds[1][params.x_loop_idx[1]] += 2 * params.padding;
       }
 
-      loop_bounds[1][params.inputYLoopIndex[1]] = y_bound + 2 * params.padding;
+      loop_bounds[1][params.y_loop_idx[1]] = y_bound + 2 * params.padding;
 
       ac_int<16, false> Y = Y1 * IY0;
       ac_int<16, false> X = X1 * IX0;
@@ -144,17 +143,17 @@ SC_MODULE(InputScaleController) {
                           for (loop_counters[1][5] = 0;;
                                loop_counters[1][5]++) {
                             ac_int<LOOP_WIDTH, false> y1 =
-                                loop_counters[0][params.inputYLoopIndex[0]];
+                                loop_counters[0][params.y_loop_idx[0]];
                             ac_int<LOOP_WIDTH, false> x1 =
-                                loop_counters[0][params.inputXLoopIndex[0]];
+                                loop_counters[0][params.x_loop_idx[0]];
                             ac_int<LOOP_WIDTH, false> c2 =
-                                loop_counters[0][params.reductionLoopIndex[0]];
+                                loop_counters[0][params.reduction_loop_idx[0]];
                             ac_int<LOOP_WIDTH, false> y0 =
-                                loop_counters[1][params.inputYLoopIndex[1]];
+                                loop_counters[1][params.y_loop_idx[1]];
                             ac_int<LOOP_WIDTH, false> x0 =
-                                loop_counters[1][params.inputXLoopIndex[1]];
+                                loop_counters[1][params.x_loop_idx[1]];
                             ac_int<LOOP_WIDTH, false> c1 =
-                                loop_counters[1][params.reductionLoopIndex[1]];
+                                loop_counters[1][params.reduction_loop_idx[1]];
 
                             // adjust address for stride
                             if (FX == 1) {
@@ -183,26 +182,22 @@ SC_MODULE(InputScaleController) {
                               ac_int<32, false> address = y * X * C + x * C + c;
 
                               if (params.is_resnet_replication) {
-                                address = y * (X / packing_factor) * NRows +
-                                          (x / packing_factor) * NRows + c;
+                                address = y * (X / packing_factor) * rows +
+                                          (x / packing_factor) * rows + c;
                               } else if (params.is_generic_replication) {
                                 address =
-                                    y * (X >> params.fx_unrolling_lg2) * NRows +
-                                    (x >> params.fx_unrolling_lg2) * NRows + c;
-                              }
-
-                              if (params.has_attn_output_permute) {
-                                ac_int<8, false> head_size =
-                                    params.head_size_power_of_two;
-                                ac_int<16, false> mask = (1 << head_size) - 1;
+                                    y * (X >> params.fx_unrolling_lg2) * rows +
+                                    (x >> params.fx_unrolling_lg2) * rows + c;
+                              } else if (params.merge_heads) {
+                                ac_int<16, false> mask =
+                                    (1 << params.head_size_lg2) - 1;
+                                address = ((c >> params.head_size_lg2) *
+                                           (X << params.head_size_lg2)) +
+                                          (x << params.head_size_lg2) +
+                                          (c & mask);
+                              } else if (params.input_transpose) {
                                 address =
-                                    ((c >> head_size) * (X << head_size)) +
-                                    (x << head_size) + (c & mask);
-                              }
-
-                              if (params.has_input_transpose) {
-                                address =
-                                    (c + (x % NRows)) * X + (x / NRows) * NRows;
+                                    (c + (x % rows)) * X + (x / rows) * rows;
                               }
 
                               send_input_request<Scale, 1>(
@@ -261,10 +256,10 @@ SC_MODULE(InputScaleController) {
     writer_params.ResetRead();
 
     scale_resp.Reset();
-    scale_write_request[0].Reset();
-    scale_write_request[1].Reset();
+    write_request[0].Reset();
+    write_request[1].Reset();
 
-    bool bankSel = 0;
+    bool bank_sel = 0;
 
     wait();
 
@@ -283,18 +278,18 @@ SC_MODULE(InputScaleController) {
       }
 
       // set irrelevant loop bounds to 1
-      loop_bounds[1][params.weightLoopIndex[1]] = 1;
-      loop_bounds[1][params.fxIndex] = 1;
-      loop_bounds[1][params.fyIndex[1]] = 1;
+      loop_bounds[1][params.weight_loop_idx[1]] = 1;
+      loop_bounds[1][params.fx_loop_idx] = 1;
+      loop_bounds[1][params.fy_loop_idx[1]] = 1;
 
-      ac_int<LOOP_WIDTH, false> Y1 = params.loops[0][params.inputYLoopIndex[0]];
-      ac_int<LOOP_WIDTH, false> X1 = params.loops[0][params.inputXLoopIndex[0]];
+      ac_int<LOOP_WIDTH, false> Y1 = params.loops[0][params.y_loop_idx[0]];
+      ac_int<LOOP_WIDTH, false> X1 = params.loops[0][params.x_loop_idx[0]];
       ac_int<LOOP_WIDTH, false> C1 =
-          params.loops[1][params.reductionLoopIndex[1]];
-      ac_int<16, false> Y0 = params.loops[1][params.inputYLoopIndex[1]];
-      ac_int<16, false> X0 = params.loops[1][params.inputXLoopIndex[1]];
-      ac_int<4, false> FX = params.loops[1][params.fxIndex];
-      ac_int<4, false> FY0 = params.loops[1][params.fyIndex[1]];
+          params.loops[1][params.reduction_loop_idx[1]];
+      ac_int<16, false> Y0 = params.loops[1][params.y_loop_idx[1]];
+      ac_int<16, false> X0 = params.loops[1][params.x_loop_idx[1]];
+      ac_int<4, false> FX = params.loops[1][params.fx_loop_idx];
+      ac_int<4, false> FY0 = params.loops[1][params.fy_loop_idx[1]];
       ac_int<5, false> STRIDE = params.stride;
 
       if (params.is_resnet_replication) {
@@ -322,13 +317,12 @@ SC_MODULE(InputScaleController) {
       ac_int<4, false> x_boundary = params.is_resnet_replication
                                         ? ac_int<4, false>(2 * boundary_words)
                                         : ac_int<4, false>(params.padding * 2);
-      loop_bounds[1][params.inputXLoopIndex[1]] = x_bound + x_boundary;
-      loop_bounds[1][params.inputYLoopIndex[1]] = IY0 + 2 * params.padding;
+      loop_bounds[1][params.x_loop_idx[1]] = x_bound + x_boundary;
+      loop_bounds[1][params.y_loop_idx[1]] = IY0 + 2 * params.padding;
 
       ac_int<16, false> IX = X1 * IX0;
       ac_int<16, false> IY = Y1 * IY0;
-      ac_int<16, false> y_stride =
-          loop_bounds[1][params.inputXLoopIndex[1]] * C1;
+      ac_int<16, false> y_stride = loop_bounds[1][params.x_loop_idx[1]] * C1;
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
@@ -345,15 +339,15 @@ SC_MODULE(InputScaleController) {
                           for (loop_counters[1][5] = 0;;
                                loop_counters[1][5]++) {
                             ac_int<LOOP_WIDTH, true> x0 =
-                                loop_counters[1][params.inputXLoopIndex[1]];
+                                loop_counters[1][params.x_loop_idx[1]];
                             ac_int<LOOP_WIDTH, true> x1 =
-                                loop_counters[0][params.inputXLoopIndex[0]];
+                                loop_counters[0][params.x_loop_idx[0]];
                             ac_int<LOOP_WIDTH, true> y0 =
-                                loop_counters[1][params.inputYLoopIndex[1]];
+                                loop_counters[1][params.y_loop_idx[1]];
                             ac_int<LOOP_WIDTH, true> y1 =
-                                loop_counters[0][params.inputYLoopIndex[0]];
+                                loop_counters[0][params.y_loop_idx[0]];
                             ac_int<LOOP_WIDTH, true> c1 =
-                                loop_counters[1][params.reductionLoopIndex[1]];
+                                loop_counters[1][params.reduction_loop_idx[1]];
 
                             if (params.is_resnet_replication && x0 != 0) {
                               x0 = (x0 - boundary_words) * packing_factor +
@@ -372,7 +366,7 @@ SC_MODULE(InputScaleController) {
                             }
 
                             ac_int<LOOP_WIDTH> orig_x0 =
-                                loop_counters[1][params.inputXLoopIndex[1]];
+                                loop_counters[1][params.x_loop_idx[1]];
                             ac_int<16, false> address =
                                 y0 * y_stride + orig_x0 * C1 + c1;
 
@@ -389,7 +383,7 @@ SC_MODULE(InputScaleController) {
                             scale_req.address = address;
                             scale_req.data = scale;
                             scale_req.last = is_last;
-                            scale_write_request[bankSel].Push(scale_req);
+                            write_request[bank_sel].Push(scale_req);
 
                             if (loop_counters[1][5] >= loop_bounds[1][5] - 1) {
                               break;
@@ -415,7 +409,7 @@ SC_MODULE(InputScaleController) {
                     break;
                   }
                 }
-                bankSel = !bankSel;
+                bank_sel = !bank_sel;
                 if (loop_counters[0][4] >= loop_bounds[0][4] - 1) {
                   break;
                 }
@@ -442,10 +436,10 @@ SC_MODULE(InputScaleController) {
   void reader() {
     reader_params.ResetRead();
 
-    scale_read_address[0].Reset();
-    scale_read_address[1].Reset();
+    read_request[0].Reset();
+    read_request[1].Reset();
 
-    bool bankSel = 0;
+    bool bank_sel = 0;
 
     wait();
 
@@ -463,24 +457,24 @@ SC_MODULE(InputScaleController) {
         }
       }
 
-      if (params.is_resnet_replication && NRows >= 16) {
-        loop_bounds[1][params.inputXLoopIndex[1]] =
-            (loop_bounds[1][params.inputXLoopIndex[1]] * params.stride /
+      if (params.is_resnet_replication && rows >= 16) {
+        loop_bounds[1][params.x_loop_idx[1]] =
+            (loop_bounds[1][params.x_loop_idx[1]] * params.stride /
              packing_factor) +
             2;
-      } else if (params.is_resnet_replication && NRows == 8) {
-        loop_bounds[1][params.inputXLoopIndex[1]] =
-            (loop_bounds[1][params.inputXLoopIndex[1]] * params.stride /
+      } else if (params.is_resnet_replication && rows == 8) {
+        loop_bounds[1][params.x_loop_idx[1]] =
+            (loop_bounds[1][params.x_loop_idx[1]] * params.stride /
              packing_factor) +
             1;
       }
 
-      ac_int<LOOP_WIDTH, false> X0 = params.loops[1][params.inputXLoopIndex[1]];
-      ac_int<LOOP_WIDTH, false> Y0 = params.loops[1][params.inputYLoopIndex[1]];
+      ac_int<LOOP_WIDTH, false> X0 = params.loops[1][params.x_loop_idx[1]];
+      ac_int<LOOP_WIDTH, false> Y0 = params.loops[1][params.y_loop_idx[1]];
       ac_int<LOOP_WIDTH, false> C1 =
-          params.loops[1][params.reductionLoopIndex[1]];
-      ac_int<4, false> FX = params.loops[1][params.fxIndex];
-      ac_int<4, false> FY0 = params.loops[1][params.fyIndex[1]];
+          params.loops[1][params.reduction_loop_idx[1]];
+      ac_int<4, false> FX = params.loops[1][params.fx_loop_idx];
+      ac_int<4, false> FY0 = params.loops[1][params.fy_loop_idx[1]];
       ac_int<5, false> STRIDE = params.stride;
 
       bool is_downsample = FX == 1 && FY0 == 1;
@@ -512,20 +506,20 @@ SC_MODULE(InputScaleController) {
                           for (loop_counters[1][5] = 0;;
                                loop_counters[1][5]++) {
                             ac_int<LOOP_WIDTH, false> x0 =
-                                loop_counters[1][params.inputXLoopIndex[1]];
+                                loop_counters[1][params.x_loop_idx[1]];
                             ac_int<LOOP_WIDTH, false> y0 =
-                                loop_counters[1][params.inputYLoopIndex[1]];
+                                loop_counters[1][params.y_loop_idx[1]];
                             ac_int<LOOP_WIDTH, false> fx =
-                                loop_counters[1][params.fxIndex];
+                                loop_counters[1][params.fx_loop_idx];
                             ac_int<LOOP_WIDTH, false> fy =
-                                loop_counters[1][params.fyIndex[1]];
+                                loop_counters[1][params.fy_loop_idx[1]];
                             ac_int<LOOP_WIDTH, false> c1 =
-                                loop_counters[1][params.reductionLoopIndex[1]];
+                                loop_counters[1][params.reduction_loop_idx[1]];
 
                             ac_int<16, false> x = STRIDE * x0 + fx;
                             ac_int<16, false> y = STRIDE * y0 + fy;
                             ac_int<16, false> address;
-                            if (params.is_resnet_replication && NRows >= 8) {
+                            if (params.is_resnet_replication && rows >= 8) {
                               address = y * y_stride + (x0 + fx) * C1 + c1;
                             } else if (is_downsample) {
                               address = y0 * X0 * C1 + x0 * C1 + c1;
@@ -545,7 +539,7 @@ SC_MODULE(InputScaleController) {
                                 .address = address,
                                 .last = is_last,
                             };
-                            scale_read_address[bankSel].Push(req);
+                            read_request[bank_sel].Push(req);
 
                             if (loop_counters[1][5] >= loop_bounds[1][5] - 1) {
                               break;
@@ -571,7 +565,7 @@ SC_MODULE(InputScaleController) {
                     break;
                   }
                 }
-                bankSel = !bankSel;
+                bank_sel = !bank_sel;
                 if (loop_counters[0][4] >= loop_bounds[0][4] - 1) {
                   break;
                 }

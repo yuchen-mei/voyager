@@ -12,7 +12,7 @@
 #include "VectorPipeline.h"
 
 template <typename VectorType, typename BufferType, typename ScaleType,
-          int Width, int OcDimension>
+          int width, int mu_width>
 SC_MODULE(VectorUnit) {
   sc_in<bool> CCS_INIT_S1(clk);
   sc_in<bool> CCS_INIT_S1(rstn);
@@ -21,28 +21,27 @@ SC_MODULE(VectorUnit) {
 
 #if DOUBLE_BUFFERED_ACCUM_BUFFER
   Connections::Out<ac_int<16, false>> accumulation_buffer_read_address[2];
-  Connections::In<Pack1D<BufferType, OcDimension>>
+  Connections::In<Pack1D<BufferType, mu_width>>
       accumulation_buffer_read_data[2];
   Connections::SyncOut accumulation_buffer_done[2];
-  Connections::Out<BufferWriteRequest<Pack1D<BufferType, OcDimension>>>
+  Connections::Out<BufferWriteRequest<Pack1D<BufferType, mu_width>>>
       accumulation_buffer_write_request[2];
-  Connections::Combinational<Pack1D<BufferType, Width>>
+  Connections::Combinational<Pack1D<BufferType, width>>
       accumulation_buffer_output;
 #endif
 
 #if SUPPORT_MVM
-  Connections::In<Pack1D<VectorType, Width>> CCS_INIT_S1(
+  Connections::In<Pack1D<VectorType, width>> CCS_INIT_S1(
       matrix_vector_unit_data);
 #endif
 
 #if SUPPORT_DWC
-  Connections::In<Pack1D<BufferType, Width>> CCS_INIT_S1(dwc_unit_in);
+  Connections::In<Pack1D<BufferType, width>> CCS_INIT_S1(dwc_unit_in);
   Connections::In<ac_int<ADDRESS_WIDTH, false>> CCS_INIT_S1(dwc_address_in);
 #endif
 
-  Connections::In<Pack1D<BufferType, OcDimension>> CCS_INIT_S1(
-      matrix_unit_output);
-  Connections::Combinational<Pack1D<BufferType, Width>> CCS_INIT_S1(
+  Connections::In<Pack1D<BufferType, mu_width>> CCS_INIT_S1(matrix_unit_output);
+  Connections::Combinational<Pack1D<BufferType, width>> CCS_INIT_S1(
       matrix_unit_output_unpacked);
 
   Connections::In<ac_int<64, false>> CCS_INIT_S1(serial_params_in);
@@ -66,40 +65,39 @@ SC_MODULE(VectorUnit) {
   Connections::Out<MemoryRequest> CCS_INIT_S1(vector_fetch_0_req);
   Connections::In<ac_int<OC_PORT_WIDTH, false>> CCS_INIT_S1(
       vector_fetch_0_resp);
-  Connections::Combinational<Pack1D<VectorType, Width>> CCS_INIT_S1(
+  Connections::Combinational<Pack1D<VectorType, width>> CCS_INIT_S1(
       vector_fetch_0_data);
 
   Connections::Out<MemoryRequest> CCS_INIT_S1(vector_fetch_1_req);
   Connections::In<ac_int<OC_PORT_WIDTH, false>> CCS_INIT_S1(
       vector_fetch_1_resp);
-  Connections::Combinational<Pack1D<VectorType, Width>> CCS_INIT_S1(
+  Connections::Combinational<Pack1D<VectorType, width>> CCS_INIT_S1(
       vector_fetch_1_data);
 
   Connections::Out<MemoryRequest> CCS_INIT_S1(vector_fetch_2_req);
   Connections::In<ac_int<OC_PORT_WIDTH, false>> CCS_INIT_S1(
       vector_fetch_2_resp);
-  Connections::Combinational<Pack1D<VectorType, Width>> CCS_INIT_S1(
+  Connections::Combinational<Pack1D<VectorType, width>> CCS_INIT_S1(
       vector_fetch_2_data);
 
   // Vector Pipeline
-  Connections::Combinational<Pack1D<VectorType, Width>> CCS_INIT_S1(
+  Connections::Combinational<Pack1D<VectorType, width>> CCS_INIT_S1(
       pipeline_to_memory);
   Connections::Combinational<ScaleType> CCS_INIT_S1(mx_scale);
 
   Connections::Combinational<ApproxUnitConfig> CCS_INIT_S1(approx_unit_config);
 
   // Internal connections between submodules
-  Connections::Combinational<Pack1D<VectorType, Width>> reducer_input;
-  Connections::Combinational<Pack1D<VectorType, Width>> reducer_output_0;
-  Connections::Combinational<Pack1D<VectorType, Width>> reducer_output_1;
-  Connections::Combinational<Pack1D<VectorType, Width>> reducer_to_memory;
+  Connections::Combinational<Pack1D<VectorType, width>> reducer_input;
+  Connections::Combinational<Pack1D<VectorType, width>> reducer_output_0;
+  Connections::Combinational<Pack1D<VectorType, width>> reducer_output_1;
+  Connections::Combinational<Pack1D<VectorType, width>> reducer_to_memory;
 
-  Connections::Combinational<Pack1D<VectorType, Width>> accumulator_input;
-  Connections::Combinational<Pack1D<VectorType, Width>> accumulator_to_pipeline;
-  Connections::Combinational<Pack1D<VectorType, Width>> accumulator_to_memory;
+  Connections::Combinational<Pack1D<VectorType, width>> accumulator_input;
+  Connections::Combinational<Pack1D<VectorType, width>> accumulator_to_pipeline;
+  Connections::Combinational<Pack1D<VectorType, width>> accumulator_to_memory;
 
-  Connections::Combinational<Pack1D<VectorType, OcDimension>>
-      vector_unit_output;
+  Connections::Combinational<Pack1D<VectorType, mu_width>> vector_unit_output;
 
   // Output Controller
   Connections::Out<ac_int<OC_PORT_WIDTH, false>> CCS_INIT_S1(vector_out);
@@ -112,13 +110,13 @@ SC_MODULE(VectorUnit) {
   Connections::SyncOut CCS_INIT_S1(done);
 
   // Submodules
-  VectorFetchUnit<VectorType, BufferType, Width, OcDimension, VU_INPUT_TYPES>
+  VectorFetchUnit<VectorType, BufferType, width, mu_width, VU_INPUT_TYPES>
       CCS_INIT_S1(fetcher);
-  VectorPipeline<VectorType, BufferType, ScaleType, Width, OcDimension>
+  VectorPipeline<VectorType, BufferType, ScaleType, width, mu_width>
       CCS_INIT_S1(pipeline);
-  VectorReducer<VectorType, Width> CCS_INIT_S1(reducer);
-  VectorAccumulator<VectorType, Width> CCS_INIT_S1(accumulator);
-  OutputController<VectorType, ScaleType, OcDimension, OUTPUT_DATATYPES>
+  VectorReducer<VectorType, width> CCS_INIT_S1(reducer);
+  VectorAccumulator<VectorType, width> CCS_INIT_S1(accumulator);
+  OutputController<VectorType, ScaleType, mu_width, OUTPUT_DATATYPES>
       CCS_INIT_S1(output_controller);
 
   SC_CTOR(VectorUnit)
@@ -130,9 +128,9 @@ SC_MODULE(VectorUnit) {
     // Param deserializer
     param_deserializer.clk(clk);
     param_deserializer.rstn(rstn);
-    param_deserializer.serialParamsIn(serial_params_in);
-    param_deserializer.vectorParamsOut(vector_params);
-    param_deserializer.vectorInstructionsOut(vector_instruction);
+    param_deserializer.serial_params_in(serial_params_in);
+    param_deserializer.vector_params_out(vector_params);
+    param_deserializer.vector_instructions_out(vector_instruction);
 
     // Vector fetcher
     fetcher.clk(clk);
@@ -217,9 +215,9 @@ SC_MODULE(VectorUnit) {
     output_controller.scale_out(scale_out);
     output_controller.scale_address_out(scale_address_out);
     output_controller.done(done);
-  #if SUPPORT_DWC
+#if SUPPORT_DWC
     output_controller.dwc_address_in(dwc_address_in);
-  #endif
+#endif
 
     SC_THREAD(send_instructions);
     sensitive << clk.pos();
@@ -264,9 +262,9 @@ SC_MODULE(VectorUnit) {
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
-      for (decltype(instruction_config.instLoopCount) loop = 0;; loop++) {
-        for (decltype(instruction_config.instLen) i = 0;; i++) {
-          VectorInstructions inst = instruction_config.inst[i];
+      for (decltype(instruction_config.repeat_count) i = 0;; i++) {
+        for (decltype(instruction_config.num_inst) j = 0;; j++) {
+          VectorInstructions inst = instruction_config.inst[j];
 
           if (inst.op_type == VectorInstructions::vector) {
             pipeline_instr.Push(inst);
@@ -277,11 +275,11 @@ SC_MODULE(VectorUnit) {
             reducer_instr.Push(inst);
           }
 
-          if (i == instruction_config.instLen - 1) {
+          if (j == instruction_config.num_inst - 1) {
             break;
           }
         }
-        if (loop == instruction_config.instLoopCount - 1) {
+        if (i == instruction_config.repeat_count - 1) {
           break;
         }
       }
@@ -297,16 +295,16 @@ SC_MODULE(VectorUnit) {
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
     while (true) {
-      Pack1D<BufferType, OcDimension> full_response = matrix_unit_output.Pop();
+      Pack1D<BufferType, mu_width> full_response = matrix_unit_output.Pop();
 
-      if constexpr (OcDimension == Width) {
+      if constexpr (mu_width == width) {
         matrix_unit_output_unpacked.Push(full_response);
       } else {
-        for (int i = 0; i < OcDimension / Width; i++) {
-          Pack1D<BufferType, Width> unpacked_data;
+        for (int i = 0; i < mu_width / width; i++) {
+          Pack1D<BufferType, width> unpacked_data;
 #pragma hls_unroll yes
-          for (int j = 0; j < Width; j++) {
-            unpacked_data[j] = full_response[i * Width + j];
+          for (int j = 0; j < width; j++) {
+            unpacked_data[j] = full_response[i * width + j];
           }
           matrix_unit_output_unpacked.Push(unpacked_data);
         }
@@ -328,7 +326,7 @@ SC_MODULE(VectorUnit) {
       VectorParams params = send_output_params.Pop();
       VectorInstructionConfig instruction_config = output_instruction.Pop();
 
-      constexpr int packing_factor = OcDimension / Width;
+      constexpr int packing_factor = mu_width / width;
 
       ac_int<32, false> num_outputs =
           params.output_loops[0][0] * params.output_loops[0][1] *
@@ -337,16 +335,16 @@ SC_MODULE(VectorUnit) {
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
-      for (decltype(instruction_config.instLen) i = 0;; i++) {
+      for (decltype(instruction_config.num_inst) i = 0;; i++) {
         VectorInstructions inst = instruction_config.inst[i];
 
         if (inst.vdest == VectorInstructions::to_output ||
             inst.rdest == VectorInstructions::to_memory) {
           for (ac_int<32, false> count = 0;; count++) {
-            Pack1D<VectorType, OcDimension> packed_outputs;
+            Pack1D<VectorType, mu_width> packed_outputs;
 
             for (ac_int<4, false> pack = 0;; pack++) {
-              Pack1D<VectorType, Width> outputs;
+              Pack1D<VectorType, width> outputs;
               if (inst.op_type == VectorInstructions::vector) {
                 outputs = pipeline_to_memory.Pop();
               } else if (inst.op_type == VectorInstructions::accumulation) {
@@ -356,8 +354,8 @@ SC_MODULE(VectorUnit) {
               }
 
 #pragma hls_unroll yes
-              for (int i = 0; i < Width; i++) {
-                packed_outputs[pack * Width + i] = outputs[i];
+              for (int i = 0; i < width; i++) {
+                packed_outputs[pack * width + i] = outputs[i];
               }
 
               if (pack == packing_factor - 1) {
@@ -372,7 +370,7 @@ SC_MODULE(VectorUnit) {
           }
           break;
         }
-        if (i == instruction_config.instLen - 1) {
+        if (i == instruction_config.num_inst - 1) {
           break;
         }
       }

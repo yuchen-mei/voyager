@@ -5,18 +5,18 @@
 
 #include "VectorOps.h"
 
-template <typename VectorType, int Width>
+template <typename T, int width>
 SC_MODULE(VectorAccumulator) {
   sc_in<bool> clk;
   sc_in<bool> rstn;
 
   // Inputs
   Connections::In<VectorInstructions> instr;
-  Connections::In<Pack1D<VectorType, Width>> input;
+  Connections::In<Pack1D<T, width>> input;
 
   // Outputs
-  Connections::Out<Pack1D<VectorType, Width>> output_to_pipeline;
-  Connections::Out<Pack1D<VectorType, Width>> output_to_memory;
+  Connections::Out<Pack1D<T, width>> output_to_pipeline;
+  Connections::Out<Pack1D<T, width>> output_to_memory;
 
 #ifdef CLOCK_PERIOD
   static constexpr double clock_period = CLOCK_PERIOD;
@@ -56,22 +56,22 @@ SC_MODULE(VectorAccumulator) {
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
         while (counter++ < total_values) {
-          Pack1D<VectorType, Width> acc_old[sum_n];
+          Pack1D<T, width> acc_old[sum_n];
 
 #pragma hls_unroll yes
           for (int i = 0; i < sum_n; i++) {
 #pragma hls_unroll yes
-            for (int j = 0; j < Width; j++) {
-              acc_old[i][j] = VectorType::zero();
+            for (int j = 0; j < width; j++) {
+              acc_old[i][j] = T::zero();
             }
           }
 
           for (decltype(inst.reduce_count) i = 0;; i++) {
-            Pack1D<VectorType, Width> reduce_input = input.Pop();
+            Pack1D<T, width> reduce_input = input.Pop();
 
-            Pack1D<VectorType, Width> acc =
-                i < sum_n ? reduce_input
-                          : vadd(acc_old[sum_last], reduce_input);
+            Pack1D<T, width> acc = i < sum_n
+                                       ? reduce_input
+                                       : vadd(acc_old[sum_last], reduce_input);
 
 #pragma hls_unroll yes
             for (int k = sum_last; k > 0; k--) {
@@ -85,11 +85,11 @@ SC_MODULE(VectorAccumulator) {
             }
           }
 
-          Pack1D<VectorType, Width> outputs;
+          Pack1D<T, width> outputs;
 
 #pragma hls_unroll yes
-          for (int i = 0; i < Width; i++) {
-            Pack1D<VectorType, sum_n> col;
+          for (int i = 0; i < width; i++) {
+            Pack1D<T, sum_n> col;
 #pragma hls_unroll yes
             for (int j = 0; j < sum_n; j++) {
               col[j] = acc_old[j][i];
@@ -103,27 +103,26 @@ SC_MODULE(VectorAccumulator) {
             output_to_pipeline.Push(outputs);
           }
         }
-
       } else if (inst.reduce_op == VectorInstructions::rmax) {
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
         while (counter++ < total_values) {
-          Pack1D<VectorType, Width> acc_old[max_n];
+          Pack1D<T, width> acc_old[max_n];
 
 #pragma hls_unroll yes
           for (int i = 0; i < max_n; i++) {
 #pragma hls_unroll yes
-            for (int j = 0; j < Width; j++) {
-              acc_old[i][j] = VectorType::min();
+            for (int j = 0; j < width; j++) {
+              acc_old[i][j] = T::min();
             }
           }
 
           for (decltype(inst.reduce_count) i = 0;; i++) {
-            Pack1D<VectorType, Width> reduce_input = input.Pop();
+            Pack1D<T, width> reduce_input = input.Pop();
 
-            Pack1D<VectorType, Width> acc =
-                i < max_n ? reduce_input
-                          : vmax(acc_old[max_last], reduce_input);
+            Pack1D<T, width> acc = i < max_n
+                                       ? reduce_input
+                                       : vmax(acc_old[max_last], reduce_input);
 
 #pragma hls_unroll yes
             for (int k = max_last; k > 0; k--) {
@@ -137,11 +136,11 @@ SC_MODULE(VectorAccumulator) {
             }
           }
 
-          Pack1D<VectorType, Width> outputs;
+          Pack1D<T, width> outputs;
 
 #pragma hls_unroll yes
-          for (int i = 0; i < Width; i++) {
-            Pack1D<VectorType, max_n> col;
+          for (int i = 0; i < width; i++) {
+            Pack1D<T, max_n> col;
 #pragma hls_unroll yes
             for (int j = 0; j < max_n; j++) {
               col[j] = acc_old[j][i];

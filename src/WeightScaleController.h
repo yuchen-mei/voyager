@@ -5,17 +5,16 @@
 
 #include "AccelTypes.h"
 #include "ArchitectureParams.h"
-#include "ParamsDeserializer.h"
 
-template <typename Scale, int NRows, int NCols, int PortWidth>
+template <typename Scale, int rows, int cols, int port_width>
 SC_MODULE(WeightScaleController) {
   sc_in<bool> CCS_INIT_S1(clk);
   sc_in<bool> CCS_INIT_S1(rstn);
 
   Connections::Out<MemoryRequest> CCS_INIT_S1(weight_scale_req);
-  Connections::In<ac_int<PortWidth, false>> CCS_INIT_S1(weight_scale_resp);
+  Connections::In<ac_int<port_width, false>> CCS_INIT_S1(weight_scale_resp);
 
-  Connections::Out<BufferWriteRequest<ac_int<Scale::width * NCols, false>>>
+  Connections::Out<BufferWriteRequest<ac_int<Scale::width * cols, false>>>
       write_request[2];
   Connections::Out<BufferReadRequest> read_request[2];
 
@@ -25,7 +24,7 @@ SC_MODULE(WeightScaleController) {
   Connections::Combinational<MatrixParams> CCS_INIT_S1(reader_params);
 
   static constexpr int LOOP_WIDTH = 10;
-  static constexpr int BLOCK_SIZE = NRows > NCols ? NRows : NCols;
+  static constexpr int BLOCK_SIZE = rows > cols ? rows : cols;
 
   SC_CTOR(WeightScaleController) {
     SC_THREAD(read_params);
@@ -61,35 +60,28 @@ SC_MODULE(WeightScaleController) {
       for (int i = 0; i < 2; i++) {
 #pragma hls_unroll yes
         for (int j = 0; j < 5; j++) {
-          loop_bounds[i][j] = params.weightAddressGenLoops[i][j] - 1;
+          loop_bounds[i][j] = params.weight_addr_loops[i][j] - 1;
         }
       }
 
       ac_int<LOOP_WIDTH, false> K2 =
-          params
-              .weightAddressGenLoops[0]
-                                    [params.weightAddressGenWeightLoopIndex[0]];
+          params.weight_addr_loops[0][params.weight_addr_weight_loop_idx[0]];
       ac_int<LOOP_WIDTH, false> C2 =
-          params.weightAddressGenLoops
-              [0][params.weightAddressGenReductionLoopIndex[0]];
+          params.weight_addr_loops[0][params.weight_addr_reduction_loop_idx[0]];
       ac_int<LOOP_WIDTH, false> C1 =
-          params.weightAddressGenLoops
-              [1][params.weightAddressGenReductionLoopIndex[1]];
+          params.weight_addr_loops[1][params.weight_addr_reduction_loop_idx[1]];
       ac_int<LOOP_WIDTH, false> C0 =
-          params.weightAddressGenLoops
-              [1][params.weightAddressGenReductionLoopIndex[2]];
+          params.weight_addr_loops[1][params.weight_addr_reduction_loop_idx[2]];
       ac_int<LOOP_WIDTH, false> FX =
-          params.weightAddressGenLoops[1][params.weightAddressGenFxIndex];
+          params.weight_addr_loops[1][params.weight_addr_fx_idx];
       ac_int<LOOP_WIDTH, false> FY0 =
-          params.weightAddressGenLoops[1][params.weightAddressGenFyIndex[1]];
+          params.weight_addr_loops[1][params.weight_addr_fy_idx[1]];
       ac_int<LOOP_WIDTH, false> FY1 =
-          params.weightAddressGenLoops[0][params.weightAddressGenFyIndex[0]];
+          params.weight_addr_loops[0][params.weight_addr_fy_idx[0]];
       ac_int<LOOP_WIDTH, false> K1 =
-          params
-              .weightAddressGenLoops[1]
-                                    [params.weightAddressGenWeightLoopIndex[1]];
+          params.weight_addr_loops[1][params.weight_addr_weight_loop_idx[1]];
 
-      ac_int<24, false> c_stride = K2 * K1 * NCols;
+      ac_int<24, false> c_stride = K2 * K1 * cols;
       ac_int<24, false> fx_stride = C2 * C1 * C0 / BLOCK_SIZE * c_stride;
       ac_int<24, false> fy_stride = FX * fx_stride;
 
@@ -107,25 +99,23 @@ SC_MODULE(WeightScaleController) {
                       for (loop_counters[1][3] = 0;; loop_counters[1][3]++) {
                         for (loop_counters[1][4] = 0;; loop_counters[1][4]++) {
                           ac_int<LOOP_WIDTH, false> k2 = loop_counters
-                              [0][params.weightAddressGenWeightLoopIndex[0]];
+                              [0][params.weight_addr_weight_loop_idx[0]];
                           ac_int<LOOP_WIDTH, false> c2 = loop_counters
-                              [0][params.weightAddressGenReductionLoopIndex[0]];
+                              [0][params.weight_addr_reduction_loop_idx[0]];
                           ac_int<LOOP_WIDTH, false> c1 = loop_counters
-                              [1][params.weightAddressGenReductionLoopIndex[1]];
+                              [1][params.weight_addr_reduction_loop_idx[1]];
                           ac_int<LOOP_WIDTH, false> c0 = loop_counters
-                              [1][params.weightAddressGenReductionLoopIndex[2]];
+                              [1][params.weight_addr_reduction_loop_idx[2]];
                           ac_int<LOOP_WIDTH, false> fx =
-                              loop_counters[1][params.weightAddressGenFxIndex];
+                              loop_counters[1][params.weight_addr_fx_idx];
                           ac_int<LOOP_WIDTH, false> fy0 =
-                              loop_counters[1]
-                                           [params.weightAddressGenFyIndex[1]];
+                              loop_counters[1][params.weight_addr_fy_idx[1]];
                           ac_int<LOOP_WIDTH, false> fy1 =
-                              loop_counters[0]
-                                           [params.weightAddressGenFyIndex[0]];
+                              loop_counters[0][params.weight_addr_fy_idx[0]];
                           ac_int<LOOP_WIDTH, false> k1 = loop_counters
-                              [1][params.weightAddressGenWeightLoopIndex[1]];
+                              [1][params.weight_addr_weight_loop_idx[1]];
 
-                          ac_int<16, false> k = (k2 * K1 + k1) * NCols;
+                          ac_int<16, false> k = (k2 * K1 + k1) * cols;
                           ac_int<16, false> c = (c2 * C1 + c1) * C0 + c0;
                           ac_int<16, false> fy = fy0 * FY1 + fy1;
 
@@ -134,7 +124,7 @@ SC_MODULE(WeightScaleController) {
                                 fy * fy_stride + fx * fx_stride +
                                 c / BLOCK_SIZE * c_stride + k;
 
-                            send_input_request<Scale, NCols>(
+                            send_input_request<Scale, cols>(
                                 params.weight_scale_offset, address,
                                 weight_scale_req);
                           }
@@ -188,7 +178,7 @@ SC_MODULE(WeightScaleController) {
     write_request[0].Reset();
     write_request[1].Reset();
 
-    bool bankSel = 0;
+    bool bank_sel = 0;
 
     wait();
 
@@ -202,41 +192,33 @@ SC_MODULE(WeightScaleController) {
       for (int i = 0; i < 2; i++) {
 #pragma hls_unroll yes
         for (int j = 0; j < 5; j++) {
-          loop_bounds[i][j] = params.weightAddressGenLoops[i][j] - 1;
+          loop_bounds[i][j] = params.weight_addr_loops[i][j] - 1;
         }
       }
 
       ac_int<LOOP_WIDTH, false> K2 =
-          params
-              .weightAddressGenLoops[0]
-                                    [params.weightAddressGenWeightLoopIndex[0]];
+          params.weight_addr_loops[0][params.weight_addr_weight_loop_idx[0]];
       ac_int<LOOP_WIDTH, false> C1 =
-          params.weightAddressGenLoops
-              [1][params.weightAddressGenReductionLoopIndex[1]];
+          params.weight_addr_loops[1][params.weight_addr_reduction_loop_idx[1]];
       ac_int<LOOP_WIDTH, false> C0 =
-          params.weightAddressGenLoops
-              [1][params.weightAddressGenReductionLoopIndex[2]];
+          params.weight_addr_loops[1][params.weight_addr_reduction_loop_idx[2]];
       ac_int<LOOP_WIDTH, false> FX =
-          params.weightAddressGenLoops[1][params.weightAddressGenFxIndex];
+          params.weight_addr_loops[1][params.weight_addr_fx_idx];
       ac_int<LOOP_WIDTH, false> FY0 =
-          params.weightAddressGenLoops[1][params.weightAddressGenFyIndex[1]];
+          params.weight_addr_loops[1][params.weight_addr_fy_idx[1]];
       ac_int<LOOP_WIDTH, false> FY1 =
-          params.weightAddressGenLoops[0][params.weightAddressGenFyIndex[0]];
+          params.weight_addr_loops[0][params.weight_addr_fy_idx[0]];
       ac_int<LOOP_WIDTH, false> K1 =
-          params
-              .weightAddressGenLoops[1]
-                                    [params.weightAddressGenWeightLoopIndex[1]];
+          params.weight_addr_loops[1][params.weight_addr_weight_loop_idx[1]];
 
       ac_int<24, false> C = (C1 * C0 + BLOCK_SIZE - 1) / BLOCK_SIZE;
       ac_int<24, false> fx_stride = C * K1;
       ac_int<24, false> fy_stride = FX * fx_stride;
 
-      ac_int<32, false> num_total_writes = params.weightAddressGenLoops[1][0] *
-                                           params.weightAddressGenLoops[1][1] *
-                                           params.weightAddressGenLoops[1][2] *
-                                           params.weightAddressGenLoops[1][3] *
-                                           params.weightAddressGenLoops[1][4] /
-                                           NCols;
+      ac_int<32, false> num_total_writes =
+          params.weight_addr_loops[1][0] * params.weight_addr_loops[1][1] *
+          params.weight_addr_loops[1][2] * params.weight_addr_loops[1][3] *
+          params.weight_addr_loops[1][4] / cols;
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
@@ -253,20 +235,19 @@ SC_MODULE(WeightScaleController) {
                       for (loop_counters[1][3] = 0;; loop_counters[1][3]++) {
                         for (loop_counters[1][4] = 0;; loop_counters[1][4]++) {
                           ac_int<LOOP_WIDTH, false> k2 = loop_counters
-                              [0][params.weightAddressGenWeightLoopIndex[0]];
+                              [0][params.weight_addr_weight_loop_idx[0]];
                           ac_int<LOOP_WIDTH, false> c1 = loop_counters
-                              [1][params.weightAddressGenReductionLoopIndex[1]];
+                              [1][params.weight_addr_reduction_loop_idx[1]];
                           ac_int<LOOP_WIDTH, false> c0 = loop_counters
-                              [1][params.weightAddressGenReductionLoopIndex[2]];
+                              [1][params.weight_addr_reduction_loop_idx[2]];
                           ac_int<LOOP_WIDTH, false> fx =
-                              loop_counters[1][params.weightAddressGenFxIndex];
+                              loop_counters[1][params.weight_addr_fx_idx];
                           ac_int<LOOP_WIDTH, false> fy0 =
-                              loop_counters[1]
-                                           [params.weightAddressGenFyIndex[1]];
+                              loop_counters[1][params.weight_addr_fy_idx[1]];
                           ac_int<LOOP_WIDTH, false> k1 = loop_counters
-                              [1][params.weightAddressGenWeightLoopIndex[1]];
+                              [1][params.weight_addr_weight_loop_idx[1]];
 
-                          ac_int<16, false> k = (k2 * K1 + k1) * NCols;
+                          ac_int<16, false> k = (k2 * K1 + k1) * cols;
                           ac_int<16, false> c = c1 * C0 + c0;
 
                           if (c % BLOCK_SIZE == 0) {
@@ -274,18 +255,18 @@ SC_MODULE(WeightScaleController) {
                                 fy0 * fy_stride + fx * fx_stride +
                                 c / BLOCK_SIZE * K1 + k1;
 
-                            ac_int<Scale::width * NCols, false> data;
-                            process_matrix_input<Scale, NCols, PortWidth,
-                                                 Scale::width * NCols>(
+                            ac_int<Scale::width * cols, false> data;
+                            process_matrix_input<Scale, cols, port_width,
+                                                 Scale::width * cols>(
                                 weight_scale_resp, data);
 
                             BufferWriteRequest<
-                                ac_int<Scale::width * NCols, false>>
+                                ac_int<Scale::width * cols, false>>
                                 req;
                             req.address = address;
                             req.data = data;
                             req.last = num_writes == num_total_writes - 1;
-                            write_request[bankSel].Push(req);
+                            write_request[bank_sel].Push(req);
                             num_writes++;
                           }
 
@@ -309,7 +290,7 @@ SC_MODULE(WeightScaleController) {
                     break;
                   }
                 }
-                bankSel = !bankSel;
+                bank_sel = !bank_sel;
                 if (loop_counters[0][4] == loop_bounds[0][4]) {
                   break;
                 }
@@ -339,7 +320,7 @@ SC_MODULE(WeightScaleController) {
     read_request[0].Reset();
     read_request[1].Reset();
 
-    bool bankSel = 0;
+    bool bank_sel = 0;
 
     wait();
 
@@ -358,18 +339,18 @@ SC_MODULE(WeightScaleController) {
       }
 
       // set irrelevant loop bounds to 1
-      loop_bounds[1][params.weightReuseIndex[0]] = 1;
-      loop_bounds[1][params.weightReuseIndex[1]] = 1;
+      loop_bounds[1][params.weight_reuse_idx[0]] = 1;
+      loop_bounds[1][params.weight_reuse_idx[1]] = 1;
 
       // extra loop to control reuse which only occurs during transpose and
-      // when NCols > NRows
+      // when cols > rows
       int rep_bound = 1;
 
-      if (params.has_weight_transpose && NCols > NRows) {
-        if (loop_bounds[0][params.reductionLoopIndex[0]] >= (NCols / NRows)) {
+      if (params.weight_transpose && cols > rows) {
+        if (loop_bounds[0][params.reduction_loop_idx[0]] >= (cols / rows)) {
           // we are able to reuse the weights already in the buffer
-          loop_bounds[0][params.reductionLoopIndex[0]] /= (NCols / NRows);
-          rep_bound = (NCols / NRows);
+          loop_bounds[0][params.reduction_loop_idx[0]] /= (cols / rows);
+          rep_bound = (cols / rows);
         }
       }
 
@@ -377,26 +358,26 @@ SC_MODULE(WeightScaleController) {
       // this loop is used when OX and OY are the innermost L2 loops. when
       // this occurs, we can move OX and/or OY into the buffer reuse L1 loop
       int buffer_reuse = 1;
-      if (params.loops[0][params.reductionLoopIndex[0]] == 1) {
+      if (params.loops[0][params.reduction_loop_idx[0]] == 1) {
         // OX loop can be absorbed
-        if (params.weightLoopIndex[0] < params.inputXLoopIndex[0]) {
-          buffer_reuse *= loop_bounds[0][params.inputXLoopIndex[0]];
-          loop_bounds[0][params.inputXLoopIndex[0]] = 1;
+        if (params.weight_loop_idx[0] < params.x_loop_idx[0]) {
+          buffer_reuse *= loop_bounds[0][params.x_loop_idx[0]];
+          loop_bounds[0][params.x_loop_idx[0]] = 1;
         }
         // OY loop can be absorbed
-        if (params.weightLoopIndex[0] < params.inputYLoopIndex[0]) {
-          buffer_reuse *= loop_bounds[0][params.inputYLoopIndex[0]];
-          loop_bounds[0][params.inputYLoopIndex[0]] = 1;
+        if (params.weight_loop_idx[0] < params.y_loop_idx[0]) {
+          buffer_reuse *= loop_bounds[0][params.y_loop_idx[0]];
+          loop_bounds[0][params.y_loop_idx[0]] = 1;
         }
       }
 
-      ac_int<LOOP_WIDTH, false> K2 = params.loops[0][params.weightLoopIndex[0]];
+      ac_int<LOOP_WIDTH, false> K2 = params.loops[0][params.weight_loop_idx[0]];
       ac_int<LOOP_WIDTH, false> C1 =
-          params.loops[1][params.reductionLoopIndex[1]];
-      ac_int<LOOP_WIDTH, false> FX = params.loops[1][params.fxIndex];
-      ac_int<LOOP_WIDTH, false> FY0 = params.loops[1][params.fyIndex[1]];
-      ac_int<LOOP_WIDTH, false> FY1 = loop_bounds[0][params.fyIndex[0]];
-      ac_int<LOOP_WIDTH, false> K1 = params.loops[1][params.weightLoopIndex[1]];
+          params.loops[1][params.reduction_loop_idx[1]];
+      ac_int<LOOP_WIDTH, false> FX = params.loops[1][params.fx_loop_idx];
+      ac_int<LOOP_WIDTH, false> FY0 = params.loops[1][params.fy_loop_idx[1]];
+      ac_int<LOOP_WIDTH, false> FY1 = loop_bounds[0][params.fy_loop_idx[0]];
+      ac_int<LOOP_WIDTH, false> K1 = params.loops[1][params.weight_loop_idx[1]];
 
       ac_int<16, false> fx_stride = C1 * K1;
       ac_int<16, false> fy_stride = FX * fx_stride;
@@ -420,19 +401,19 @@ SC_MODULE(WeightScaleController) {
                               for (loop_counters[1][5] = 0;;
                                    loop_counters[1][5]++) {
                                 ac_int<LOOP_WIDTH, false> k2 =
-                                    loop_counters[0][params.weightLoopIndex[0]];
+                                    loop_counters[0][params.weight_loop_idx[0]];
                                 ac_int<LOOP_WIDTH, false> c1 =
                                     loop_counters[1]
-                                                 [params.reductionLoopIndex[1]];
+                                                 [params.reduction_loop_idx[1]];
                                 ac_int<LOOP_WIDTH, false> fx =
-                                    loop_counters[1][params.fxIndex];
+                                    loop_counters[1][params.fx_loop_idx];
                                 ac_int<LOOP_WIDTH, false> fy0 =
-                                    loop_counters[1][params.fyIndex[1]];
+                                    loop_counters[1][params.fy_loop_idx[1]];
                                 ac_int<LOOP_WIDTH, false> k1 =
-                                    loop_counters[1][params.weightLoopIndex[1]];
+                                    loop_counters[1][params.weight_loop_idx[1]];
 
                                 ac_int<16, false> k =
-                                    k2 * K1 * NCols + k1 * NCols;
+                                    k2 * K1 * cols + k1 * cols;
 
                                 ac_int<16, false> address = fy0 * fy_stride +
                                                             fx * fx_stride +
@@ -455,7 +436,7 @@ SC_MODULE(WeightScaleController) {
                                            rep == rep_bound - 1 &&
                                            reuse == buffer_reuse - 1;
 
-                                read_request[bankSel].Push(req);
+                                read_request[bank_sel].Push(req);
 
                                 if (loop_counters[1][5] ==
                                     loop_bounds[1][5] - 1) {
@@ -491,7 +472,7 @@ SC_MODULE(WeightScaleController) {
                     break;
                   }
                 }
-                bankSel = !bankSel;
+                bank_sel = !bank_sel;
                 if (loop_counters[0][4] == loop_bounds[0][4] - 1) {
                   break;
                 }

@@ -6,15 +6,15 @@
 #include "../ArchitectureParams.h"
 #include "VectorOps.h"
 
-template <typename VectorType, typename BufferType, int Width, int OcDimension,
+template <typename VectorType, typename BufferType, int width, int mu_width,
           typename... InputTypes>
 SC_MODULE(VectorFetchUnit) {
   static constexpr int LOOP_WIDTH = 11;
   static constexpr int MAX_BUFSIZE =
-      1024 / OcDimension < OcDimension ? 1024 / OcDimension : OcDimension;
-  static constexpr int BUFSIZE = Width < MAX_BUFSIZE ? Width : MAX_BUFSIZE;
+      1024 / mu_width < mu_width ? 1024 / mu_width : mu_width;
+  static constexpr int BUFSIZE = width < MAX_BUFSIZE ? width : MAX_BUFSIZE;
   static constexpr int MAX_DTYPE_WIDTH = std::max({InputTypes::width...});
-  static constexpr int MAX_RESPONSE_WIDTH = MAX_DTYPE_WIDTH * OcDimension;
+  static constexpr int MAX_RESPONSE_WIDTH = MAX_DTYPE_WIDTH * mu_width;
 
   sc_in<bool> CCS_INIT_S1(clk);
   sc_in<bool> CCS_INIT_S1(rstn);
@@ -25,11 +25,11 @@ SC_MODULE(VectorFetchUnit) {
   Connections::Out<MemoryRequest> CCS_INIT_S1(vector_fetch_2_req);
 
 #if DOUBLE_BUFFERED_ACCUM_BUFFER
-  Connections::In<Pack1D<BufferType, OcDimension>>
+  Connections::In<Pack1D<BufferType, mu_width>>
       accumulation_buffer_read_data[2];
-  Connections::Out<BufferWriteRequest<Pack1D<BufferType, OcDimension>>>
+  Connections::Out<BufferWriteRequest<Pack1D<BufferType, mu_width>>>
       accumulation_buffer_write_request[2];
-  Connections::Out<Pack1D<BufferType, Width>> CCS_INIT_S1(
+  Connections::Out<Pack1D<BufferType, width>> CCS_INIT_S1(
       accumulation_buffer_output);
   Connections::Out<ac_int<16, false>> accumulation_buffer_read_address[2];
   Connections::SyncOut accumulation_buffer_done[2];
@@ -39,7 +39,7 @@ SC_MODULE(VectorFetchUnit) {
       vector_fetch_0_resp);
   Connections::Combinational<ac_int<MAX_RESPONSE_WIDTH, false>> CCS_INIT_S1(
       vector_fetch_0_packed_bits);
-  Connections::Out<Pack1D<VectorType, Width>> CCS_INIT_S1(vector_fetch_0_data);
+  Connections::Out<Pack1D<VectorType, width>> CCS_INIT_S1(vector_fetch_0_data);
   sc_fifo<bool> vector_fetch_0_packer_done;
   sc_fifo<ac_int<2, false>> vector_fetch_0_data_done;
 
@@ -47,7 +47,7 @@ SC_MODULE(VectorFetchUnit) {
       vector_fetch_1_resp);
   Connections::Combinational<ac_int<MAX_RESPONSE_WIDTH, false>> CCS_INIT_S1(
       vector_fetch_1_packed_bits);
-  Connections::Out<Pack1D<VectorType, Width>> CCS_INIT_S1(vector_fetch_1_data);
+  Connections::Out<Pack1D<VectorType, width>> CCS_INIT_S1(vector_fetch_1_data);
   sc_fifo<bool> vector_fetch_1_packer_done;
   sc_fifo<bool> vector_fetch_1_data_done;
 
@@ -55,7 +55,7 @@ SC_MODULE(VectorFetchUnit) {
       vector_fetch_2_resp);
   Connections::Combinational<ac_int<MAX_RESPONSE_WIDTH, false>> CCS_INIT_S1(
       vector_fetch_2_packed_bits);
-  Connections::Out<Pack1D<VectorType, Width>> CCS_INIT_S1(vector_fetch_2_data);
+  Connections::Out<Pack1D<VectorType, width>> CCS_INIT_S1(vector_fetch_2_data);
   sc_fifo<bool> vector_fetch_2_packer_done;
   sc_fifo<bool> vector_fetch_2_data_done;
 
@@ -149,11 +149,11 @@ SC_MODULE(VectorFetchUnit) {
 
       ac_int<LOOP_WIDTH, false> stride_y = Y0;
       ac_int<LOOP_WIDTH, false> stride_x = X0;
-      ac_int<16, false> stride_k = Width * params.vector_fetch_0_packing_factor;
+      ac_int<16, false> stride_k = width * params.vector_fetch_0_packing_factor;
 
       if (params.has_transpose) {
-        X1 = X1 * BUFSIZE / OcDimension;
-        stride_k = stride_k * OcDimension / Width;
+        X1 = X1 * BUFSIZE / mu_width;
+        stride_k = stride_k * mu_width / width;
       }
 
       ac_int<16, false> Y = Y1 * Y0;
@@ -228,7 +228,7 @@ SC_MODULE(VectorFetchUnit) {
 #pragma hls_unroll yes
       for (int i = 0; i < 6; i++) {
         if (params.vector_fetch_0_broadcast[i]) {
-          loop_bounds[i] = i == 5 ? Width : 1;
+          loop_bounds[i] = i == 5 ? width : 1;
         }
       }
 
@@ -379,8 +379,10 @@ SC_MODULE(VectorFetchUnit) {
         }
       }
 
-      vector_fetch_0_packer_done.write(true);
-      vector_fetch_0_data_done.write(2);
+      if (params.vector_fetch_0_mode == 1 || params.vector_fetch_0_mode == 2) {
+        vector_fetch_0_packer_done.write(true);
+        vector_fetch_0_data_done.write(2);
+      }
     }
   }
 
@@ -393,6 +395,10 @@ SC_MODULE(VectorFetchUnit) {
 
     while (true) {
       VectorParams params = vector_fetch_0_packer_params.Pop();
+
+      if (params.vector_fetch_0_mode == 3) {
+        continue;
+      }
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
@@ -453,10 +459,10 @@ SC_MODULE(VectorFetchUnit) {
           1;
 
       if (params.has_transpose) {
-        VectorType buffer[BUFSIZE][OcDimension];
+        VectorType buffer[BUFSIZE][mu_width];
 
 #ifndef __SYNTHESIS__
-        assert(params.vector_fetch_0_loops[1][2] == OcDimension);
+        assert(params.vector_fetch_0_loops[1][2] == mu_width);
 #endif
 
         ac_int<32, false> total_values = params.vector_fetch_0_loops[0][0] *
@@ -474,8 +480,8 @@ SC_MODULE(VectorFetchUnit) {
           for (ac_int<10, false> col = 0;; col++) {
             auto bits = vector_fetch_0_packed_bits.Pop();
 
-            Pack1D<VectorType, Width> outputs;
-            bool found = (unpack_vector_data<InputTypes, VectorType, Width,
+            Pack1D<VectorType, width> outputs;
+            bool found = (unpack_vector_data<InputTypes, VectorType, width,
                                              MAX_RESPONSE_WIDTH, InputTypes...>(
                               params.vector_fetch_0_dtype, bits, outputs, 0) ||
                           ...);
@@ -487,8 +493,8 @@ SC_MODULE(VectorFetchUnit) {
             }
 #endif
 
-            Pack1D<VectorType, Width> dequantized;
-            vdequantize<VectorType, VectorType, Width>(
+            Pack1D<VectorType, width> dequantized;
+            vdequantize<VectorType, VectorType, width>(
                 outputs, dequantized, params.vector_fetch_0_dq_scale);
 
             // We may not use all the data in the response
@@ -497,31 +503,31 @@ SC_MODULE(VectorFetchUnit) {
               buffer[row][col] = dequantized[row];
             }
 
-            if (col == OcDimension - 1) {
+            if (col == mu_width - 1) {
               break;
             }
           }
 
         TRANSPOSE_WRITE:
           for (ac_int<10, false> row = 0;; row++) {
-            Pack1D<VectorType, OcDimension> transposed;
+            Pack1D<VectorType, mu_width> transposed;
 #pragma hls_unroll yes
-            for (int col = 0; col < OcDimension; col++) {
+            for (int col = 0; col < mu_width; col++) {
               transposed[col] = buffer[row][col];
             }
 
-            if constexpr (OcDimension == Width) {
+            if constexpr (mu_width == width) {
               vector_fetch_0_data.Push(transposed);
             } else {
               for (ac_int<4, false> pack = 0;; pack++) {
-                Pack1D<VectorType, Width> unpacked;
+                Pack1D<VectorType, width> unpacked;
 #pragma hls_unroll yes
-                for (int i = 0; i < Width; i++) {
-                  unpacked[i] = transposed[pack * Width + i];
+                for (int i = 0; i < width; i++) {
+                  unpacked[i] = transposed[pack * width + i];
                 }
                 vector_fetch_0_data.Push(unpacked);
 
-                if (pack == OcDimension / Width - 1) {
+                if (pack == mu_width / width - 1) {
                   break;
                 }
               }
@@ -546,11 +552,11 @@ SC_MODULE(VectorFetchUnit) {
                     auto read_data =
                         accumulation_buffer_read_data[accumulation_buffer_bank]
                             .Pop();
-                    for (int i = 0; i < OcDimension / Width; i++) {
-                      Pack1D<BufferType, Width> output_data;
+                    for (int i = 0; i < mu_width / width; i++) {
+                      Pack1D<BufferType, width> output_data;
 #pragma hls_unroll yes
-                      for (int j = 0; j < Width; j++) {
-                        output_data[j] = read_data[i * Width + j];
+                      for (int j = 0; j < width; j++) {
+                        output_data[j] = read_data[i * width + j];
                       }
                       accumulation_buffer_output.Push(output_data);
                     }
@@ -607,16 +613,16 @@ SC_MODULE(VectorFetchUnit) {
           }
 
           for (ac_int<4, false> i = 0;; i++) {
-            Pack1D<VectorType, Width> outputs;
+            Pack1D<VectorType, width> outputs;
 #pragma hls_unroll yes
-            for (int i = 0; i < Width; i++) {
+            for (int i = 0; i < width; i++) {
               outputs[i] =
                   params.is_maxpool ? VectorType::min() : VectorType::zero();
             }
 
             if (in_bound[0]) {
               bool found =
-                  (unpack_vector_data<InputTypes, VectorType, Width,
+                  (unpack_vector_data<InputTypes, VectorType, width,
                                       MAX_RESPONSE_WIDTH, InputTypes...>(
                        params.vector_fetch_0_dtype, bits, outputs, i) ||
                    ...);
@@ -630,8 +636,8 @@ SC_MODULE(VectorFetchUnit) {
             }
 
 #if !SUPPORT_MX
-            Pack1D<VectorType, Width> dequantized;
-            vdequantize<VectorType, VectorType, Width>(
+            Pack1D<VectorType, width> dequantized;
+            vdequantize<VectorType, VectorType, width>(
                 outputs, dequantized, params.vector_fetch_0_dq_scale);
             vector_fetch_0_data.Push(dequantized);
 #else
@@ -681,7 +687,7 @@ SC_MODULE(VectorFetchUnit) {
           params.vector_fetch_1_loops[1][params.vector_fetch_1_k_loop_idx[1]];
 
       ac_int<16, false> X = X1 * X0;
-      ac_int<16, false> k_stride = Width * params.vector_fetch_1_packing_factor;
+      ac_int<16, false> k_stride = width * params.vector_fetch_1_packing_factor;
       ac_int<16, false> K = K2 * K1 * k_stride;
 
       if (params.vector_fetch_1_broadcast[1]) {
@@ -811,8 +817,8 @@ SC_MODULE(VectorFetchUnit) {
             vector_fetch_1_packed_bits.Pop();
 
         for (ac_int<4, false> i = 0;; i++) {
-          Pack1D<VectorType, Width> outputs;
-          bool found = (unpack_vector_data<InputTypes, VectorType, Width,
+          Pack1D<VectorType, width> outputs;
+          bool found = (unpack_vector_data<InputTypes, VectorType, width,
                                            MAX_RESPONSE_WIDTH, InputTypes...>(
                             params.vector_fetch_1_dtype, bits, outputs, i) ||
                         ...);
@@ -825,8 +831,8 @@ SC_MODULE(VectorFetchUnit) {
 #endif
 
 #if !SUPPORT_MX
-          Pack1D<VectorType, Width> dequantized;
-          vdequantize<VectorType, VectorType, Width>(
+          Pack1D<VectorType, width> dequantized;
+          vdequantize<VectorType, VectorType, width>(
               outputs, dequantized, params.vector_fetch_1_dq_scale);
           vector_fetch_1_data.Push(dequantized);
 #else
@@ -875,7 +881,7 @@ SC_MODULE(VectorFetchUnit) {
           params.vector_fetch_2_loops[1][params.vector_fetch_2_k_loop_idx[1]];
 
       ac_int<16, false> X = X1 * X0;
-      ac_int<16, false> k_stride = Width * params.vector_fetch_2_packing_factor;
+      ac_int<16, false> k_stride = width * params.vector_fetch_2_packing_factor;
       ac_int<16, false> K = K2 * K1 * k_stride;
 
       if (params.vector_fetch_2_broadcast[1]) {
@@ -1003,8 +1009,8 @@ SC_MODULE(VectorFetchUnit) {
             vector_fetch_2_packed_bits.Pop();
 
         for (ac_int<4, false> i = 0;; i++) {
-          Pack1D<VectorType, Width> outputs;
-          bool found = (unpack_vector_data<InputTypes, VectorType, Width,
+          Pack1D<VectorType, width> outputs;
+          bool found = (unpack_vector_data<InputTypes, VectorType, width,
                                            MAX_RESPONSE_WIDTH, InputTypes...>(
                             params.vector_fetch_2_dtype, bits, outputs, i) ||
                         ...);
@@ -1017,8 +1023,8 @@ SC_MODULE(VectorFetchUnit) {
 #endif
 
 #if !SUPPORT_MX
-          Pack1D<VectorType, Width> dequantized;
-          vdequantize<VectorType, VectorType, Width>(
+          Pack1D<VectorType, width> dequantized;
+          vdequantize<VectorType, VectorType, width>(
               outputs, dequantized, params.vector_fetch_2_dq_scale);
           vector_fetch_2_data.Push(dequantized);
 #else

@@ -3,16 +3,16 @@
 #include <mc_connections.h>
 #include <systemc.h>
 
-template <typename T, int BufferSize>
+template <typename T, int size>
 SC_MODULE(DualPortBuffer) {
  private:
   static const unsigned int NUM_BANKS = DOUBLE_BUFFERED_ACCUM_BUFFER ? 2 : 1;
   static const unsigned int NUM_PORTS_PER_BANK =
       DOUBLE_BUFFERED_ACCUM_BUFFER ? 2 : 1;
 
-  T bank0[BufferSize];
+  T bank0[size];
 #if DOUBLE_BUFFERED_ACCUM_BUFFER
-  T bank1[BufferSize];
+  T bank1[size];
 #endif
 
  public:
@@ -74,7 +74,7 @@ SC_MODULE(DualPortBuffer) {
 
           if (write_request[port_sel].PopNB(req)) {
 #ifndef __SYNTHESIS__
-            if (req.address > BufferSize) {
+            if (req.address > size) {
               CCS_LOG("Address " << req.address << " is out of bounds!");
               throw std::runtime_error("Address out of bounds");
             }
@@ -86,7 +86,7 @@ SC_MODULE(DualPortBuffer) {
           ac_int<16, false> r_addr;
           if (read_address[port_sel].PopNB(r_addr)) {
 #ifndef __SYNTHESIS__
-            if (r_addr > BufferSize) {
+            if (r_addr > size) {
               CCS_LOG("Address " << r_addr << " is out of bounds!");
               throw std::runtime_error("Address out of bounds");
             }
@@ -142,7 +142,7 @@ SC_MODULE(DualPortBuffer) {
 
           if (write_request[port_idx].PopNB(req)) {
 #ifndef __SYNTHESIS__
-            if (req.address > BufferSize) {
+            if (req.address > size) {
               CCS_LOG("Address " << req.address << " is out of bounds!");
               throw std::runtime_error("Address out of bounds");
             }
@@ -155,7 +155,7 @@ SC_MODULE(DualPortBuffer) {
           ac_int<16, false> r_addr;
           if (read_address[port_idx].PopNB(r_addr)) {
 #ifndef __SYNTHESIS__
-            if (r_addr > BufferSize) {
+            if (r_addr > size) {
               CCS_LOG("Address " << r_addr << " is out of bounds!");
               throw std::runtime_error("Address out of bounds");
             }

@@ -1,12 +1,10 @@
 #pragma once
 
 #include "test/toolchain/Common.h"
-#include "ApproximationConstants.h"
-#include "ArchitectureParams.h"
 
 void MapSoftmax(const codegen::Operation &param,
-                std::deque<BaseParams *> &mappedParams,
-                std::deque<AcceleratorMemoryMap> &opMemoryMaps) {
+                std::deque<BaseParams *> &mapped_params,
+                std::deque<AcceleratorMemoryMap> &memory_maps) {
   const auto op_list = get_op_list(param);
   const auto softmax_op = op_list[0];
 
@@ -104,12 +102,12 @@ void MapSoftmax(const codegen::Operation &param,
   vinst1.vdest = VectorInstructions::to_reduce;
   vector_instruction_config->inst[1] = vinst1;
 
-  vector_instruction_config->instLen = 2;
-  vector_instruction_config->instLoopCount = 1;
+  vector_instruction_config->num_inst = 2;
+  vector_instruction_config->repeat_count = 1;
 
-  mappedParams.push_back(vector_params);
-  mappedParams.push_back(vector_instruction_config);
-  opMemoryMaps.push_back(accelerator_memory_map);
+  mapped_params.push_back(vector_params);
+  mapped_params.push_back(vector_instruction_config);
+  memory_maps.push_back(accelerator_memory_map);
 
   // ---------------------------------------------------------------------------
   // Pass 2: Find the normalization constant.
@@ -193,8 +191,8 @@ void MapSoftmax(const codegen::Operation &param,
   vinst3.vdest = VectorInstructions::to_reduce;
   vector_instruction_config->inst[1] = vinst3;
 
-  vector_instruction_config->instLen = 2;
-  vector_instruction_config->instLoopCount = 1;
+  vector_instruction_config->num_inst = 2;
+  vector_instruction_config->repeat_count = 1;
 
   // Copy coefficients from ApproximationConstants.h
   for (int i = 0; i < NUM_MAXES; i++) {
@@ -208,9 +206,9 @@ void MapSoftmax(const codegen::Operation &param,
   vector_instruction_config->approx.clamp_min = EXP_CLAMP_MIN;
   vector_instruction_config->approx.clamp_max = EXP_CLAMP_MAX;
 
-  mappedParams.push_back(vector_params);
-  mappedParams.push_back(vector_instruction_config);
-  opMemoryMaps.push_back(accelerator_memory_map);
+  mapped_params.push_back(vector_params);
+  mapped_params.push_back(vector_instruction_config);
+  memory_maps.push_back(accelerator_memory_map);
 
   // ---------------------------------------------------------------------------
   // Pass 3: Divide by the normalization constant and apply exp.
@@ -302,8 +300,8 @@ void MapSoftmax(const codegen::Operation &param,
 
   vector_instruction_config->inst[0] = inst4;
 
-  vector_instruction_config->instLen = 1;
-  vector_instruction_config->instLoopCount = 1;
+  vector_instruction_config->num_inst = 1;
+  vector_instruction_config->repeat_count = 1;
 
   // Copy coefficients from ApproximationConstants.h
   for (int i = 0; i < NUM_MAXES; i++) {
@@ -317,19 +315,7 @@ void MapSoftmax(const codegen::Operation &param,
   vector_instruction_config->approx.clamp_min = EXP_CLAMP_MIN;
   vector_instruction_config->approx.clamp_max = EXP_CLAMP_MAX;
 
-  // Copy coefficients from ApproximationConstants.h
-  for (int i = 0; i < NUM_MAXES; i++) {
-    vector_instruction_config->approx.maxes[i] = EXP_MAXES[i];
-  }
-  for (int i = 0; i < NUM_RANGES; i++) {
-    for (int j = 0; j < NUM_COEFFS; j++) {
-      vector_instruction_config->approx.ranges[i][j] = EXP_RANGES[i][j];
-    }
-  }
-  vector_instruction_config->approx.clamp_min = EXP_CLAMP_MIN;
-  vector_instruction_config->approx.clamp_max = EXP_CLAMP_MAX;
-
-  mappedParams.push_back(vector_params);
-  mappedParams.push_back(vector_instruction_config);
-  opMemoryMaps.push_back(accelerator_memory_map);
+  mapped_params.push_back(vector_params);
+  mapped_params.push_back(vector_instruction_config);
+  memory_maps.push_back(accelerator_memory_map);
 }

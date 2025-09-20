@@ -53,17 +53,17 @@ class Checker {
   std::deque<T> *reference;
 };
 
-template <typename Input, typename Weight, typename Psum, int NRows, int NCols>
+template <typename Input, typename Weight, typename Psum, int rows, int cols>
 class PEChecker {
  public:
   PEChecker() {
-    for (int i = 0; i < NRows * NCols; i++) {
+    for (int i = 0; i < rows * cols; i++) {
       checkers[i] = new Checker<std::tuple<Input, Weight, Psum> >();
     }
   }
 
   ~PEChecker() {
-    for (int i = 0; i < NRows * NCols; i++) {
+    for (int i = 0; i < rows * cols; i++) {
       delete checkers[i];
     }
   }
@@ -78,7 +78,7 @@ class PEChecker {
   }
 
  private:
-  Checker<std::tuple<Input, Weight, Psum> > *checkers[NRows * NCols];
+  Checker<std::tuple<Input, Weight, Psum> > *checkers[rows * cols];
 };
 
 extern PEChecker<SA_INPUT_TYPE, SA_WEIGHT_TYPE, ACCUM_DATATYPE, IC_DIMENSION,

@@ -9,49 +9,49 @@
 #include "test/common/AccessCounter.h"
 #endif
 
-template <int Depth, int Width>
+template <int depth, int width>
 SC_MODULE(DoubleBuffer) {
  private:
-  ac_int<Width, false> mem0[Depth];
-  ac_int<Width, false> mem1[Depth];
+  ac_int<width, false> mem0[depth];
+  ac_int<width, false> mem1[depth];
 
  public:
   sc_in<bool> CCS_INIT_S1(clk);
   sc_in<bool> CCS_INIT_S1(rstn);
 
-  Connections::In<BufferWriteRequest<ac_int<Width, false>>> writeRequest[2];
-  Connections::In<BufferReadRequest> readAddress[2];
-  Connections::Combinational<BufferReadResponse<ac_int<Width, false>>>
-      readData[2];
-  Connections::Out<ac_int<Width, false>> CCS_INIT_S1(output);
+  Connections::In<BufferWriteRequest<ac_int<width, false>>> write_request[2];
+  Connections::In<BufferReadRequest> read_request[2];
+  Connections::Combinational<BufferReadResponse<ac_int<width, false>>>
+      read_data[2];
+  Connections::Out<ac_int<width, false>> CCS_INIT_S1(output);
 
 #ifndef __SYNTHESIS__
-  AccessCounter *accessCounter;
+  AccessCounter *access_counter;
 #endif
 
   SC_CTOR(DoubleBuffer) {
-    SC_THREAD(mem0Run);
+    SC_THREAD(mem0_run);
     sensitive << clk.pos();
     async_reset_signal_is(rstn, false);
 
-    SC_THREAD(mem1Run);
+    SC_THREAD(mem1_run);
     sensitive << clk.pos();
     async_reset_signal_is(rstn, false);
 
-    SC_THREAD(outputData);
+    SC_THREAD(output_data);
     sensitive << clk.pos();
     async_reset_signal_is(rstn, false);
 
 #ifndef __SYNTHESIS__
-    accessCounter = new AccessCounter();
+    access_counter = new AccessCounter();
 #endif
   }
 
   template <int port>
   void mem_run() {
-    writeRequest[port].Reset();
-    readData[port].ResetWrite();
-    readAddress[port].Reset();
+    write_request[port].Reset();
+    read_data[port].ResetWrite();
+    read_request[port].Reset();
 
     wait();
 
@@ -60,7 +60,8 @@ SC_MODULE(DoubleBuffer) {
     while (true) {
       bool done = false;
       while (!done) {
-        BufferWriteRequest<ac_int<Width, false>> req = writeRequest[port].Pop();
+        BufferWriteRequest<ac_int<width, false>> req =
+            write_request[port].Pop();
         if (req.last) {
           done = true;
         }
@@ -68,13 +69,13 @@ SC_MODULE(DoubleBuffer) {
         ac_int<16, false> address = req.address;
 
 #ifndef __SYNTHESIS__
-        if (address > Depth) {
+        if (address > depth) {
           CCS_LOG("Address " << address << " is out of bounds!");
           throw std::runtime_error("Address out of bounds");
         }
 #endif
 
-        ac_int<Width, false> data = req.data;
+        ac_int<width, false> data = req.data;
 
         if constexpr (port == 0) {
           mem0[address] = data;
@@ -85,17 +86,17 @@ SC_MODULE(DoubleBuffer) {
 
       done = false;
       while (!done) {
-        BufferReadRequest req = readAddress[port].Pop();
+        BufferReadRequest req = read_request[port].Pop();
         ac_int<16, false> address = req.address;
         if (req.last) {
           done = true;
         }
 
 #ifndef __SYNTHESIS__
-        accessCounter->increment(name(), Width);
+        access_counter->increment(name(), width);
 #endif
 
-        BufferReadResponse<ac_int<Width, false>> response;
+        BufferReadResponse<ac_int<width, false>> response;
         response.last = req.last;
 
         if (address != 0xFFFF) {
@@ -107,21 +108,21 @@ SC_MODULE(DoubleBuffer) {
         } else {
           response.data = 0;
         }
-        readData[port].Push(response);
+        read_data[port].Push(response);
       }
     }
   }
 
-  void mem0Run() { mem_run<0>(); }
+  void mem0_run() { mem_run<0>(); }
 
-  void mem1Run() { mem_run<1>(); }
+  void mem1_run() { mem_run<1>(); }
 
-  void outputData() {
-    bool bankSel = 0;
+  void output_data() {
+    bool bank_sel = 0;
     output.Reset();
 
-    readData[0].ResetRead();
-    readData[1].ResetRead();
+    read_data[0].ResetRead();
+    read_data[1].ResetRead();
 
     wait();
 
@@ -130,14 +131,14 @@ SC_MODULE(DoubleBuffer) {
     while (true) {
       bool done = false;
       while (!done) {
-        BufferReadResponse<ac_int<Width, false>> response =
-            readData[bankSel].Pop();
+        BufferReadResponse<ac_int<width, false>> response =
+            read_data[bank_sel].Pop();
         if (response.last) {
           done = true;
         }
         output.Push(response.data);
       }
-      bankSel = !bankSel;
+      bank_sel = !bank_sel;
     }
   }
 };

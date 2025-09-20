@@ -5,34 +5,33 @@
 
 #include "AccelTypes.h"
 #include "ArchitectureParams.h"
-#include "ParamsDeserializer.h"
 
-template <typename WeightTypeTuple, typename Bias, int NRows, int NCols,
-          int PortWidth, int BufferWidth>
+template <typename WeightTypeTuple, typename Bias, int rows, int cols,
+          int port_width, int buffer_width>
 struct WeightController;
 
-template <typename... WeightTypes, typename Bias, int NRows, int NCols,
-          int PortWidth, int BufferWidth>
-struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
-                        PortWidth, BufferWidth> : public sc_module {
+template <typename... WeightTypes, typename Bias, int rows, int cols,
+          int port_width, int buffer_width>
+struct WeightController<std::tuple<WeightTypes...>, Bias, rows, cols,
+                        port_width, buffer_width> : public sc_module {
   static constexpr int LOOP_WIDTH = 10;
-  static constexpr int DATA_WIDTH = BufferWidth / NCols;
+  static constexpr int DATA_WIDTH = buffer_width / cols;
   static constexpr int MAX_FETCH_WIDTH = std::max(
-      {dtype_fetch_config<WeightTypes, NCols, PortWidth>::max_fetch_width...});
+      {dtype_fetch_config<WeightTypes, cols, port_width>::max_fetch_width...});
 
   sc_in<bool> CCS_INIT_S1(clk);
   sc_in<bool> CCS_INIT_S1(rstn);
 
   Connections::Out<MemoryRequest> CCS_INIT_S1(weight_req);
-  Connections::In<ac_int<PortWidth, false>> CCS_INIT_S1(weight_resp);
+  Connections::In<ac_int<port_width, false>> CCS_INIT_S1(weight_resp);
 
-  Connections::Out<BufferWriteRequest<ac_int<BufferWidth, false>>>
+  Connections::Out<BufferWriteRequest<ac_int<buffer_width, false>>>
       write_request[2];
   Connections::Out<BufferReadRequest> read_request[2];
 
   Connections::Out<MemoryRequest> CCS_INIT_S1(bias_req);
   Connections::In<ac_int<OC_PORT_WIDTH, false>> CCS_INIT_S1(bias_resp);
-  Connections::Out<Pack1D<Bias, NCols>> CCS_INIT_S1(bias_data);
+  Connections::Out<Pack1D<Bias, cols>> CCS_INIT_S1(bias_data);
 
   Connections::In<MatrixParams> CCS_INIT_S1(params_in);
   Connections::Combinational<MatrixParams> CCS_INIT_S1(fetcher_params);
@@ -47,7 +46,7 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
   sc_fifo<bool> fetcher_done_2;
 
   Connections::Combinational<ac_int<MAX_FETCH_WIDTH, false>> packed_bits;
-  Connections::Combinational<ac_int<BufferWidth, false>> transpose_out;
+  Connections::Combinational<ac_int<buffer_width, false>> transpose_out;
 
   SC_CTOR(WeightController) {
     SC_THREAD(read_params);
@@ -99,39 +98,32 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
       for (int i = 0; i < 2; i++) {
 #pragma hls_unroll yes
         for (int j = 0; j < 5; j++) {
-          loop_bounds[i][j] = params.weightAddressGenLoops[i][j] - 1;
+          loop_bounds[i][j] = params.weight_addr_loops[i][j] - 1;
         }
       }
 
       ac_int<LOOP_WIDTH, false> K2 =
-          params
-              .weightAddressGenLoops[0]
-                                    [params.weightAddressGenWeightLoopIndex[0]];
+          params.weight_addr_loops[0][params.weight_addr_weight_loop_idx[0]];
       ac_int<LOOP_WIDTH, false> C2 =
-          params.weightAddressGenLoops
-              [0][params.weightAddressGenReductionLoopIndex[0]];
+          params.weight_addr_loops[0][params.weight_addr_reduction_loop_idx[0]];
       ac_int<LOOP_WIDTH, false> C1 =
-          params.weightAddressGenLoops
-              [1][params.weightAddressGenReductionLoopIndex[1]];
+          params.weight_addr_loops[1][params.weight_addr_reduction_loop_idx[1]];
       ac_int<LOOP_WIDTH, false> C0 =
-          params.weightAddressGenLoops
-              [1][params.weightAddressGenReductionLoopIndex[2]];
+          params.weight_addr_loops[1][params.weight_addr_reduction_loop_idx[2]];
       ac_int<LOOP_WIDTH, false> FX =
-          params.weightAddressGenLoops[1][params.weightAddressGenFxIndex];
+          params.weight_addr_loops[1][params.weight_addr_fx_idx];
       ac_int<LOOP_WIDTH, false> FY0 =
-          params.weightAddressGenLoops[1][params.weightAddressGenFyIndex[1]];
+          params.weight_addr_loops[1][params.weight_addr_fy_idx[1]];
       ac_int<LOOP_WIDTH, false> FY1 =
-          params.weightAddressGenLoops[0][params.weightAddressGenFyIndex[0]];
+          params.weight_addr_loops[0][params.weight_addr_fy_idx[0]];
       ac_int<LOOP_WIDTH, false> K1 =
-          params
-              .weightAddressGenLoops[1]
-                                    [params.weightAddressGenWeightLoopIndex[1]];
+          params.weight_addr_loops[1][params.weight_addr_weight_loop_idx[1]];
 
       // reduce the number of iterations by packing factor
-      K1 = K1 >> params.weight_packing_factor_power;
-      loop_bounds[1][params.weightAddressGenWeightLoopIndex[1]] = K1 - 1;
+      K1 = K1 >> params.weight_pack_factor_lg2;
+      loop_bounds[1][params.weight_addr_weight_loop_idx[1]] = K1 - 1;
 
-      ac_int<16, false> k_stride = NCols << params.weight_packing_factor_power;
+      ac_int<16, false> k_stride = cols << params.weight_pack_factor_lg2;
       ac_int<24, false> c_stride = K2 * K1 * k_stride;
       ac_int<24, false> fx_stride = C2 * C1 * C0 * c_stride;
       ac_int<24, false> fy_stride = FX * fx_stride;
@@ -150,23 +142,21 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
                       for (loop_counters[1][3] = 0;; loop_counters[1][3]++) {
                         for (loop_counters[1][4] = 0;; loop_counters[1][4]++) {
                           ac_int<LOOP_WIDTH, false> k2 = loop_counters
-                              [0][params.weightAddressGenWeightLoopIndex[0]];
+                              [0][params.weight_addr_weight_loop_idx[0]];
                           ac_int<LOOP_WIDTH, false> c2 = loop_counters
-                              [0][params.weightAddressGenReductionLoopIndex[0]];
+                              [0][params.weight_addr_reduction_loop_idx[0]];
                           ac_int<LOOP_WIDTH, false> c1 = loop_counters
-                              [1][params.weightAddressGenReductionLoopIndex[1]];
+                              [1][params.weight_addr_reduction_loop_idx[1]];
                           ac_int<LOOP_WIDTH, false> c0 = loop_counters
-                              [1][params.weightAddressGenReductionLoopIndex[2]];
+                              [1][params.weight_addr_reduction_loop_idx[2]];
                           ac_int<LOOP_WIDTH, false> fx =
-                              loop_counters[1][params.weightAddressGenFxIndex];
+                              loop_counters[1][params.weight_addr_fx_idx];
                           ac_int<LOOP_WIDTH, false> fy0 =
-                              loop_counters[1]
-                                           [params.weightAddressGenFyIndex[1]];
+                              loop_counters[1][params.weight_addr_fy_idx[1]];
                           ac_int<LOOP_WIDTH, false> fy1 =
-                              loop_counters[0]
-                                           [params.weightAddressGenFyIndex[0]];
+                              loop_counters[0][params.weight_addr_fy_idx[0]];
                           ac_int<LOOP_WIDTH, false> k1 = loop_counters
-                              [1][params.weightAddressGenWeightLoopIndex[1]];
+                              [1][params.weight_addr_weight_loop_idx[1]];
 
                           ac_int<16, false> k = (k2 * K1 + k1) * k_stride;
                           ac_int<16, false> c = (c2 * C1 + c1) * C0 + c0;
@@ -175,16 +165,16 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
                                                       fx * fx_stride +
                                                       c * c_stride + k;
 
-                          if (params.has_weight_transpose) {
+                          if (params.weight_transpose) {
                             address =
-                                ((k + c0) * C2 * C1 + c2 * C1 + c1) * NCols;
+                                ((k + c0) * C2 * C1 + c2 * C1 + c1) * cols;
                           }
 
                           send_packed_request<WeightTypes...>(
                               params.weight_dtype, params.weight_offset,
                               address, params.weight_burst_size, weight_req);
                           fetcher_done.write(false);
-                          if (!params.has_weight_transpose) {
+                          if (!params.weight_transpose) {
                             fetcher_done_2.write(false);
                           }
 
@@ -239,7 +229,7 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
     write_request[0].Reset();
     write_request[1].Reset();
 
-    bool bankSel = 0;
+    bool bank_sel = 0;
 
     wait();
 
@@ -253,34 +243,27 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
       for (int i = 0; i < 2; i++) {
 #pragma hls_unroll yes
         for (int j = 0; j < 5; j++) {
-          loop_bounds[i][j] = params.weightAddressGenLoops[i][j] - 1;
+          loop_bounds[i][j] = params.weight_addr_loops[i][j] - 1;
         }
       }
 
       ac_int<LOOP_WIDTH, false> K2 =
-          params
-              .weightAddressGenLoops[0]
-                                    [params.weightAddressGenWeightLoopIndex[0]];
+          params.weight_addr_loops[0][params.weight_addr_weight_loop_idx[0]];
       ac_int<LOOP_WIDTH, false> C1 =
-          params.weightAddressGenLoops
-              [1][params.weightAddressGenReductionLoopIndex[1]];
+          params.weight_addr_loops[1][params.weight_addr_reduction_loop_idx[1]];
       ac_int<LOOP_WIDTH, false> C0 =
-          params.weightAddressGenLoops
-              [1][params.weightAddressGenReductionLoopIndex[2]];
+          params.weight_addr_loops[1][params.weight_addr_reduction_loop_idx[2]];
       ac_int<LOOP_WIDTH, false> FX =
-          params.weightAddressGenLoops[1][params.weightAddressGenFxIndex];
+          params.weight_addr_loops[1][params.weight_addr_fx_idx];
       ac_int<LOOP_WIDTH, false> FY0 =
-          params.weightAddressGenLoops[1][params.weightAddressGenFyIndex[1]];
+          params.weight_addr_loops[1][params.weight_addr_fy_idx[1]];
       ac_int<LOOP_WIDTH, false> K1 =
-          params
-              .weightAddressGenLoops[1]
-                                    [params.weightAddressGenWeightLoopIndex[1]];
+          params.weight_addr_loops[1][params.weight_addr_weight_loop_idx[1]];
 
       // reduce the number of iterations by packing factor
-      K1 = K1 >> params.weight_packing_factor_power;
-      loop_bounds[1][params.weightAddressGenWeightLoopIndex[1]] = K1 - 1;
-      ac_int<4, false> num_packs =
-          (1 << params.weight_packing_factor_power) - 1;
+      K1 = K1 >> params.weight_pack_factor_lg2;
+      loop_bounds[1][params.weight_addr_weight_loop_idx[1]] = K1 - 1;
+      ac_int<4, false> num_packs = (1 << params.weight_pack_factor_lg2) - 1;
 
       ac_int<24, false> fx_stride = C1 * C0 * K1;
       ac_int<24, false> fy_stride = FX * fx_stride;
@@ -299,32 +282,29 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
                         for (loop_counters[1][4] = 0;; loop_counters[1][4]++) {
                           for (ac_int<4, false> pack = 0;; pack++) {
                             ac_int<LOOP_WIDTH, false> k2 = loop_counters
-                                [0][params.weightAddressGenWeightLoopIndex[0]];
+                                [0][params.weight_addr_weight_loop_idx[0]];
                             ac_int<LOOP_WIDTH, false> c1 = loop_counters
-                                [1]
-                                [params.weightAddressGenReductionLoopIndex[1]];
+                                [1][params.weight_addr_reduction_loop_idx[1]];
                             ac_int<LOOP_WIDTH, false> c0 = loop_counters
-                                [1]
-                                [params.weightAddressGenReductionLoopIndex[2]];
+                                [1][params.weight_addr_reduction_loop_idx[2]];
                             ac_int<LOOP_WIDTH, false> fx =
-                                loop_counters[1]
-                                             [params.weightAddressGenFxIndex];
-                            ac_int<LOOP_WIDTH, false> fy0 = loop_counters
-                                [1][params.weightAddressGenFyIndex[1]];
+                                loop_counters[1][params.weight_addr_fx_idx];
+                            ac_int<LOOP_WIDTH, false> fy0 =
+                                loop_counters[1][params.weight_addr_fy_idx[1]];
                             ac_int<LOOP_WIDTH, false> k1 = loop_counters
-                                [1][params.weightAddressGenWeightLoopIndex[1]];
+                                [1][params.weight_addr_weight_loop_idx[1]];
 
-                            ac_int<BufferWidth, false> data =
+                            ac_int<buffer_width, false> data =
                                 transpose_out.Pop();
 
                             ac_int<16, false> c = c1 * C0 + c0;
                             ac_int<16, false> address =
                                 fy0 * fy_stride + fx * fx_stride + c * K1 + k1;
-                            address = (address
-                                       << params.weight_packing_factor_power) +
-                                      pack;
+                            address =
+                                (address << params.weight_pack_factor_lg2) +
+                                pack;
 
-                            BufferWriteRequest<ac_int<BufferWidth, false>> req;
+                            BufferWriteRequest<ac_int<buffer_width, false>> req;
                             req.address = address;
                             req.data = data;
                             req.last =
@@ -334,7 +314,7 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
                                 loop_counters[1][1] == loop_bounds[1][1] &&
                                 loop_counters[1][0] == loop_bounds[1][0] &&
                                 pack == num_packs;
-                            write_request[bankSel].Push(req);
+                            write_request[bank_sel].Push(req);
 
                             if (pack == num_packs) {
                               break;
@@ -360,7 +340,7 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
                     break;
                   }
                 }
-                bankSel = !bankSel;
+                bank_sel = !bank_sel;
                 if (loop_counters[0][4] == loop_bounds[0][4]) {
                   break;
                 }
@@ -390,7 +370,7 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
     read_request[0].Reset();
     read_request[1].Reset();
 
-    bool bankSel = 0;
+    bool bank_sel = 0;
 
     wait();
 
@@ -409,18 +389,18 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
       }
 
       // set irrelevant loop bounds to 1
-      loop_bounds[1][params.weightReuseIndex[0]] = 1;
-      loop_bounds[1][params.weightReuseIndex[1]] = 1;
+      loop_bounds[1][params.weight_reuse_idx[0]] = 1;
+      loop_bounds[1][params.weight_reuse_idx[1]] = 1;
 
       // extra loop to control reuse which only occurs during transpose and
-      // when NCols > NRows
+      // when cols > rows
       int rep_bound = 1;
 
-      if (params.has_weight_transpose && NCols > NRows) {
-        if (loop_bounds[0][params.reductionLoopIndex[0]] >= (NCols / NRows)) {
+      if (params.weight_transpose && cols > rows) {
+        if (loop_bounds[0][params.reduction_loop_idx[0]] >= (cols / rows)) {
           // we are able to reuse the weights already in the buffer
-          loop_bounds[0][params.reductionLoopIndex[0]] /= (NCols / NRows);
-          rep_bound = (NCols / NRows);
+          loop_bounds[0][params.reduction_loop_idx[0]] /= (cols / rows);
+          rep_bound = (cols / rows);
         }
       }
 
@@ -428,25 +408,25 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
       // this loop is used when OX and OY are the innermost L2 loops. when
       // this occurs, we can move OX and/or OY into the buffer reuse L1 loop
       int buffer_reuse = 1;
-      if (params.loops[0][params.reductionLoopIndex[0]] == 1) {
+      if (params.loops[0][params.reduction_loop_idx[0]] == 1) {
         // OX loop can be absorbed
-        if (params.weightLoopIndex[0] < params.inputXLoopIndex[0]) {
-          buffer_reuse *= loop_bounds[0][params.inputXLoopIndex[0]];
-          loop_bounds[0][params.inputXLoopIndex[0]] = 1;
+        if (params.weight_loop_idx[0] < params.x_loop_idx[0]) {
+          buffer_reuse *= loop_bounds[0][params.x_loop_idx[0]];
+          loop_bounds[0][params.x_loop_idx[0]] = 1;
         }
         // OY loop can be absorbed
-        if (params.weightLoopIndex[0] < params.inputYLoopIndex[0]) {
-          buffer_reuse *= loop_bounds[0][params.inputYLoopIndex[0]];
-          loop_bounds[0][params.inputYLoopIndex[0]] = 1;
+        if (params.weight_loop_idx[0] < params.y_loop_idx[0]) {
+          buffer_reuse *= loop_bounds[0][params.y_loop_idx[0]];
+          loop_bounds[0][params.y_loop_idx[0]] = 1;
         }
       }
 
-      ac_int<LOOP_WIDTH, false> K2 = params.loops[0][params.weightLoopIndex[0]];
+      ac_int<LOOP_WIDTH, false> K2 = params.loops[0][params.weight_loop_idx[0]];
       ac_int<LOOP_WIDTH, false> C1 =
-          params.loops[1][params.reductionLoopIndex[1]];
-      ac_int<LOOP_WIDTH, false> FX = params.loops[1][params.fxIndex];
-      ac_int<LOOP_WIDTH, false> FY0 = params.loops[1][params.fyIndex[1]];
-      ac_int<LOOP_WIDTH, false> K1 = params.loops[1][params.weightLoopIndex[1]];
+          params.loops[1][params.reduction_loop_idx[1]];
+      ac_int<LOOP_WIDTH, false> FX = params.loops[1][params.fx_loop_idx];
+      ac_int<LOOP_WIDTH, false> FY0 = params.loops[1][params.fy_loop_idx[1]];
+      ac_int<LOOP_WIDTH, false> K1 = params.loops[1][params.weight_loop_idx[1]];
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
@@ -471,102 +451,97 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
                                  * pad the unused rows For 7x7 filter, we
                                  * split it into 4 filters and 3 filters
                                  */
-                                ac_int<8, false> numPadding = 0;
-                                ac_int<4, false> replicationBound = 1;
-                                ac_int<8, false> startingC = NRows - 1;
-                                ac_int<8, false> endingC = NRows;
+                                ac_int<4, false> replication_bound = 1;
+                                ac_int<8, false> c_end = rows;
                                 if (params.is_resnet_replication) {
-                                  startingC = 3 - 1;
-                                  endingC = 3;
-                                  if (NRows == 4) {
-                                    numPadding = NRows - 3;
-                                    replicationBound = 1;
-                                  } else if (NRows == 8) {
-                                    if (loop_counters[1][params.fxIndex] ==
-                                        3) {  // last iteration only unrolls 1
-                                              // fx
-                                      numPadding = NRows - 3;
-                                      replicationBound = 1;
+                                  c_end = 3;
+                                  if (rows == 4) {
+                                    replication_bound = 1;
+                                  } else if (rows == 8) {
+                                    // last iteration only unrolls 1 fx
+                                    if (loop_counters[1][params.fx_loop_idx] ==
+                                        3) {
+                                      replication_bound = 1;
                                     } else {
-                                      numPadding = NRows - 6;
-                                      replicationBound = 2;
+                                      replication_bound = 2;
                                     }
-                                  } else if (NRows == 16) {
-                                    if (loop_counters[1][params.fxIndex] == 0) {
-                                      numPadding = NRows - 12;
-                                      replicationBound = 4;
+                                  } else if (rows == 16) {
+                                    if (loop_counters[1][params.fx_loop_idx] ==
+                                        0) {
+                                      replication_bound = 4;
                                     } else {
-                                      numPadding = NRows - 9;
-                                      replicationBound = 3;
+                                      replication_bound = 3;
                                     }
-                                  } else if (NRows == 32 || NRows == 64) {
-                                    replicationBound = 7;
-                                    numPadding = NRows - replicationBound * 3;
+                                  } else if (rows == 32 || rows == 64) {
+                                    replication_bound = 7;
                                   }
                                 } else if (params.is_generic_replication) {
-                                  endingC = params.num_channels;
-                                  replicationBound = 1
-                                                     << params.fx_unrolling_lg2;
-                                  numPadding = NRows - replicationBound;
+                                  c_end = params.num_channels;
+                                  replication_bound =
+                                      1 << params.fx_unrolling_lg2;
                                 }
 
                                 ac_int<LOOP_WIDTH, false> fx_repl = 0;
                                 ac_int<LOOP_WIDTH, false> c = 0;
-                                for (int row = 0; row < NRows; row++) {
+                                for (int row = 0; row < rows; row++) {
                                   ac_int<LOOP_WIDTH, false> k2 =
                                       loop_counters[0]
-                                                   [params.weightLoopIndex[0]];
+                                                   [params.weight_loop_idx[0]];
                                   ac_int<LOOP_WIDTH, false> c1 = loop_counters
-                                      [1][params.reductionLoopIndex[1]];
+                                      [1][params.reduction_loop_idx[1]];
                                   ac_int<LOOP_WIDTH, false> fy0 =
-                                      loop_counters[1][params.fyIndex[1]];
+                                      loop_counters[1][params.fy_loop_idx[1]];
                                   ac_int<LOOP_WIDTH, false> fx =
-                                      loop_counters[1][params.fxIndex];
+                                      loop_counters[1][params.fx_loop_idx];
                                   ac_int<LOOP_WIDTH, false> k1 =
                                       loop_counters[1]
-                                                   [params.weightLoopIndex[1]];
+                                                   [params.weight_loop_idx[1]];
 
                                   ac_int<16, false> k =
-                                      k2 * K1 * NCols + k1 * NCols;
+                                      k2 * K1 * cols + k1 * cols;
 
-                                  ac_int<LOOP_WIDTH, false> C = NRows * C1;
-                                  ac_int<LOOP_WIDTH, false> C0 = NRows;
+                                  ac_int<LOOP_WIDTH, false> C = rows * C1;
+                                  ac_int<LOOP_WIDTH, false> C0 = rows;
 
                                   if (params.is_resnet_replication ||
                                       params.is_generic_replication) {
                                     if (params.is_resnet_replication) {
                                       C = 3;
                                       C0 = 3;
-                                      if (NRows == 4) {
-                                        fx = loop_counters[1][params.fxIndex];
-                                      } else if (NRows == 8) {
-                                        fx = loop_counters[1][params.fxIndex] *
+                                      if (rows == 4) {
+                                        fx = loop_counters[1]
+                                                          [params.fx_loop_idx];
+                                      } else if (rows == 8) {
+                                        fx = loop_counters[1]
+                                                          [params.fx_loop_idx] *
                                                  2 +
                                              fx_repl;
-                                      } else if (NRows == 16) {
-                                        fx = loop_counters[1][params.fxIndex] *
+                                      } else if (rows == 16) {
+                                        fx = loop_counters[1]
+                                                          [params.fx_loop_idx] *
                                                  4 +
                                              fx_repl;
-                                      } else if (NRows == 32 || NRows == 64) {
+                                      } else if (rows == 32 || rows == 64) {
                                         fx = fx_repl;
                                       }
                                       FX = 7;
                                     } else {
                                       C = params.num_channels;
                                       C0 = params.num_channels;
-                                      fx = loop_counters[1][params.fxIndex] *
-                                               replicationBound +
-                                           fx_repl;
-                                      FX = loop_bounds[1][params.fxIndex] *
-                                           replicationBound;
+                                      fx =
+                                          loop_counters[1][params.fx_loop_idx] *
+                                              replication_bound +
+                                          fx_repl;
+                                      FX = loop_bounds[1][params.fx_loop_idx] *
+                                           replication_bound;
                                     }
-                                    if (fx_repl < replicationBound) {
+                                    if (fx_repl < replication_bound) {
                                       ac_int<16, false> address =
                                           fy0 * FX * C * K1 + fx * C * K1 +
                                           c * K1 + k1;
                                       BufferReadRequest req;
                                       req.address = address;
-                                      req.last = row == NRows - 1 &&
+                                      req.last = row == rows - 1 &&
                                                  loop_counters[1][5] ==
                                                      loop_bounds[1][5] - 1 &&
                                                  loop_counters[1][4] ==
@@ -582,11 +557,11 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
                                                  reuse == buffer_reuse - 1 &&
                                                  rep == rep_bound - 1;
 
-                                      read_request[bankSel].Push(req);
+                                      read_request[bank_sel].Push(req);
                                     } else {
                                       BufferReadRequest req;
                                       req.address = 0xFFFF;
-                                      req.last = row == NRows - 1 &&
+                                      req.last = row == rows - 1 &&
                                                  loop_counters[1][5] ==
                                                      loop_bounds[1][5] - 1 &&
                                                  loop_counters[1][4] ==
@@ -602,11 +577,11 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
                                                  reuse == buffer_reuse - 1 &&
                                                  rep == rep_bound - 1;
 
-                                      read_request[bankSel].Push(req);
+                                      read_request[bank_sel].Push(req);
                                     }
 
                                     // keep track of which C and FX we are on
-                                    if (c < endingC - 1) {
+                                    if (c < c_end - 1) {
                                       c++;
                                     } else {
                                       c = 0;
@@ -619,12 +594,12 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
                                         (fy0 * FX * C * K1) + (fx * C * K1) +
                                         ((c + c1 * C0) * K1) + k1;
 
-                                    if (params.has_weight_transpose &&
-                                        NCols > NRows) {
+                                    if (params.weight_transpose &&
+                                        cols > rows) {
                                       address =
                                           (fy0 * FX * C * rep_bound * K1) +
                                           (fx * C * rep_bound * K1) +
-                                          ((c + rep * NRows) +
+                                          ((c + rep * rows) +
                                            c1 * C0 * rep_bound) *
                                               K1 +
                                           k1;
@@ -632,7 +607,7 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
 
                                     BufferReadRequest req;
                                     req.address = address;
-                                    req.last = row == NRows - 1 &&
+                                    req.last = row == rows - 1 &&
                                                loop_counters[1][5] ==
                                                    loop_bounds[1][5] - 1 &&
                                                loop_counters[1][4] ==
@@ -648,7 +623,7 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
                                                reuse == buffer_reuse - 1 &&
                                                rep == rep_bound - 1;
 
-                                    read_request[bankSel].Push(req);
+                                    read_request[bank_sel].Push(req);
                                   }
                                 }
 
@@ -686,7 +661,7 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
                     break;
                   }
                 }
-                bankSel = !bankSel;
+                bank_sel = !bank_sel;
                 if (loop_counters[0][4] == loop_bounds[0][4] - 1) {
                   break;
                 }
@@ -726,7 +701,7 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
         ac_int<MAX_FETCH_WIDTH, false> bits;
 
         for (ac_int<4, false> i = 0;; i++) {
-          bits.set_slc(i * PortWidth, weight_resp.Pop());
+          bits.set_slc(i * port_width, weight_resp.Pop());
           if (i == params.weight_num_beats - 1) {
             break;
           }
@@ -753,7 +728,7 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
       for (int i = 0; i < 2; i++) {
 #pragma hls_unroll yes
         for (int j = 0; j < 5; j++) {
-          loop_bounds[i][j] = params.weightAddressGenLoops[i][j];
+          loop_bounds[i][j] = params.weight_addr_loops[i][j];
         }
       }
 
@@ -765,26 +740,25 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
 
       // don't support transpose when systolic array is larger
       // than 32x32, as it will require a very large buffer
-      if (params.has_weight_transpose && NRows < 64 && NCols < 64) {
+      if (params.weight_transpose && rows < 64 && cols < 64) {
         // we need a square buffer to store the transpose
-        ac_int<DATA_WIDTH, false>
-            transpose_buffer[NRows > NCols ? NRows : NCols]
-                            [NRows > NCols ? NRows : NCols];
+        ac_int<DATA_WIDTH, false> transpose_buffer[rows > cols ? rows : cols]
+                                                  [rows > cols ? rows : cols];
 
 #ifndef __SYNTHESIS__
         // Assume that the innermost loop is the c0 loop
         // Must be true for the transpose case
-        assert(loop_bounds[1][4] == NCols);
+        assert(loop_bounds[1][4] == cols);
 #endif
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
         while (count++ < total_values) {
-          for (int c0 = 0; c0 < NCols; c0++) {
-            ac_int<BufferWidth, false> bits = packed_bits.Pop();
+          for (int c0 = 0; c0 < cols; c0++) {
+            ac_int<buffer_width, false> bits = packed_bits.Pop();
 
-            ac_int<BufferWidth, false> outputs = 0;
-            bool handled = (unpack_bits<WeightTypes, NCols, BufferWidth,
+            ac_int<buffer_width, false> outputs = 0;
+            bool handled = (unpack_bits<WeightTypes, cols, buffer_width,
                                         MAX_FETCH_WIDTH, WeightTypes...>(
                                 params.weight_dtype, bits, outputs, 0) ||
                             ...);
@@ -797,27 +771,25 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
 #endif
 
 #pragma hls_unroll yes
-            for (int dim = 0; dim < NCols; dim++) {
+            for (int dim = 0; dim < cols; dim++) {
               transpose_buffer[dim][c0] =
                   outputs.template slc<DATA_WIDTH>(dim * DATA_WIDTH);
             }
           }
 
-          for (int c0 = 0; c0 < NCols; c0++) {
-            ac_int<BufferWidth, false> transposed;
+          for (int c0 = 0; c0 < cols; c0++) {
+            ac_int<buffer_width, false> transposed;
 
 #pragma hls_unroll yes
-            for (int dim = 0; dim < NCols; dim++) {
+            for (int dim = 0; dim < cols; dim++) {
               transposed.set_slc(dim * DATA_WIDTH, transpose_buffer[c0][dim]);
             }
 
             transpose_out.Push(transposed);
           }
         }
-
       } else {  // passthrough
-        ac_int<4, false> num_packs =
-            (1 << params.weight_packing_factor_power) - 1;
+        ac_int<4, false> num_packs = (1 << params.weight_pack_factor_lg2) - 1;
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
@@ -826,8 +798,8 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
 
           // Unpack bits into outputs based on dtype
           for (ac_int<4, false> i = 0;; i++) {
-            ac_int<BufferWidth, false> outputs = 0;
-            bool handled = (unpack_bits<WeightTypes, NCols, BufferWidth,
+            ac_int<buffer_width, false> outputs = 0;
+            bool handled = (unpack_bits<WeightTypes, cols, buffer_width,
                                         MAX_FETCH_WIDTH, WeightTypes...>(
                                 params.weight_dtype, bits, outputs, i) ||
                             ...);
@@ -871,14 +843,14 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
       }
 
       // set irrelevant loop bounds to 1
-      loop_bounds[1][params.weightReuseIndex[0]] = 0;
-      loop_bounds[1][params.weightReuseIndex[1]] = 0;
-      loop_bounds[1][params.fxIndex] = 0;
-      loop_bounds[1][params.fyIndex[1]] = 0;
-      loop_bounds[1][params.reductionLoopIndex[1]] = 0;
+      loop_bounds[1][params.weight_reuse_idx[0]] = 0;
+      loop_bounds[1][params.weight_reuse_idx[1]] = 0;
+      loop_bounds[1][params.fx_loop_idx] = 0;
+      loop_bounds[1][params.fy_loop_idx[1]] = 0;
+      loop_bounds[1][params.reduction_loop_idx[1]] = 0;
 
-      ac_int<LOOP_WIDTH, false> K2 = params.loops[0][params.weightLoopIndex[0]];
-      ac_int<LOOP_WIDTH, false> K1 = params.loops[1][params.weightLoopIndex[1]];
+      ac_int<LOOP_WIDTH, false> K2 = params.loops[0][params.weight_loop_idx[0]];
+      ac_int<LOOP_WIDTH, false> K1 = params.loops[1][params.weight_loop_idx[1]];
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
@@ -892,16 +864,15 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
                     for (loop_counters[1][4] = 0;; loop_counters[1][4]++) {
                       for (loop_counters[1][5] = 0;; loop_counters[1][5]++) {
                         ac_int<LOOP_WIDTH, false> k2 =
-                            loop_counters[0][params.weightLoopIndex[0]];
+                            loop_counters[0][params.weight_loop_idx[0]];
                         ac_int<LOOP_WIDTH, false> k1 =
-                            loop_counters[1][params.weightLoopIndex[1]];
+                            loop_counters[1][params.weight_loop_idx[1]];
 
-                        ac_int<16, false> address =
-                            k2 * K1 * NCols + k1 * NCols;
+                        ac_int<16, false> address = k2 * K1 * cols + k1 * cols;
 
                         MemoryRequest request = {
                             params.bias_offset + address * Bias::width / 8,
-                            NCols * Bias::width / 8};
+                            cols * Bias::width / 8};
 
                         bias_req.Push(request);
 
@@ -966,11 +937,11 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
       }
 
       // set irrelevant loop bounds to 1
-      loop_bounds[1][params.weightReuseIndex[0]] = 0;
-      loop_bounds[1][params.weightReuseIndex[1]] = 0;
-      loop_bounds[1][params.fxIndex] = 0;
-      loop_bounds[1][params.fyIndex[1]] = 0;
-      loop_bounds[1][params.reductionLoopIndex[1]] = 0;
+      loop_bounds[1][params.weight_reuse_idx[0]] = 0;
+      loop_bounds[1][params.weight_reuse_idx[1]] = 0;
+      loop_bounds[1][params.fx_loop_idx] = 0;
+      loop_bounds[1][params.fy_loop_idx[1]] = 0;
+      loop_bounds[1][params.reduction_loop_idx[1]] = 0;
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
@@ -983,14 +954,14 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, NRows, NCols,
                   for (loop_counters[1][3] = 0;; loop_counters[1][3]++) {
                     for (loop_counters[1][4] = 0;; loop_counters[1][4]++) {
                       for (loop_counters[1][5] = 0;; loop_counters[1][5]++) {
-                        ac_int<Bias::width * NCols, false> bits;
+                        ac_int<Bias::width * cols, false> bits;
 
-                        process_matrix_input<Bias, NCols, PortWidth,
-                                             Bias::width * NCols>(bias_resp,
-                                                                  bits);
+                        process_matrix_input<Bias, cols, port_width,
+                                             Bias::width * cols>(bias_resp,
+                                                                 bits);
 
-                        Pack1D<Bias, NCols> biases =
-                            BitsToType<Pack1D<Bias, NCols>>(TypeToBits(bits));
+                        Pack1D<Bias, cols> biases =
+                            BitsToType<Pack1D<Bias, cols>>(TypeToBits(bits));
 
                         bias_data.Push(biases);
                         if (loop_counters[1][5] == loop_bounds[1][5]) {

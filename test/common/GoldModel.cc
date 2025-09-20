@@ -85,7 +85,6 @@ std::vector<std::any> run_operation(const Operation &operation,
   spdlog::debug("Running operation: {}\n", first_op.target());
 
   if (GEMM_OPS.find(first_op.target()) != GEMM_OPS.end()) {
-    
     const auto input = first_op.kwargs().at("input").tensor();
     std::any input_ptr = kwargs[input.node()];
 
@@ -101,126 +100,87 @@ std::vector<std::any> run_operation(const Operation &operation,
       bias_ptr = kwargs[bias.node()];
     }
 
-    if ((first_op.target() == "conv2d" || first_op.target() == "conv2d_mx") &&
-               first_op.kwargs().at("groups").int_value() > 1) {
-      // Fetch microscaling scales
-      std::any input_scale_ptr = static_cast<Scale *>(nullptr);
-      std::any weight_scale_ptr = static_cast<Scale *>(nullptr);
+    bool is_dwc = first_op.target().find("conv2d") != std::string::npos &&
+                  first_op.kwargs().at("groups").int_value() > 1;
 
-      bool is_mx_op = first_op.target().find("mx") != std::string::npos;
-      if (is_mx_op) {
-        const auto input_scale = first_op.kwargs().at("input_scale").tensor();
-        input_scale_ptr = kwargs[input_scale.node()];
-
-        const auto weight_scale = first_op.kwargs().at("weight_scale").tensor();
-        weight_scale_ptr = kwargs[weight_scale.node()];
-      }
-      output_ptr = DwC<DWC_DATATYPE, DWC_PSUM, ACCUM_BUFFER_DATATYPE, Scale>(input_ptr, input_scale_ptr, weight_ptr, weight_scale_ptr, bias_ptr, operation);
-    }
-    else {
-      const auto input_shape = get_shape(input);
-      int input_dim = get_size(input_shape) / input_shape.back();
-      bool is_fc = input_dim == 1;
+    const auto input_shape = get_shape(input);
+    int input_dim = get_size(input_shape) / input_shape.back();
+    bool is_fc = input_dim == 1;
 
 #if !SUPPORT_MVM
-      if (!is_fc)
+    if (!is_dwc && !is_fc)
 #endif
-      {
-        float *input_code = nullptr;
-        if (first_op.kwargs().contains("input_code")) {
-          const auto code = first_op.kwargs().at("input_code").tensor();
-          input_code = read_constant_param(code);
-        }
-
-        float *weight_code = nullptr;
-        if (first_op.kwargs().contains("weight_code")) {
-          const auto code = first_op.kwargs().at("weight_code").tensor();
-          weight_code = read_constant_param(code);
-        }
-
-        // Cast input and weight to systolic array compute types
-        cast_input<SaInput, SUPPORTED_TYPES>(input_ptr, input_code, input);
-        cast_input<SaWeight, SUPPORTED_TYPES>(weight_ptr, weight_code, weight);
-
-        if (input_code != nullptr) {
-          delete[] input_code;
-        }
-
-        if (weight_code != nullptr) {
-          delete[] weight_code;
-        }
-
-        // Perform reshape if necessary
-        if (input.has_reshape()) {
-          input_ptr = reshape_if_needed<SaInput>(input_ptr, input.reshape());
-        }
-
-        if (weight.has_reshape()) {
-          weight_ptr = reshape_if_needed<SaWeight>(weight_ptr, weight.reshape());
-        }
+    {
+      float *input_code = nullptr;
+      if (first_op.kwargs().contains("input_code")) {
+        const auto code = first_op.kwargs().at("input_code").tensor();
+        input_code = read_constant_param(code);
       }
 
-      // Fetch microscaling scales
-      std::any input_scale_ptr = static_cast<Scale *>(nullptr);
-      std::any weight_scale_ptr = static_cast<Scale *>(nullptr);
-
-      bool is_mx_op = first_op.target().find("mx") != std::string::npos;
-      if (is_mx_op) {
-        const auto input_scale = first_op.kwargs().at("input_scale").tensor();
-        input_scale_ptr = kwargs[input_scale.node()];
-
-        const auto weight_scale = first_op.kwargs().at("weight_scale").tensor();
-        weight_scale_ptr = kwargs[weight_scale.node()];
+      float *weight_code = nullptr;
+      if (first_op.kwargs().contains("weight_code")) {
+        const auto code = first_op.kwargs().at("weight_code").tensor();
+        weight_code = read_constant_param(code);
       }
 
-      if (is_fc) {
+      // Cast input and weight to systolic array compute types
+      cast_input<SaInput, SUPPORTED_TYPES>(input_ptr, input_code, input);
+      cast_input<SaWeight, SUPPORTED_TYPES>(weight_ptr, weight_code, weight);
+
+      if (input_code != nullptr) {
+        delete[] input_code;
+      }
+
+      if (weight_code != nullptr) {
+        delete[] weight_code;
+      }
+
+      // Perform reshape if necessary
+      if (input.has_reshape()) {
+        input_ptr = reshape_if_needed<SaInput>(input_ptr, input.reshape());
+      }
+
+      if (weight.has_reshape()) {
+        weight_ptr = reshape_if_needed<SaWeight>(weight_ptr, weight.reshape());
+      }
+    }
+
+    // Fetch microscaling scales
+    std::any input_scale_ptr = static_cast<Scale *>(nullptr);
+    std::any weight_scale_ptr = static_cast<Scale *>(nullptr);
+
+    bool is_mx_op = first_op.target().find("mx") != std::string::npos;
+    if (is_mx_op) {
+      const auto input_scale = first_op.kwargs().at("input_scale").tensor();
+      input_scale_ptr = kwargs[input_scale.node()];
+
+      const auto weight_scale = first_op.kwargs().at("weight_scale").tensor();
+      weight_scale_ptr = kwargs[weight_scale.node()];
+    }
+
+    if (is_dwc) {
+#if SUPPORT_DWC
+      output_ptr = DwC<DWC_DATATYPE, DWC_PSUM, ACCUM_BUFFER_DATATYPE, Scale>(
+          input_ptr, input_scale_ptr, weight_ptr, weight_scale_ptr, bias_ptr,
+          operation);
+#else
+      throw std::runtime_error("DWC not supported in this build");
+#endif
+    } else if (is_fc) {
 #if SUPPORT_MVM
       output_ptr =
           gemv<SaInput, SaWeight, Psum, AccumBuffer, Scale, MV_UNIT_WIDTH>(
               input_ptr, input_scale_ptr, weight_ptr, weight_scale_ptr,
               bias_ptr, operation);
 #else
-        output_ptr = matrix_vector_multiply<Vector>(input_ptr, weight_ptr,
-                                                    bias_ptr, get_shape(weight));
+      output_ptr = matrix_vector_multiply<Vector>(input_ptr, weight_ptr,
+                                                  bias_ptr, get_shape(weight));
 #endif
-      } else {
-        output_ptr = gemm<SaInput, SaWeight, Psum, AccumBuffer, Scale>(
-            input_ptr, input_scale_ptr, weight_ptr, weight_scale_ptr, bias_ptr,
-            operation);
-      }
+    } else {
+      output_ptr = gemm<SaInput, SaWeight, Psum, AccumBuffer, Scale>(
+          input_ptr, input_scale_ptr, weight_ptr, weight_scale_ptr, bias_ptr,
+          operation);
     }
-  }
-
-  if (first_op.target() == "pad") {
-    const auto input = first_op.kwargs().at("input").tensor();
-    std::any input_ptr_s = kwargs[input.node()];
-
-    if (input.dtype() != DataTypes::TypeName<VECTOR_DATATYPE>::name()) {
-      const int size = get_size(input);
-      Vector *outputs = new Vector[size];
-
-      if (input.dtype() == DataTypes::TypeName<SCALE_DATATYPE>::name()) {
-        SCALE_DATATYPE *inputs = std::any_cast<SCALE_DATATYPE *>(input_ptr_s);
-        for (int i = 0; i < size; i++) {
-          outputs[i] = static_cast<Vector>(inputs[i]);//check
-        }
-        delete[] inputs;
-        input_ptr_s = outputs;
-      } else if (input.dtype() == DataTypes::TypeName<SA_INPUT_TYPE>::name()) {
-        SA_INPUT_TYPE *inputs = std::any_cast<SA_INPUT_TYPE *>(input_ptr_s);
-        for (int i = 0; i < size; i++) {
-          outputs[i] = static_cast<Vector>(inputs[i]);
-        }
-        delete[] inputs;
-        input_ptr_s = outputs;
-      } else {
-        spdlog::error("The datatype is not inside VU_INPUT_TYPES\n");
-        std::abort();
-      }
-    }
-    // output_ptr = pad<Vector>(input_ptr_s, first_op);
-    // const auto input = first_op.kwargs().at("input").tensor();
-    output_ptr = pad_tensor<Vector>(input_ptr_s, first_op);
   }
 
   if (first_op.target() == "layer_norm") {
@@ -258,60 +218,23 @@ std::vector<std::any> run_operation(const Operation &operation,
 
   if (first_op.target() == "permute") {
     const auto input = first_op.kwargs().at("input").tensor();
-    std::any input_ptr_s = kwargs[input.node()];
-    if (input.dtype() != DataTypes::TypeName<VECTOR_DATATYPE>::name()) {
-      const int size = get_size(input);
-      Vector *outputs = new Vector[size];
-
-      if (input.dtype() == DataTypes::TypeName<SCALE_DATATYPE>::name()) {
-        SCALE_DATATYPE *inputs = std::any_cast<SCALE_DATATYPE *>(input_ptr_s);
-        for (int i = 0; i < size; i++) {
-          outputs[i] = static_cast<Vector>(inputs[i]);//check
-        }
-        delete[] inputs;
-        input_ptr_s = outputs;
-      } else if (input.dtype() == DataTypes::TypeName<SA_INPUT_TYPE>::name()) {
-        SA_INPUT_TYPE *inputs = std::any_cast<SA_INPUT_TYPE *>(input_ptr_s);
-        for (int i = 0; i < size; i++) {
-          outputs[i] = static_cast<Vector>(inputs[i]);
-        }
-        delete[] inputs;
-        input_ptr_s = outputs;
-      } else {
-        spdlog::error("The datatype is not inside VU_INPUT_TYPES\n");
-        std::abort();
-      }
-    }
-    output_ptr = permute<Vector>(input_ptr_s, first_op);
+    std::any input_ptr = kwargs[input.node()];
+    cast_input<Vector, SUPPORTED_TYPES>(input_ptr, nullptr, input);
+    output_ptr = permute<Vector>(input_ptr, first_op);
   }
 
   if (first_op.target() == "slice") {
     const auto input = first_op.kwargs().at("input").tensor();
-    std::any input_ptr_s = kwargs[input.node()];
-    if (input.dtype() != DataTypes::TypeName<VECTOR_DATATYPE>::name()) {
-      const int size = get_size(input);
-      Vector *outputs = new Vector[size];
+    std::any input_ptr = kwargs[input.node()];
+    cast_input<Vector, SUPPORTED_TYPES>(input_ptr, nullptr, input);
+    output_ptr = slice<Vector>(input_ptr, first_op);
+  }
 
-      if (input.dtype() == DataTypes::TypeName<SCALE_DATATYPE>::name()) {
-        SCALE_DATATYPE *inputs = std::any_cast<SCALE_DATATYPE *>(input_ptr_s);
-        for (int i = 0; i < size; i++) {
-          outputs[i] = static_cast<Vector>(inputs[i]);//check
-        }
-        delete[] inputs;
-        input_ptr_s = outputs;
-      } else if (input.dtype() == DataTypes::TypeName<SA_INPUT_TYPE>::name()) {
-        SA_INPUT_TYPE *inputs = std::any_cast<SA_INPUT_TYPE *>(input_ptr_s);
-        for (int i = 0; i < size; i++) {
-          outputs[i] = static_cast<Vector>(inputs[i]);
-        }
-        delete[] inputs;
-        input_ptr_s = outputs;
-      } else {
-        spdlog::error("The datatype is not inside VU_INPUT_TYPES\n");
-        std::abort();
-      }
-    }
-    output_ptr = slice<Vector>(input_ptr_s, first_op);
+  if (first_op.target() == "pad") {
+    const auto input = first_op.kwargs().at("input").tensor();
+    std::any input_ptr = kwargs[input.node()];
+    cast_input<Vector, SUPPORTED_TYPES>(input_ptr, nullptr, input);
+    output_ptr = pad_tensor<Vector>(input_ptr, first_op);
   }
 
   if (output_ptr.has_value()) {
@@ -323,31 +246,10 @@ std::vector<std::any> run_operation(const Operation &operation,
 
     if (input.has_reshape()) {
       const auto reshape_op = input.reshape();
-      if (input.dtype() == DataTypes::TypeName<VECTOR_DATATYPE>::name()) {
-        output_ptr = permute<VECTOR_DATATYPE>(output_ptr, reshape_op);
-        output_ptr = slice<VECTOR_DATATYPE>(output_ptr, reshape_op);
-      } else if (input.dtype() == DataTypes::TypeName<SCALE_DATATYPE>::name()) {
-        output_ptr = permute<SCALE_DATATYPE>(output_ptr, reshape_op);
-        output_ptr = slice<SCALE_DATATYPE>(output_ptr, reshape_op);
-      } else if (input.dtype() == DataTypes::TypeName<SA_INPUT_TYPE>::name()) {
-        output_ptr = permute<SA_INPUT_TYPE>(output_ptr, reshape_op);
-        output_ptr = slice<SA_INPUT_TYPE>(output_ptr, reshape_op);
-      } else if (input.dtype() == DataTypes::TypeName<ACCUM_BUFFER_DATATYPE>::name()) {
-        output_ptr = permute<ACCUM_BUFFER_DATATYPE>(output_ptr, reshape_op);
-        output_ptr = slice<ACCUM_BUFFER_DATATYPE>(output_ptr, reshape_op);
-      } else {
-        spdlog::error("The datatype is not inside VU_INPUT_TYPES\n");
-        std::abort();
-      }
-      // output_ptr = permute<Vector>(output_ptr, reshape_op);
-      // output_ptr = slice<Vector>(output_ptr, reshape_op);
-    } else {
-      if (input.dtype() == DataTypes::TypeName<SA_INPUT_TYPE>::name()) {
-        Vector *scale_tmp = new Vector[1];
-        scale_tmp[0] = input.scale() != 0 ? input.scale() : 1.0;
-        output_ptr = dequantize_tensor<Vector>(kwargs[input.node()],
-                                              scale_tmp, input);
-      }
+      cast_input<Vector, SUPPORTED_TYPES>(output_ptr, nullptr, input);
+      output_ptr = permute<Vector>(output_ptr, reshape_op);
+      output_ptr = slice<Vector>(output_ptr, reshape_op);
+      cast_output<Vector, SUPPORTED_TYPES>(output_ptr, nullptr, input);
     }
   }
 
@@ -408,7 +310,8 @@ std::vector<std::any> run_operation(const Operation &operation,
         input_shape = get_shape(operand1);
         other_shape = get_shape(operand2);
 
-        if (operand1.dtype() == operand2.dtype() || operand2.dtype() == DataTypes::TypeName<Vector>::name()) {
+        if (operand1.dtype() == operand2.dtype() ||
+            operand2.dtype() == DataTypes::TypeName<Vector>::name()) {
           other_ptr = std::any_cast<Vector *>(kwargs[operand2.node()]);
         } else {
           if constexpr (std::is_same<Vector, CFloat>::value) {

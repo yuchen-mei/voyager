@@ -3,8 +3,8 @@
 #include "test/toolchain/Common.h"
 
 void MapMatrixVectorMultiply(const codegen::Operation &param,
-                             std::deque<BaseParams *> &mappedParams,
-                             std::deque<AcceleratorMemoryMap> &opMemoryMaps) {
+                             std::deque<BaseParams *> &mapped_params,
+                             std::deque<AcceleratorMemoryMap> &memory_maps) {
   const auto op_list = get_op_list(param);
   const auto matrix_op = op_list[0];
 
@@ -163,10 +163,10 @@ void MapMatrixVectorMultiply(const codegen::Operation &param,
     vector_instruction_config->inst[2] = vinst2;
   }
 
-  vector_instruction_config->instLen = has_bias ? 3 : 2;
-  vector_instruction_config->instLoopCount = output_dim / OC_DIMENSION;
+  vector_instruction_config->num_inst = has_bias ? 3 : 2;
+  vector_instruction_config->repeat_count = output_dim / OC_DIMENSION;
 
-  mappedParams.push_back(vector_params);
-  mappedParams.push_back(vector_instruction_config);
-  opMemoryMaps.push_back(accelerator_memory_map);
+  mapped_params.push_back(vector_params);
+  mapped_params.push_back(vector_instruction_config);
+  memory_maps.push_back(accelerator_memory_map);
 }
