@@ -188,14 +188,15 @@ void MapVectorOperations(const codegen::Operation &param,
   if (input.has_reshape() ||
       MEMORY_OPS.find(op_list[0].target()) != MEMORY_OPS.end()) {
     for (const auto dim : input_shape) {
-      if (dim > 1024) {
-        spdlog::error("ERROR: input shape dimension is greater than 1024: ");
+      if (dim > MAX_LOOP_VALUE) {
+        spdlog::error("ERROR: input shape dimension is greater than {}: ",
+                      MAX_LOOP_VALUE);
         print_shape(input_shape);
         throw std::invalid_argument("Unsupported input shape dimension!");
       }
     }
   } else {
-    input_shape = split_loops(input_shape, 1024);
+    input_shape = split_loops(input_shape, MAX_LOOP_VALUE);
     input_shape = adjust_loop_indices(input_shape, OC_DIMENSION);
   }
 
@@ -386,7 +387,7 @@ void MapVectorOperations(const codegen::Operation &param,
   vector_params->output_mode = 2;
 
   auto output_shape = get_shape(output);
-  output_shape = split_loops(output_shape, 1024);
+  output_shape = split_loops(output_shape, MAX_LOOP_VALUE);
   if (output_shape.size() > 6) {
     throw std::invalid_argument("Too many dimensions for vector operations!");
   }

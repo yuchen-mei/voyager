@@ -7,6 +7,8 @@
 #include "test/common/VerificationTypes.h"
 #include "test/compiler/proto/param.pb.h"
 
+constexpr int MAX_LOOP_VALUE = 65535;
+
 std::vector<std::set<std::string>> vector_unit_stages = {
     {"add", "add_", "sub", "sub_", "mul", "mul_", "div", "div_", "neg"},
     {"exp",          "abs",          "relu",      "relu_",      "gelu",

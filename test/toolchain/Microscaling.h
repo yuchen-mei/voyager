@@ -50,7 +50,7 @@ void MapMicroscaling(const codegen::Operation &param,
   vector_params->vector_fetch_0_packing_factor = 1;
 
   input_shape = squeeze_shape(input_shape);
-  input_shape = split_loops(input_shape, 1024);
+  input_shape = split_loops(input_shape, MAX_LOOP_VALUE);
   pad_shape_to_ndim(input_shape, 3);
 
   vector_params->vector_fetch_0_loops[0][0] = input_shape[0];
