@@ -62,10 +62,7 @@
         "layers": [
             "permute_default",
             "permute_default_1",
-            "slice_1",
-            "slice_2_fused",
-            "slice_3",
-            "slice_4_fused",
+            "^slice(_[0-9]+)?$",
             "^slice_tensor(_[0-9]+)?$"
         ]
     },
@@ -86,10 +83,7 @@
             "index_copy__1",
             "permute_default",
             "permute_default_1",
-            "slice_1",
-            "slice_2_fused",
-            "slice_3",
-            "slice_4_fused",
+            "^slice(_[0-9]+)?$",
             "^slice_tensor(_[0-9]+)?$"
         ]
     }
