@@ -519,9 +519,6 @@ void MapVectorOperations(const codegen::Operation &param,
       inst.immediate0 = immediate.bits_rep();
       inst.vector_op0_src0 = VectorInstructions::from_immediate_0;
       inst.vector_op0_src1 = VectorInstructions::from_vector_fetch_0;
-
-      set_vector_fetch_1(self, output_shape, accelerator_memory_map,
-                         vector_params);
     } else if (opcode == "quantize_mx") {
       float quant_max = op.kwargs().at("quant_max").float_value();
       bool force_scale_power_of_two =

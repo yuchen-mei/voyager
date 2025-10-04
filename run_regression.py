@@ -81,11 +81,23 @@ def get_build_folder(env_vars):
     )
 
 
-def utilization(df, weight_col="Count", tiles=None):
-    weight = df[weight_col]
-    if tiles is not None:
-        weight = weight * np.maximum(df["L2 Tiles"], tiles)
-    return (df["Ideal"] * weight).sum() / (df["Runtime"] * weight).sum()
+def utilization(df):
+    max_tiles = int(os.environ.get("MAX_TILES", "1"))
+    count = df["Count"].to_numpy()
+    full_tiles = df["L2 Tiles"].to_numpy()
+    ideal = df["Ideal"].to_numpy()
+    runtime = df["Runtime"].to_numpy()
+
+    # Clip tiles to max_tiles
+    actual_tiles = np.minimum(full_tiles, max_tiles)
+
+    # Precompute common factor
+    weight = (full_tiles * count) / actual_tiles
+
+    numerator = np.sum(ideal * weight)
+    denominator = np.sum(runtime * weight)
+
+    return numerator / denominator if denominator != 0 else np.nan
 
 
 def print_test_results(test_results, layers, output_folder):
@@ -94,8 +106,6 @@ def print_test_results(test_results, layers, output_folder):
     ]
     if len(test_results[0]) == 3:
         columns = columns[:3]
-
-    l2_tiles = int(os.environ.get("MAX_TILES", "1"))
 
     # convert list of tuples to DataFrame
     df = pd.DataFrame(test_results, columns=columns)
@@ -135,8 +145,7 @@ def print_test_results(test_results, layers, output_folder):
             )
 
             utilization_all    = utilization(model_df)
-            utilization_matrix = utilization(model_df[model_df["RuntimeType"] == "matrix"], 
-                                            tiles=l2_tiles)
+            utilization_matrix = utilization(model_df[model_df["RuntimeType"] == "matrix"])
 
             print(f"Utilization: {utilization_all:.3f}")
             print(f"Matrix Utilization: {utilization_matrix:.3f}")
@@ -906,6 +915,7 @@ def main():
         ), "Only one model can be specified when using --tests"
         layers[args.models[0]] = args.tests.split(",")
         layer_counts[args.models[0]] = {test: 1 for test in layers[args.models[0]]}
+        tile_counts[args.models[0]] = {test: 1 for test in layers[args.models[0]]}
 
     if args.sims == "systemc" or args.sims == "fast-systemc":
         success = run_systemc_tests(
