@@ -188,14 +188,15 @@ void MapVectorOperations(const codegen::Operation &param,
   if (input.has_reshape() ||
       MEMORY_OPS.find(op_list[0].target()) != MEMORY_OPS.end()) {
     for (const auto dim : input_shape) {
-      if (dim > 1024) {
-        spdlog::error("ERROR: input shape dimension is greater than 1024: ");
+      if (dim > MAX_LOOP_VALUE) {
+        spdlog::error("ERROR: input shape dimension is greater than {}: ",
+                      MAX_LOOP_VALUE);
         print_shape(input_shape);
         throw std::invalid_argument("Unsupported input shape dimension!");
       }
     }
   } else {
-    input_shape = split_loops(input_shape, 1024);
+    input_shape = split_loops(input_shape, MAX_LOOP_VALUE);
     input_shape = adjust_loop_indices(input_shape, OC_DIMENSION);
   }
 
@@ -222,10 +223,10 @@ void MapVectorOperations(const codegen::Operation &param,
   if (reshape_op.target() == "slice") {
     vector_params->has_slicing = true;
 
-    uint64_t start = reshape_kwargs.at("start").int_value();
-    uint64_t end = reshape_kwargs.at("end").int_value();
-    uint64_t step = reshape_kwargs.at("step").int_value();
-    uint64_t dim = reshape_kwargs.at("dim").int_value();
+    auto start = reshape_kwargs.at("start").int_value();
+    auto end = reshape_kwargs.at("end").int_value();
+    auto step = reshape_kwargs.at("step").int_value();
+    auto dim = reshape_kwargs.at("dim").int_value();
 
     auto shape = get_shape(input, false);
 
@@ -386,7 +387,7 @@ void MapVectorOperations(const codegen::Operation &param,
   vector_params->output_mode = 2;
 
   auto output_shape = get_shape(output);
-  output_shape = split_loops(output_shape, 1024);
+  output_shape = split_loops(output_shape, MAX_LOOP_VALUE);
   if (output_shape.size() > 6) {
     throw std::invalid_argument("Too many dimensions for vector operations!");
   }
@@ -518,9 +519,6 @@ void MapVectorOperations(const codegen::Operation &param,
       inst.immediate0 = immediate.bits_rep();
       inst.vector_op0_src0 = VectorInstructions::from_immediate_0;
       inst.vector_op0_src1 = VectorInstructions::from_vector_fetch_0;
-
-      set_vector_fetch_1(self, output_shape, accelerator_memory_map,
-                         vector_params);
     } else if (opcode == "quantize_mx") {
       float quant_max = op.kwargs().at("quant_max").float_value();
       bool force_scale_power_of_two =

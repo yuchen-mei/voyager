@@ -2,6 +2,25 @@
     {
         "datatype": "*",
         "model": [
+            "bert",
+            "resnet18",
+            "resnet50",
+            "mobilebert_encoder",
+            "mobilenet_v2"
+        ],
+        "sim_type": [
+            "systemc",
+            "fast-systemc",
+            "rtl"
+        ],
+        "block_size": "*",
+        "layers": [
+            "^slice_tensor(_[0-9]+)?$"
+        ]
+    },
+    {
+        "datatype": "*",
+        "model": [
             "vit"
         ],
         "sim_type": [
@@ -11,7 +30,8 @@
         ],
         "block_size": "*",
         "layers": [
-            "pad_default"
+            "pad_default",
+            "^slice_tensor(_[0-9]+)?$"
         ]
     },
     {
@@ -27,10 +47,7 @@
         ],
         "block_size": 32,
         "layers": [
-            "slice_tensor",
-            "slice_tensor_1",
-            "slice_tensor_2",
-            "slice_tensor_3"
+            "^slice_tensor(_[0-9]+)?$"
         ]
     },
     {
@@ -65,14 +82,8 @@
         "layers": [
             "permute_default",
             "permute_default_1",
-            "slice_1",
-            "slice_2_fused",
-            "slice_3",
-            "slice_4_fused",
-            "slice_tensor",
-            "slice_tensor_1",
-            "slice_tensor_2",
-            "slice_tensor_3"
+            "^slice(_[0-9]+)?$",
+            "^slice_tensor(_[0-9]+)?$"
         ]
     },
     {
@@ -92,10 +103,8 @@
             "index_copy__1",
             "permute_default",
             "permute_default_1",
-            "slice_1",
-            "slice_2_fused",
-            "slice_3",
-            "slice_4_fused"
+            "^slice(_[0-9]+)?$",
+            "^slice_tensor(_[0-9]+)?$"
         ]
     }
 ]

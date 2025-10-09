@@ -140,7 +140,7 @@ void Simulation::print_ideal_runtime(const Operation operation) {
 #if SUPPORT_MVM
       cycles = num_macs / K / MV_UNIT_WIDTH;
 #else
-      cycles = num_macs / K / OC_DIMENSION;
+      cycles = num_macs / K / VECTOR_UNIT_WIDTH;
 #endif
     } else {
       int K = weight_shape[weight_shape.size() - 1];
@@ -155,7 +155,17 @@ void Simulation::print_ideal_runtime(const Operation operation) {
                  cycles * clock_period_ns);
   } else {
     long num_ops = get_size(output);
-    cycles = num_ops / OC_DIMENSION * num_tiles;
+    cycles = num_ops / VECTOR_UNIT_WIDTH * num_tiles;
+
+    if (first_op.target() == "softmax") {
+      cycles *= 3;
+    } else if (first_op.target() == "layer_norm") {
+      cycles *= 4;
+    } else if (first_op.target() == "calculate_mx_qparam") {
+      const int block_size = first_op.kwargs().at("block_size").int_value();
+      cycles *= block_size;
+    }
+
     spdlog::info("{}, vector unit ideal runtime: {} ns\n", get_op_name(param),
                  cycles * clock_period_ns);
   }

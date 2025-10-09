@@ -32,7 +32,7 @@ void MapLayerNorm(const codegen::Operation &param,
     non_reduction_loops.push_back(input_shape[i]);
   }
 
-  non_reduction_loops = split_loops(non_reduction_loops, 1024);
+  non_reduction_loops = split_loops(non_reduction_loops, MAX_LOOP_VALUE);
   pad_shape_to_ndim(non_reduction_loops, 2);
   const int reduced_size = get_size(non_reduction_loops);
 

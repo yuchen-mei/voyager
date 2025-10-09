@@ -326,7 +326,7 @@ void MapMatrixOperation(const Operation &operation,
       int C1 = is_mx_op ? matrix_op.kwargs().at("block_size").int_value() : 1;
       int C2 = C / C1;
 
-      auto k_loops = split_loops({K}, pow(2, 16) - 1);
+      auto k_loops = split_loops({K}, MAX_LOOP_VALUE);
       k_loops = adjust_loop_indices(k_loops, OC_DIMENSION);
       pad_shape_to_ndim(k_loops, 2);
 
