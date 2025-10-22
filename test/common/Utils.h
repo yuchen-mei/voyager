@@ -27,8 +27,8 @@ float compare_arrays(std::any matrixA, std::string matrixA_name,
 
   double always_zero = 0.0;
 
-  TA *matrixA_ptr = std::any_cast<TA *>(matrixA);
-  TB *matrixB_ptr = std::any_cast<TB *>(matrixB);
+  TA* matrixA_ptr = std::any_cast<TA*>(matrixA);
+  TB* matrixB_ptr = std::any_cast<TB*>(matrixB);
 
   for (int index = 0; index < size; index++) {
     // Calculate absolute difference

@@ -1,5 +1,6 @@
 import argparse
 import interstellar
+import logging
 import math
 import os
 
@@ -7,6 +8,9 @@ from google.protobuf import text_format
 
 from quantized_training.codegen import param_pb2
 from proto import tiling_pb2
+
+
+logger = logging.getLogger(__name__)
 
 
 class RuntimeCalculator:
@@ -328,7 +332,12 @@ def main():
             height = output_shape[1]
             width = output_shape[2]
         else:
-            assert len(weights_shape) == 2, "Expected weights shape to be 2D for linear or matmul"
+            if len(weights_shape) != 2:
+                logger.warning(
+                    f"Unexpected weights shape {weights_shape} for "
+                    f"{matrix_op.target}, skipping"
+                )
+                continue
             kernel_width = 1
             kernel_height = 1
             input_channels = weights_shape[0]

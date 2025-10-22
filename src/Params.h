@@ -88,6 +88,7 @@ struct MatrixParams : BaseParams {
     input_transpose = false;
     weight_transpose = false;
     write_output_to_accum_buffer = false;
+    weight_dequant = false;
   }
 #endif
 
@@ -152,12 +153,16 @@ struct MatrixParams : BaseParams {
   bool input_transpose;
   bool weight_transpose;
   bool write_output_to_accum_buffer;
+  bool weight_dequant;
+
+  ac_int<ADDRESS_WIDTH, false> dq_scale_offset;
+  ac_int<ADDRESS_WIDTH, false> dq_zero_point_offset;
 
   static const unsigned int base_width =
-      5 * 64 /* OFFSETS */ + (12 + 10) * LOOP_WIDTH /* Loops */ +
+      7 * 64 /* OFFSETS */ + (12 + 10) * LOOP_WIDTH /* Loops */ +
       21 * 3 /* Loop indices */ + 5 /* stride */ + 2 /* padding */ +
       8 /* Head Size */ + 2 /* num_channels */ + 3 /*fx_unrolling_lg2*/ +
-      11 * 1 /* Bools */;
+      12 * 1 /* Bools */;
 
   static const unsigned int extra_width =
       2 * DTYPE_INDEX_WIDTH + 36 +
@@ -254,6 +259,10 @@ struct MatrixParams : BaseParams {
     m & input_transpose;
     m & weight_transpose;
     m & write_output_to_accum_buffer;
+    m & weight_dequant;
+
+    m & dq_scale_offset;
+    m & dq_zero_point_offset;
   }
 
   inline friend void sc_trace(sc_trace_file* tf, const MatrixParams& params,
@@ -361,6 +370,9 @@ struct MatrixParams : BaseParams {
     os << "weight_transpose: " << params.weight_transpose << std::endl;
     os << "write_output_to_accum_buffer: "
        << params.write_output_to_accum_buffer << std::endl;
+    os << "weight_dequant: " << params.weight_dequant << std::endl;
+    os << "dq_scale_offset: " << params.dq_scale_offset << std::endl;
+    os << "dq_zero_point_offset: " << params.dq_zero_point_offset << std::endl;
     return os;
   }
 
@@ -441,6 +453,10 @@ struct MatrixParams : BaseParams {
     if (lhs.weight_transpose != rhs.weight_transpose) return false;
     if (lhs.write_output_to_accum_buffer != rhs.write_output_to_accum_buffer)
       return false;
+    if (lhs.weight_dequant != rhs.weight_dequant) return false;
+
+    if (lhs.dq_scale_offset != rhs.dq_scale_offset) return false;
+    if (lhs.dq_zero_point_offset != rhs.dq_zero_point_offset) return false;
 
     // If all members are equal, return true
     return true;

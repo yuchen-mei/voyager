@@ -4,8 +4,8 @@
 #include "test/toolchain/ApproximationConstants.h"
 #include "test/toolchain/Common.h"
 
-inline bool are_broadcastable(const std::vector<int> &shape1,
-                              const std::vector<int> &shape2) {
+inline bool are_broadcastable(const std::vector<int>& shape1,
+                              const std::vector<int>& shape2) {
   size_t len1 = shape1.size();
   size_t len2 = shape2.size();
   size_t min_len = std::min(len1, len2);
@@ -20,8 +20,8 @@ inline bool are_broadcastable(const std::vector<int> &shape1,
   return true;
 }
 
-inline std::vector<int> broadcast_shape(std::vector<int> &shape1,
-                                        std::vector<int> &shape2) {
+inline std::vector<int> broadcast_shape(std::vector<int>& shape1,
+                                        std::vector<int>& shape2) {
   if (!are_broadcastable(shape1, shape2)) {
     throw std::invalid_argument("Shapes are not broadcastable");
   }
@@ -50,10 +50,10 @@ inline std::vector<int> broadcast_shape(std::vector<int> &shape1,
   return result_shape;
 }
 
-void set_vector_fetch_1(const codegen::Tensor &tensor,
+void set_vector_fetch_1(const codegen::Tensor& tensor,
                         std::vector<int> output_shape,
-                        AcceleratorMemoryMap &accelerator_memory_map,
-                        VectorParams *vector_params) {
+                        AcceleratorMemoryMap& accelerator_memory_map,
+                        VectorParams* vector_params) {
   const auto memory = tensor.memory();
   accelerator_memory_map["vector1"] = get_partition(memory.partition());
   vector_params->vector_fetch_1_offset = get_address(tensor);
@@ -93,14 +93,15 @@ void set_vector_fetch_1(const codegen::Tensor &tensor,
     vector_params->vector_fetch_1_k_loop_idx[i] = 2;
   }
 
-  DataTypes::bfloat16 scale = tensor.scale() != 0 ? tensor.scale() : 1.0;
+  float scale_val = get_tensor_scalar_scale(tensor);
+  DataTypes::bfloat16 scale = scale_val != 0 ? scale_val : 1.0;
   vector_params->vector_fetch_1_dq_scale = scale.bits_rep();
 }
 
-void set_vector_fetch_2(const codegen::Tensor &tensor,
+void set_vector_fetch_2(const codegen::Tensor& tensor,
                         std::vector<int> output_shape,
-                        AcceleratorMemoryMap &accelerator_memory_map,
-                        VectorParams *vector_params) {
+                        AcceleratorMemoryMap& accelerator_memory_map,
+                        VectorParams* vector_params) {
   const auto memory = tensor.memory();
   accelerator_memory_map["vector2"] = get_partition(memory.partition());
   vector_params->vector_fetch_2_offset = get_address(tensor);
@@ -139,12 +140,13 @@ void set_vector_fetch_2(const codegen::Tensor &tensor,
     vector_params->vector_fetch_2_k_loop_idx[i] = 2;
   }
 
-  DataTypes::bfloat16 scale = tensor.scale() != 0 ? tensor.scale() : 1.0;
+  float scale_val = get_tensor_scalar_scale(tensor);
+  DataTypes::bfloat16 scale = scale_val != 0 ? scale_val : 1.0;
   vector_params->vector_fetch_2_dq_scale = scale.bits_rep();
 }
 
 void set_vector_immediate(const float scalar, const int stage,
-                          const std::string opcode, VectorInstructions &inst) {
+                          const std::string opcode, VectorInstructions& inst) {
   VECTOR_DATATYPE immediate = scalar;
 
   if (opcode == "div" || opcode == "div_") {
@@ -163,12 +165,12 @@ void set_vector_immediate(const float scalar, const int stage,
   }
 }
 
-void MapVectorOperations(const codegen::Operation &param,
-                         std::deque<BaseParams *> &mapped_params,
-                         std::deque<AcceleratorMemoryMap> &memory_maps) {
-  VectorParams *vector_params = new VectorParams;
+void MapVectorOperations(const codegen::Operation& param,
+                         std::deque<BaseParams*>& mapped_params,
+                         std::deque<AcceleratorMemoryMap>& memory_maps) {
+  VectorParams* vector_params = new VectorParams;
   AcceleratorMemoryMap accelerator_memory_map;
-  VectorInstructionConfig *vector_instruction_config =
+  VectorInstructionConfig* vector_instruction_config =
       new VectorInstructionConfig;
 
   auto op_list = get_op_list(param);
@@ -455,7 +457,7 @@ void MapVectorOperations(const codegen::Operation &param,
     std::map<std::string, VECTOR_DATATYPE> activation_kwargs;
     if (unary_ops_with_kwargs.find(op.target()) !=
         unary_ops_with_kwargs.end()) {
-      for (const auto &[key, value] : op.kwargs()) {
+      for (const auto& [key, value] : op.kwargs()) {
         if (key != "input") {
           activation_kwargs[key] = VECTOR_DATATYPE(value.float_value());
         }
@@ -470,7 +472,7 @@ void MapVectorOperations(const codegen::Operation &param,
 
       assert(get_size(other) == 1);
 
-      float *array = read_constant_param(other);
+      float* array = read_constant_param(other);
       VECTOR_DATATYPE immediate = array[0];
       inst.vector_dq_scale = immediate.bits_rep();
 
@@ -809,7 +811,7 @@ void MapVectorOperations(const codegen::Operation &param,
         int scalar = other.int_value();
         set_immediate(scalar, stage, opcode, inst);
       } else if (other.has_tensor() && get_size(other.tensor()) == 1) {
-        float *array = read_constant_param(other.tensor());
+        float* array = read_constant_param(other.tensor());
         set_immediate(array[0], stage, opcode, inst);
         delete[] array;
       } else {
@@ -849,11 +851,11 @@ void MapVectorOperations(const codegen::Operation &param,
       }
     }
 
-    if (op.kwargs().contains("quant_code")) {
-      const auto code = op.kwargs().at("quant_code").tensor();
+    if (op.kwargs().contains("output_code")) {
+      const auto code = op.kwargs().at("output_code").tensor();
       const int size = get_size(code);
 
-      float *array = read_constant_param(code);
+      float* array = read_constant_param(code);
 
       for (int i = 0; i < size; i++) {
         vector_params->output_code[i] = array[i] * 2;

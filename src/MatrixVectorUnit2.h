@@ -67,6 +67,16 @@ struct MatrixVectorUnit<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
       weight_scale_data);
 #endif
 
+  Connections::Out<MemoryRequest> CCS_INIT_S1(weight_dq_scale_req);
+  Connections::In<ac_int<port_width, false>> CCS_INIT_S1(weight_dq_scale_resp);
+  Connections::Combinational<Pack1D<Scale, width>> CCS_INIT_S1(
+      weight_dq_scale_data);
+
+  Connections::Out<MemoryRequest> CCS_INIT_S1(weight_dq_zp_req);
+  Connections::In<ac_int<port_width, false>> CCS_INIT_S1(weight_dq_zp_resp);
+  Connections::Combinational<Pack1D<Scale, width>> CCS_INIT_S1(
+      weight_dq_zp_data);
+
   Connections::Combinational<Output> CCS_INIT_S1(accumulation_out);
   Connections::Out<Pack1D<Output, vu_width>> CCS_INIT_S1(matrix_out);
 
@@ -305,6 +315,14 @@ struct MatrixVectorUnit<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
 #pragma hls_pipeline_stall_mode flush
       for (ac_int<32, false> k = 0;; k++) {
         for (ac_int<32, false> c = 0;; c++) {
+          if (params.weight_dequant) {
+            ac_int<32, false> address = k / bs * C + c * width;
+            send_input_request<Scale, width>(params.dq_scale_offset, address,
+                                             weight_dq_scale_req);
+            send_input_request<Scale, width>(params.dq_zero_point_offset,
+                                             address, weight_dq_zp_req);
+          }
+
           ac_int<32, false> address = k * C + c * width;
           (fetch_matrix_input<WeightTypes, width, WeightTypes...>(
                params.weight_dtype, params.weight_offset, address, weight_req),
@@ -352,6 +370,32 @@ struct MatrixVectorUnit<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
 #pragma hls_pipeline_stall_mode flush
       for (ac_int<32, false> k = 0;; k++) {
         for (ac_int<32, false> c = 0;; c++) {
+          Pack1D<Scale, width> dq_scales;
+          Pack1D<Scale, width> dq_zps;
+          if (params.weight_dequant) {
+            ac_int<Scale::width * width, false> dq_scale_data;
+            process_matrix_input<Scale, width, port_width,
+                                 Scale::width * width>(weight_dq_scale_resp,
+                                                       dq_scale_data);
+
+#pragma hls_unroll yes
+            for (int i = 0; i < width; i++) {
+              dq_scales[i].set_bits(
+                  dq_scale_data.template slc<Scale::width>(i * Scale::width));
+            }
+
+            ac_int<Scale::width * width, false> dq_zp_data;
+            process_matrix_input<Scale, width, port_width,
+                                 Scale::width * width>(weight_dq_zp_resp,
+                                                       dq_zp_data);
+
+#pragma hls_unroll yes
+            for (int i = 0; i < width; i++) {
+              dq_zps[i].set_bits(
+                  dq_zp_data.template slc<Scale::width>(i * Scale::width));
+            }
+          }
+
           ac_int<buffer_width, false> bits = 0;
           bool success = (process_matrix_input<WeightTypes, width, port_width,
                                                buffer_width, WeightTypes...>(
@@ -382,6 +426,11 @@ struct MatrixVectorUnit<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
                           << std::endl;
               }
 #endif
+            }
+
+            if (params.weight_dequant) {
+              weights[i] = ((Output)weights[i] - (Output)dq_zps[i]) *
+                           (Output)dq_scales[i];
             }
           }
 

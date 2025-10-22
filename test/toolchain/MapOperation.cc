@@ -11,9 +11,9 @@
 #include "test/toolchain/Softmax.h"
 #include "test/toolchain/VectorOps.h"
 
-void MapOperation(const Operation &operation,
-                  std::deque<BaseParams *> &mapped_params,
-                  std::deque<AcceleratorMemoryMap> &memory_maps) {
+void MapOperation(const Operation& operation,
+                  std::deque<BaseParams*>& mapped_params,
+                  std::deque<AcceleratorMemoryMap>& memory_maps) {
   const auto param = operation.param;
   const auto op_list = get_op_list(param);
   const auto first_op = op_list[0];

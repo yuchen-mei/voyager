@@ -76,7 +76,7 @@ class StdFloat {
 
   static StdFloat min() {
     StdFloat r;
-    r.float_val = ac_float_rep::min();
+    r.float_val = -ac_float_rep::max();
     return r;
   }
 

@@ -2,22 +2,24 @@
 
 #include "test/toolchain/Common.h"
 
-void MapMatrixVectorMultiply(const codegen::Operation &param,
-                             std::deque<BaseParams *> &mapped_params,
-                             std::deque<AcceleratorMemoryMap> &memory_maps) {
+void MapMatrixVectorMultiply(const codegen::Operation& param,
+                             std::deque<BaseParams*>& mapped_params,
+                             std::deque<AcceleratorMemoryMap>& memory_maps) {
   const auto op_list = get_op_list(param);
   const auto matrix_op = op_list[0];
 
   const auto input = matrix_op.kwargs().at("input").tensor();
-  const auto weight = matrix_op.kwargs().at("weight").tensor();
+  bool is_matmul = matrix_op.target().find("matmul") != std::string::npos;
+  std::string weight_key = is_matmul ? "other" : "weight";
+  const auto weight = matrix_op.kwargs().at(weight_key).tensor();
   const auto output = param.output();
   bool has_bias = matrix_op.kwargs().contains("bias");
 
   int output_dim = weight.shape(0);
   int reduction_dim = weight.shape(1);
 
-  VectorParams *vector_params = new VectorParams;
-  VectorInstructionConfig *vector_instruction_config =
+  VectorParams* vector_params = new VectorParams;
+  VectorInstructionConfig* vector_instruction_config =
       new VectorInstructionConfig;
 
   // round output_dim up to a multiple of DIMENSION
@@ -128,7 +130,8 @@ void MapMatrixVectorMultiply(const codegen::Operation &param,
   vinst0.op_type = VectorInstructions::reduction;
   vinst0.reduce_count = reduction_dim / VECTOR_UNIT_WIDTH;
   vinst0.reduce_op = VectorInstructions::radd;
-  vinst0.rdest = VectorInstructions::to_op0;
+  vinst0.rdest =
+      has_bias ? VectorInstructions::to_op0 : VectorInstructions::to_memory;
   vinst0.immediate0 = 1;
   vector_instruction_config->inst[0] = vinst0;
 

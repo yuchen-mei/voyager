@@ -286,6 +286,30 @@ class MemoryInterface {
             (value.tensor().has_memory() || get_size(value.tensor()) == 1)) {
           spdlog::debug("Reading tensor: {}\n", value.tensor().node());
           kwargs[value.tensor().node()] = read_tensor(value.tensor());
+
+          const auto tensor = value.tensor();
+          if (tensor.has_dequant()) {
+            const auto dequant_op = tensor.dequant();
+            const auto scale = dequant_op.kwargs().at("scale");
+            const auto scale_tensor = scale.tensor();
+
+            if (scale.has_tensor() && scale_tensor.has_memory()) {
+              spdlog::debug("Reading dequant scale tensor: {}\n",
+                            scale_tensor.node());
+              kwargs[scale_tensor.node()] = read_tensor(scale_tensor);
+            }
+
+            if (dequant_op.kwargs().contains("zero_point")) {
+              const auto zero_point = dequant_op.kwargs().at("zero_point");
+              const auto zero_point_tensor = zero_point.tensor();
+              if (zero_point.has_tensor() && zero_point_tensor.has_memory()) {
+                spdlog::debug("Reading dequant zero_point tensor: {}\n",
+                              zero_point_tensor.node());
+                kwargs[zero_point_tensor.node()] =
+                    read_tensor(zero_point_tensor);
+              }
+            }
+          }
         }
       }
     }

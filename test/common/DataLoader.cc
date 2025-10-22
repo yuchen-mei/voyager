@@ -73,11 +73,30 @@ void DataLoader::load_inputs(const std::vector<Operation> operations,
             (value.tensor().has_memory() || get_size(value.tensor()) == 1)) {
           bool is_conv2d = op.target().find("conv2d") != std::string::npos;
           if (is_dut && is_conv2d && tensor.shape_size() == 4 &&
-              tensor.shape(3) == 3 &&
+              tensor.shape(3) == 3 && key == "input" &&
               op.kwargs().at("groups").int_value() == 1) {
             inputs_with_replication.push_back(value.tensor());
           } else {
             inputs.push_back(value.tensor());
+          }
+
+          const auto tensor = value.tensor();
+          if (tensor.has_dequant()) {
+            const auto dequant_op = tensor.dequant();
+            const auto scale = dequant_op.kwargs().at("scale");
+            const auto scale_tensor = scale.tensor();
+
+            if (scale.has_tensor() && scale_tensor.has_memory()) {
+              inputs.push_back(scale_tensor);
+            }
+
+            if (dequant_op.kwargs().contains("zero_point")) {
+              const auto zero_point = dequant_op.kwargs().at("zero_point");
+              const auto zero_point_tensor = zero_point.tensor();
+              if (zero_point.has_tensor() && zero_point_tensor.has_memory()) {
+                inputs.push_back(zero_point_tensor);
+              }
+            }
           }
         }
       }
@@ -208,13 +227,33 @@ void DataLoader::load_scratchpad(const codegen::Operation& param,
   const auto op_list = get_op_list(param);
 
   for (const auto op : op_list) {
+    std::unordered_map<std::string, codegen::Tensor> tensor_dict;
+
     for (const auto [key, value] : op.kwargs()) {
-      if (!value.has_tensor() || !value.tensor().has_memory()) {
-        continue;
-      }
-
       const auto tensor = value.tensor();
+      if (value.has_tensor() && tensor.has_memory()) {
+        tensor_dict[key] = tensor;
+        if (tensor.has_dequant()) {
+          const auto dequant_op = tensor.dequant();
+          const auto scale = dequant_op.kwargs().at("scale");
+          const auto scale_tensor = scale.tensor();
 
+          if (scale.has_tensor() && scale_tensor.has_memory()) {
+            tensor_dict["scale"] = scale_tensor;
+          }
+
+          if (dequant_op.kwargs().contains("zero_point")) {
+            const auto zero_point = dequant_op.kwargs().at("zero_point");
+            const auto zero_point_tensor = zero_point.tensor();
+            if (zero_point.has_tensor() && zero_point_tensor.has_memory()) {
+              tensor_dict["zero_point"] = zero_point_tensor;
+            }
+          }
+        }
+      }
+    }
+
+    for (const auto& [key, tensor] : tensor_dict) {
       std::string dtype = tensor.dtype();
       const auto full_shape = get_shape(tensor, false, false);
       const auto tiled_shape = get_shape(tensor, false);

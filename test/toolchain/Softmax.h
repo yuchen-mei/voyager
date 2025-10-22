@@ -2,9 +2,9 @@
 
 #include "test/toolchain/Common.h"
 
-void MapSoftmax(const codegen::Operation &param,
-                std::deque<BaseParams *> &mapped_params,
-                std::deque<AcceleratorMemoryMap> &memory_maps) {
+void MapSoftmax(const codegen::Operation& param,
+                std::deque<BaseParams*>& mapped_params,
+                std::deque<AcceleratorMemoryMap>& memory_maps) {
   const auto op_list = get_op_list(param);
   const auto softmax_op = op_list[0];
 
@@ -18,8 +18,8 @@ void MapSoftmax(const codegen::Operation &param,
     output = param.outputs().tensors(1);
   }
 
-  VectorParams *vector_params = new VectorParams;
-  VectorInstructionConfig *vector_instruction_config =
+  VectorParams* vector_params = new VectorParams;
+  VectorInstructionConfig* vector_instruction_config =
       new VectorInstructionConfig;
   AcceleratorMemoryMap accelerator_memory_map;
 
