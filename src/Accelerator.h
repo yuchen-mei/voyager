@@ -218,8 +218,10 @@ SC_MODULE(Accelerator) {
         matrix_vector_unit_weight_dq_scale_req);
     matrix_vector_unit.weight_dq_scale_resp(
         matrix_vector_unit_weight_dq_scale_resp);
-    matrix_vector_unit.weight_dq_zp_req(matrix_vector_unit_weight_dq_zp_req);
-    matrix_vector_unit.weight_dq_zp_resp(matrix_vector_unit_weight_dq_zp_resp);
+    matrix_vector_unit.weight_dq_zero_point_req(
+        matrix_vector_unit_weight_dq_zp_req);
+    matrix_vector_unit.weight_dq_zero_point_resp(
+        matrix_vector_unit_weight_dq_zp_resp);
     matrix_vector_unit.matrix_out(matrix_vector_unit_data);
     matrix_vector_unit.start_signal(matrix_vector_unit_start_signal);
     matrix_vector_unit.done_signal(matrix_vector_unit_done_signal);
