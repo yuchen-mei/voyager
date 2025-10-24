@@ -154,9 +154,14 @@ std::vector<std::any> run_operation(const Operation& operation,
         const auto axes =
             dequantized_op.kwargs().at("axes").int_list().values();
 
-        weight_ptr = dequantize_tensor_group<SaWeight, Scale, Vector>(
-            weight_ptr, scale, zero_point, weight, block_size, axes[0]);
-        std::cerr << "Dequantized weight tensor\n";
+        if constexpr (std::is_same<Vector, CFloat>::value) {
+          spdlog::error(
+              "No quantization operations should be emitted for CFloat\n");
+          std::abort();
+        } else {
+          weight_ptr = dequantize_tensor_group<SaWeight, Scale, Vector>(
+              weight_ptr, scale, zero_point, weight, block_size, axes[0]);
+        }
       } else {
         weight_ptr = process_gemm_inputs<SaWeight>(first_op, "weight_code",
                                                    weight, weight_ptr);
@@ -185,7 +190,7 @@ std::vector<std::any> run_operation(const Operation& operation,
       throw std::runtime_error("DWC not supported in this build");
 #endif
     } else if (is_fc) {
-      if (input.dtype() == "bfloat16") {
+      if (input.dtype() == "bfloat16" || input.dtype() == "float32") {
         output_ptr = gemv_bfloat16<Vector>(input_ptr, weight_ptr, bias_ptr,
                                            get_shape(weight));
       } else {

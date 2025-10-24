@@ -88,7 +88,7 @@ struct MatrixVectorUnit<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
   Connections::SyncOut CCS_INIT_S1(start_signal);
   Connections::SyncOut CCS_INIT_S1(done_signal);
 
-  constexpr static int buffer_depth = 8192 / width;
+  constexpr static int buffer_depth = 32768 / width;
   ac_int<Input::width * width, false> input_buffer[buffer_depth];
   ac_int<Scale::width * width / bs, false> input_scale_buffer[buffer_depth];
   ac_int<Scale::width * width, false> dq_scale_buffer[buffer_depth];
