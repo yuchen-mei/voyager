@@ -24,7 +24,7 @@ class CFloat {
   CFloat(const float val) : float_val(val) {}
 
   template <int W, int I, bool S, ac_q_mode Q2, ac_o_mode O>
-  CFloat(const ac_fixed<W, I, S, Q2, O> &rhs) {
+  CFloat(const ac_fixed<W, I, S, Q2, O>& rhs) {
     float_val = rhs.to_double();
   }
 
@@ -60,42 +60,42 @@ class CFloat {
   CFloat silu() { return float_val / (1.0f + std::exp(-float_val)); }
   CFloat tanh() { return std::tanh(float_val); }
 
-  CFloat fma(CFloat &b, CFloat &c) {
+  CFloat fma(CFloat& b, CFloat& c) {
     return CFloat(float_val * b.float_val + c.float_val);
   }
 
-  CFloat operator+(const CFloat &rhs) {
+  CFloat operator+(const CFloat& rhs) {
     return CFloat(float_val + rhs.float_val);
   }
-  CFloat operator*(const CFloat &rhs) {
+  CFloat operator*(const CFloat& rhs) {
     return CFloat(float_val * rhs.float_val);
   }
-  CFloat operator/(const CFloat &rhs) {
+  CFloat operator/(const CFloat& rhs) {
     return CFloat(float_val / rhs.float_val);
   }
-  CFloat &operator+=(const CFloat &rhs) {
+  CFloat& operator+=(const CFloat& rhs) {
     float_val += rhs.float_val;
     return *this;
   }
-  CFloat &operator-=(const CFloat &rhs) {
+  CFloat& operator-=(const CFloat& rhs) {
     float_val -= rhs.float_val;
     return *this;
   }
-  CFloat &operator*=(const CFloat &rhs) {
+  CFloat& operator*=(const CFloat& rhs) {
     float_val *= rhs.float_val;
     return *this;
   }
-  CFloat &operator/=(const CFloat &rhs) {
+  CFloat& operator/=(const CFloat& rhs) {
     float_val /= rhs.float_val;
     return *this;
   }
 
-  bool operator<(const CFloat &rhs) const { return float_val < rhs.float_val; }
+  bool operator<(const CFloat& rhs) const { return float_val < rhs.float_val; }
   operator float() const { return float_val; }
 
 #ifndef NO_SYSC
   template <unsigned int Size>
-  void Marshall(Marshaller<Size> &m) {
+  void Marshall(Marshaller<Size>& m) {
     assert(false && "Marshall not implemented for CFloat");
   }
 #endif

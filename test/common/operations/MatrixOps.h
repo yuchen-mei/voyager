@@ -8,7 +8,7 @@
 #endif
 
 template <typename T1, typename T2>
-inline void fused_multiply_add(T1 a, T1 b, T2 &c) {
+inline void fused_multiply_add(T1 a, T1 b, T2& c) {
   typename T1::decoded v1 = a;
   typename T1::decoded v2 = b;
   c = v1.fma(v2, c);
@@ -16,18 +16,18 @@ inline void fused_multiply_add(T1 a, T1 b, T2 &c) {
 
 template <typename Input, typename Weight, typename Psum, typename Buffer,
           typename Scale>
-inline Buffer *gemm(std::any input_ptr, std::any input_scale_ptr,
+inline Buffer* gemm(std::any input_ptr, std::any input_scale_ptr,
                     std::any weight_ptr, std::any weight_scale_ptr,
                     std::any bias_ptr, Tiling tiling, const int block_size) {
   spdlog::debug("Performing GEMM\n");
 
-  Input *inputs = std::any_cast<Input *>(input_ptr);
-  Scale *input_scales = std::any_cast<Scale *>(input_scale_ptr);
+  Input* inputs = std::any_cast<Input*>(input_ptr);
+  Scale* input_scales = std::any_cast<Scale*>(input_scale_ptr);
 
-  Weight *weights = std::any_cast<Weight *>(weight_ptr);
-  Scale *weight_scales = std::any_cast<Scale *>(weight_scale_ptr);
+  Weight* weights = std::any_cast<Weight*>(weight_ptr);
+  Scale* weight_scales = std::any_cast<Scale*>(weight_scale_ptr);
 
-  Buffer *biases = std::any_cast<Buffer *>(bias_ptr);
+  Buffer* biases = std::any_cast<Buffer*>(bias_ptr);
 
   int X = tiling.loops[0][tiling.x_loop_idx[0]] *
           tiling.loops[1][tiling.x_loop_idx[1]];
@@ -89,10 +89,10 @@ inline Buffer *gemm(std::any input_ptr, std::any input_scale_ptr,
     assert(tiling.loops[1][j] != 0);
   }
 
-  Buffer *outputs = new Buffer[X * Y * K];
+  Buffer* outputs = new Buffer[X * Y * K];
 
   // only used for replication
-  Psum *accumulations = new Psum[X * Y * K];
+  Psum* accumulations = new Psum[X * Y * K];
   for (int i = 0; i < X * Y * K; i++) {
     accumulations[i] = Psum(0.0);
   }
@@ -370,9 +370,9 @@ inline Buffer *gemm(std::any input_ptr, std::any input_scale_ptr,
 
 template <typename Input, typename Weight, typename Psum, typename Buffer,
           typename Scale>
-inline Buffer *gemm(std::any input_ptr, std::any input_scale_ptr,
+inline Buffer* gemm(std::any input_ptr, std::any input_scale_ptr,
                     std::any weight_ptr, std::any weight_scale_ptr,
-                    std::any bias_ptr, const Operation &operation) {
+                    std::any bias_ptr, const Operation& operation) {
   Tiling tiling = get_tiling(operation);
 
   std::ostringstream oss;
@@ -392,9 +392,9 @@ inline Buffer *gemm(std::any input_ptr, std::any input_scale_ptr,
 
 template <typename Input, typename Weight, typename Psum, typename Output,
           typename Scale, int N>
-inline Output *gemv_simd(std::any input_ptr, std::any input_scale_ptr,
+inline Output* gemv_simd(std::any input_ptr, std::any input_scale_ptr,
                          std::any weight_ptr, std::any weight_scale_ptr,
-                         std::any bias_ptr, const Operation &operation) {
+                         std::any bias_ptr, const Operation& operation) {
   spdlog::debug("Performing SIMD matrix-vector multiply\n");
 
   const auto op_list = get_op_list(operation.param);
@@ -413,14 +413,14 @@ inline Output *gemv_simd(std::any input_ptr, std::any input_scale_ptr,
   int C1 = C / block_size;
   int C0 = block_size;
 
-  Input *inputs = std::any_cast<Input *>(input_ptr);
-  Weight *weights = std::any_cast<Weight *>(weight_ptr);
-  Output *biases = std::any_cast<Output *>(bias_ptr);
+  Input* inputs = std::any_cast<Input*>(input_ptr);
+  Weight* weights = std::any_cast<Weight*>(weight_ptr);
+  Output* biases = std::any_cast<Output*>(bias_ptr);
 
-  Scale *input_scales = std::any_cast<Scale *>(input_scale_ptr);
-  Scale *weight_scales = std::any_cast<Scale *>(weight_scale_ptr);
+  Scale* input_scales = std::any_cast<Scale*>(input_scale_ptr);
+  Scale* weight_scales = std::any_cast<Scale*>(weight_scale_ptr);
 
-  Output *outputs = new Output[K];
+  Output* outputs = new Output[K];
   for (int i = 0; i < K; i++) {
     outputs[i] = 0.0;
   }
@@ -475,9 +475,9 @@ inline Output *gemv_simd(std::any input_ptr, std::any input_scale_ptr,
 
 template <typename Input, typename Weight, typename Psum, typename Output,
           typename Scale, int N>
-inline Output *gemv_quantized(std::any input_ptr, std::any input_scale_ptr,
+inline Output* gemv_quantized(std::any input_ptr, std::any input_scale_ptr,
                               std::any weight_ptr, std::any weight_scale_ptr,
-                              std::any bias_ptr, const Operation &operation) {
+                              std::any bias_ptr, const Operation& operation) {
   spdlog::debug("Performing matrix-vector multiply\n");
 
   const int FEEDBACK_DELAY = 4;
@@ -498,13 +498,13 @@ inline Output *gemv_quantized(std::any input_ptr, std::any input_scale_ptr,
   int num_tiles = (C + N - 1) / N;
   int num_blocks = N / block_size;
 
-  Input *inputs = std::any_cast<Input *>(input_ptr);
-  Weight *weights = std::any_cast<Weight *>(weight_ptr);
-  Output *biases = std::any_cast<Output *>(bias_ptr);
-  Scale *input_scales = std::any_cast<Scale *>(input_scale_ptr);
-  Scale *weight_scales = std::any_cast<Scale *>(weight_scale_ptr);
+  Input* inputs = std::any_cast<Input*>(input_ptr);
+  Weight* weights = std::any_cast<Weight*>(weight_ptr);
+  Output* biases = std::any_cast<Output*>(bias_ptr);
+  Scale* input_scales = std::any_cast<Scale*>(input_scale_ptr);
+  Scale* weight_scales = std::any_cast<Scale*>(weight_scale_ptr);
 
-  Output *outputs = new Output[K];
+  Output* outputs = new Output[K];
   for (int i = 0; i < K; i++) {
     outputs[i] = 0.0;
   }
@@ -579,17 +579,17 @@ inline Output *gemv_quantized(std::any input_ptr, std::any input_scale_ptr,
 }
 
 template <typename T>
-inline T *gemv_bfloat16(std::any input_ptr, std::any weight_ptr,
+inline T* gemv_bfloat16(std::any input_ptr, std::any weight_ptr,
                         std::any bias_ptr,
-                        const std::vector<int> &weight_shape) {
+                        const std::vector<int>& weight_shape) {
   const int K = weight_shape[0];
   const int C = weight_shape[1];
 
-  T *inputs = std::any_cast<T *>(input_ptr);
-  T *weights = std::any_cast<T *>(weight_ptr);
-  T *biases = std::any_cast<T *>(bias_ptr);
+  T* inputs = std::any_cast<T*>(input_ptr);
+  T* weights = std::any_cast<T*>(weight_ptr);
+  T* biases = std::any_cast<T*>(bias_ptr);
 
-  T *outputs = new T[K];
+  T* outputs = new T[K];
   for (int i = 0; i < K; i++) {
     outputs[i] = 0.0;
   }
@@ -628,9 +628,9 @@ template <typename Input, typename Psum, typename Buffer, typename Scale>
 // Input: quantized input/weight type
 // Psum: accumulation type
 // Buffer: output type
-inline Buffer *DwC(std::any input_ptr, std::any input_scale_ptr,
+inline Buffer* DwC(std::any input_ptr, std::any input_scale_ptr,
                    std::any weight_ptr, std::any weight_scale_ptr,
-                   std::any bias_ptr, const Operation &operation) {
+                   std::any bias_ptr, const Operation& operation) {
   std::vector<int> BUFFER_DIM = {2, 9, 9};  // IC, X, Y
 
   const auto param = operation.param;
@@ -639,7 +639,7 @@ inline Buffer *DwC(std::any input_ptr, std::any input_scale_ptr,
   bool is_mx = first_op.target().find("mx") != std::string::npos;
   int block_size = is_mx ? first_op.kwargs().at("block_size").int_value() : 0;
 
-  const auto &stride_vals = first_op.kwargs().at("stride").int_list().values();
+  const auto& stride_vals = first_op.kwargs().at("stride").int_list().values();
   int stride_y = stride_vals[0];
   int stride_x = stride_vals[1];
 
@@ -660,14 +660,14 @@ inline Buffer *DwC(std::any input_ptr, std::any input_scale_ptr,
   int oy = floor((ix + 2 * x_pad - kernel_size) / stride_x) + 1;
   int ox = floor((iy + 2 * y_pad - kernel_size) / stride_y) + 1;
 
-  Buffer *outputs = new Buffer[obatch * oc * ox * oy];
-  Input *inputs = std::any_cast<Input *>(input_ptr);
-  Scale *input_scales = std::any_cast<Scale *>(input_scale_ptr);
+  Buffer* outputs = new Buffer[obatch * oc * ox * oy];
+  Input* inputs = std::any_cast<Input*>(input_ptr);
+  Scale* input_scales = std::any_cast<Scale*>(input_scale_ptr);
 
-  Input *weights = std::any_cast<Input *>(weight_ptr);
-  Scale *weight_scales = std::any_cast<Scale *>(weight_scale_ptr);
+  Input* weights = std::any_cast<Input*>(weight_ptr);
+  Scale* weight_scales = std::any_cast<Scale*>(weight_scale_ptr);
 
-  Buffer *biases = std::any_cast<Buffer *>(bias_ptr);
+  Buffer* biases = std::any_cast<Buffer*>(bias_ptr);
 
   spdlog::debug(
       "Input shape: [{} {} {} {}], Weight shape: [{} {} {} {}], Output shape: "

@@ -33,14 +33,14 @@ class Int {
 #endif
 
   template <int W2, bool S2>
-  Int(const ac_int<W2, S2> &other);
+  Int(const ac_int<W2, S2>& other);
 
   template <int W2, bool S2>
-  Int(const Int<W2, S2> &other);
+  Int(const Int<W2, S2>& other);
 
   template <int mantissa, int exp, bool use_dw_impl, bool ieee_compliance,
             ac_q_mode Q>
-  Int(const StdFloat<mantissa, exp, use_dw_impl, ieee_compliance, Q> &other);
+  Int(const StdFloat<mantissa, exp, use_dw_impl, ieee_compliance, Q>& other);
 
   ac_int<W, false> bits_rep() { return int_val; }
 
@@ -58,17 +58,17 @@ class Int {
   }
 
   template <int W2, bool S2>
-  Int<W2, S2> fma(Int &b, Int<W2, S2> &c);
+  Int<W2, S2> fma(Int& b, Int<W2, S2>& c);
 
-  Int operator+(const Int &rhs) const;
-  Int operator*(const Int &rhs) const;
-  Int operator/(const Int &rhs) const;
-  Int &operator+=(const Int &rhs);
-  Int &operator-=(const Int &rhs);
-  Int &operator*=(const Int &rhs);
-  Int &operator/=(const Int &rhs);
+  Int operator+(const Int& rhs) const;
+  Int operator*(const Int& rhs) const;
+  Int operator/(const Int& rhs) const;
+  Int& operator+=(const Int& rhs);
+  Int& operator-=(const Int& rhs);
+  Int& operator*=(const Int& rhs);
+  Int& operator/=(const Int& rhs);
 
-  bool operator<(const Int &rhs) const;
+  bool operator<(const Int& rhs) const;
   operator float() const { return float(int_val); }
 
   template <int mantissa, int exp, bool use_dw_impl, bool ieee_compliance,
@@ -83,7 +83,7 @@ class Int {
 
 #ifndef NO_SYSC
   template <unsigned int Size>
-  void Marshall(Marshaller<Size> &m) {
+  void Marshall(Marshaller<Size>& m) {
     m & int_val;
   }
 #endif
@@ -98,13 +98,13 @@ Int<W, S>::Int(const float val) {
 
 template <int W, bool S>
 template <int W2, bool S2>
-Int<W, S>::Int(const ac_int<W2, S2> &other) {
+Int<W, S>::Int(const ac_int<W2, S2>& other) {
   int_val = ac_int_rep(other);
 }
 
 template <int W, bool S>
 template <int W2, bool S2>
-Int<W, S>::Int(const Int<W2, S2> &other) {
+Int<W, S>::Int(const Int<W2, S2>& other) {
   int_val = static_cast<ac_int_rep>(other.int_val);
 }
 
@@ -112,58 +112,58 @@ template <int W, bool S>
 template <int mantissa, int exp, bool use_dw_impl, bool ieee_compliance,
           ac_q_mode Q>
 Int<W, S>::Int(
-    const StdFloat<mantissa, exp, use_dw_impl, ieee_compliance, Q> &other) {
+    const StdFloat<mantissa, exp, use_dw_impl, ieee_compliance, Q>& other) {
   int_val = other.float_val
                 .template convert_to_ac_fixed<W, W, S, AC_RND_CONV, AC_SAT>()
                 .to_ac_int();
 }
 
 template <int W, bool S>
-inline Int<W, S> Int<W, S>::operator+(const Int &rhs) const {
+inline Int<W, S> Int<W, S>::operator+(const Int& rhs) const {
   return int_val + rhs.int_val;
 }
 
 template <int W, bool S>
-inline Int<W, S> Int<W, S>::operator*(const Int &rhs) const {
+inline Int<W, S> Int<W, S>::operator*(const Int& rhs) const {
   return int_val * rhs.int_val;
 }
 
 template <int W, bool S>
-inline Int<W, S> Int<W, S>::operator/(const Int &rhs) const {
+inline Int<W, S> Int<W, S>::operator/(const Int& rhs) const {
   return int_val / rhs.int_val;
 }
 
 template <int W, bool S>
-inline Int<W, S> &Int<W, S>::operator+=(const Int &rhs) {
+inline Int<W, S>& Int<W, S>::operator+=(const Int& rhs) {
   int_val += rhs.int_val;
   return *this;
 }
 
 template <int W, bool S>
-inline Int<W, S> &Int<W, S>::operator-=(const Int &rhs) {
+inline Int<W, S>& Int<W, S>::operator-=(const Int& rhs) {
   int_val -= rhs.int_val;
   return *this;
 }
 
 template <int W, bool S>
-inline Int<W, S> &Int<W, S>::operator*=(const Int &rhs) {
+inline Int<W, S>& Int<W, S>::operator*=(const Int& rhs) {
   int_val *= rhs.int_val;
   return *this;
 }
 
 template <int W, bool S>
-inline Int<W, S> &Int<W, S>::operator/=(const Int &rhs) {
+inline Int<W, S>& Int<W, S>::operator/=(const Int& rhs) {
   int_val /= rhs.int_val;
   return *this;
 }
 
 template <int W, bool S>
-inline bool Int<W, S>::operator<(const Int &rhs) const {
+inline bool Int<W, S>::operator<(const Int& rhs) const {
   return int_val < rhs.int_val;
 }
 
 template <int W, bool S>
 template <int W2, bool S2>
-Int<W2, S2> Int<W, S>::fma(Int<W, S> &b, Int<W2, S2> &c) {
+Int<W2, S2> Int<W, S>::fma(Int<W, S>& b, Int<W2, S2>& c) {
   return static_cast<Int<W2, S2> >(*this) * static_cast<Int<W2, S2> >(b) + c;
 }

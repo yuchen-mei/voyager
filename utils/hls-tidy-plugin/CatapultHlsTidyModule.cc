@@ -9,7 +9,7 @@ namespace {
 
 class CatapultHlsTidyModule : public ClangTidyModule {
  public:
-  void addCheckFactories(ClangTidyCheckFactories &Factories) override {
+  void addCheckFactories(ClangTidyCheckFactories& Factories) override {
     Factories.registerCheck<clang::tidy::hls::ConnectionsResetCheck>(
         "hls-connections-reset-check");
     Factories.registerCheck<clang::tidy::hls::HLSUnrollNestedCheck>(

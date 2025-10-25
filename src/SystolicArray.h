@@ -17,8 +17,8 @@ SC_MODULE(SystolicArrayRow) {
   ProcessingElement<Input, Weight, Psum> pe[cols];
   Tieoff<PEInput<Input>> input_tieoff;
 #else
-  ProcessingElement<Input, Weight, Psum> *pe_ptr[cols];
-  Tieoff<PEInput<Input>> *input_tieoff_ptr;
+  ProcessingElement<Input, Weight, Psum>* pe_ptr[cols];
+  Tieoff<PEInput<Input>>* input_tieoff_ptr;
 #endif
 
  public:
@@ -107,9 +107,9 @@ SC_MODULE(SystolicArray) {
   Tieoff<PEWeight<Input>> weight_wires_tieoff[cols];
   ZeroTieoff<Psum> psum_wires_tieoff[cols];
 #else
-  SystolicArrayRow<Input, Weight, Psum, cols> *sa_rows_ptr[rows];
-  Tieoff<PEWeight<Input>> *weight_wires_tieoff_pt[cols];
-  ZeroTieoff<Psum> *psum_wires_tieoff_ptr[cols];
+  SystolicArrayRow<Input, Weight, Psum, cols>* sa_rows_ptr[rows];
+  Tieoff<PEWeight<Input>>* weight_wires_tieoff_pt[cols];
+  ZeroTieoff<Psum>* psum_wires_tieoff_ptr[cols];
 #endif
 
  public:

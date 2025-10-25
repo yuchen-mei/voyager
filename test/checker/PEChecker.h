@@ -50,7 +50,7 @@ class Checker {
   }
 
  private:
-  std::deque<T> *reference;
+  std::deque<T>* reference;
 };
 
 template <typename Input, typename Weight, typename Psum, int rows, int cols>
@@ -78,7 +78,7 @@ class PEChecker {
   }
 
  private:
-  Checker<std::tuple<Input, Weight, Psum> > *checkers[rows * cols];
+  Checker<std::tuple<Input, Weight, Psum> >* checkers[rows * cols];
 };
 
 extern PEChecker<SA_INPUT_TYPE, SA_WEIGHT_TYPE, ACCUM_DATATYPE, IC_DIMENSION,

@@ -325,7 +325,7 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
 
 #pragma hls_unroll yes
         for (int i = 0; i < rows; i++) {
-          inputs[i].swapWeights = swap_weights || step == 0;
+          inputs[i].swap_weights = swap_weights || step == 0;
         }
 
         auto bits = input_channel.Pop();

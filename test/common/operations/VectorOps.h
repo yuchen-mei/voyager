@@ -45,11 +45,11 @@ inline T poly_approx(T x, const T maxes[NUM_MAXES],
 }
 
 template <typename T>
-inline T *perform_unary_operation(T *input, const std::vector<int> shape,
+inline T* perform_unary_operation(T* input, const std::vector<int> shape,
                                   const std::string opcode,
                                   const std::map<std::string, T> kwargs) {
   int result_size = get_size(shape);
-  T *result = new T[result_size];
+  T* result = new T[result_size];
 
   for (int i = 0; i < result_size; ++i) {
     if (opcode == "relu" || opcode == "relu_") {
@@ -168,8 +168,8 @@ inline T *perform_unary_operation(T *input, const std::vector<int> shape,
   return result;
 }
 
-inline bool are_broadcastable(const std::vector<int> &shape1,
-                              const std::vector<int> &shape2) {
+inline bool are_broadcastable(const std::vector<int>& shape1,
+                              const std::vector<int>& shape2) {
   size_t len1 = shape1.size();
   size_t len2 = shape2.size();
   size_t min_len = std::min(len1, len2);
@@ -184,8 +184,8 @@ inline bool are_broadcastable(const std::vector<int> &shape1,
   return true;
 }
 
-inline std::vector<int> broadcast_shape(const std::vector<int> &shape1,
-                                        const std::vector<int> &shape2) {
+inline std::vector<int> broadcast_shape(const std::vector<int>& shape1,
+                                        const std::vector<int>& shape2) {
   if (!are_broadcastable(shape1, shape2)) {
     std::ostringstream error_message;
     error_message << "Shapes are not broadcastable: [";
@@ -214,7 +214,7 @@ inline std::vector<int> broadcast_shape(const std::vector<int> &shape1,
   return result_shape;
 }
 
-inline std::vector<int> pad_shape(const std::vector<int> &shape, size_t size) {
+inline std::vector<int> pad_shape(const std::vector<int>& shape, size_t size) {
   std::vector<int> padded_shape(size, 1);
   size_t len = shape.size();
   for (size_t i = 0; i < len; ++i) {
@@ -224,10 +224,10 @@ inline std::vector<int> pad_shape(const std::vector<int> &shape, size_t size) {
 }
 
 template <typename T>
-inline T *perform_vector_operation(const T *input1,
-                                   const std::vector<int> &shape1,
-                                   const T *input2,
-                                   const std::vector<int> &shape2,
+inline T* perform_vector_operation(const T* input1,
+                                   const std::vector<int>& shape1,
+                                   const T* input2,
+                                   const std::vector<int>& shape2,
                                    std::string opcode) {
   auto result_shape = broadcast_shape(shape1, shape2);
 
@@ -237,7 +237,7 @@ inline T *perform_vector_operation(const T *input1,
   int num_dims = result_shape.size();
 
   int total_elements = get_size(result_shape);
-  T *result = new T[total_elements];
+  T* result = new T[total_elements];
 
   for (int i = 0; i < total_elements; ++i) {
     std::vector<int> indices = get_indices(i, result_shape);

@@ -26,7 +26,7 @@ SC_MODULE(DoubleBuffer) {
   Connections::Out<ac_int<width, false>> CCS_INIT_S1(output);
 
 #ifndef __SYNTHESIS__
-  AccessCounter *access_counter;
+  AccessCounter* access_counter;
 #endif
 
   SC_CTOR(DoubleBuffer) {

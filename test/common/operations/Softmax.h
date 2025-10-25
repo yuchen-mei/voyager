@@ -5,8 +5,8 @@
 #include "test/toolchain/ApproximationConstants.h"
 
 template <typename T>
-inline T *softmax(std::any input_ptr, const std::vector<int> shape) {
-  T *inputs = std::any_cast<T *>(input_ptr);
+inline T* softmax(std::any input_ptr, const std::vector<int> shape) {
+  T* inputs = std::any_cast<T*>(input_ptr);
 
   int num_rows = 1;
   for (int i = 0; i < shape.size() - 1; i++) {
@@ -14,7 +14,7 @@ inline T *softmax(std::any input_ptr, const std::vector<int> shape) {
   }
   int num_cols = shape[shape.size() - 1];
 
-  T *outputs = new T[num_rows * num_cols];
+  T* outputs = new T[num_rows * num_cols];
 
   for (int i = 0; i < num_rows; i++) {
     int offset = i * num_cols;
@@ -54,7 +54,7 @@ inline T *softmax(std::any input_ptr, const std::vector<int> shape) {
 }
 
 template <typename T>
-inline T *softmax(std::map<std::string, std::any> kwargs,
+inline T* softmax(std::map<std::string, std::any> kwargs,
                   const codegen::OpOverload op) {
   const auto input = op.kwargs().at("input").tensor();
   std::any input_ptr = kwargs[input.node()];
