@@ -744,14 +744,14 @@ struct VectorParams : BaseParams {
     vector_fetch_2_broadcast = 0;
 
     has_slicing = false;
-    vector_fetch_0_dim = 0;
-    vector_fetch_0_start = 0;
-    vector_fetch_0_end = 0;
-    vector_fetch_0_step = 0;
+    vector_fetch_0_slice_dim = 0;
+    vector_fetch_0_slice_start = 0;
+    vector_fetch_0_slice_end = 0;
+    vector_fetch_0_slice_step = 0;
 
     has_permute = false;
     for (int i = 0; i < 6; i++) {
-      vector_fetch_0_dims[i] = i;
+      vector_fetch_0_permute_dims[i] = i;
     }
 
     has_transpose = false;
@@ -842,13 +842,13 @@ struct VectorParams : BaseParams {
 
   // Address generator 0 slicing and reshape
   bool has_slicing;
-  ac_int<3, false> vector_fetch_0_dim;
-  ac_int<11, false> vector_fetch_0_start;
-  ac_int<11, false> vector_fetch_0_end;
-  ac_int<11, false> vector_fetch_0_step;
+  ac_int<3, false> vector_fetch_0_slice_dim;
+  ac_int<11, false> vector_fetch_0_slice_start;
+  ac_int<11, false> vector_fetch_0_slice_end;
+  ac_int<11, false> vector_fetch_0_slice_step;
 
   bool has_permute;
-  ac_int<3, false> vector_fetch_0_dims[6];
+  ac_int<3, false> vector_fetch_0_permute_dims[6];
 
   bool has_transpose;
 
@@ -988,14 +988,14 @@ struct VectorParams : BaseParams {
 
     // Slicing and reshape
     m & has_slicing;
-    m & vector_fetch_0_dim;
-    m & vector_fetch_0_start;
-    m & vector_fetch_0_end;
-    m & vector_fetch_0_step;
+    m & vector_fetch_0_slice_dim;
+    m & vector_fetch_0_slice_start;
+    m & vector_fetch_0_slice_end;
+    m & vector_fetch_0_slice_step;
 
     m & has_permute;
     for (int i = 0; i < 6; i++) {
-      m& vector_fetch_0_dims[i];
+      m& vector_fetch_0_permute_dims[i];
     }
 
     m & has_transpose;
@@ -1160,15 +1160,19 @@ struct VectorParams : BaseParams {
     }
 
     os << "has_slicing: " << params.has_slicing << std::endl;
-    os << "vector_fetch_0_dim: " << params.vector_fetch_0_dim << std::endl;
-    os << "vector_fetch_0_start: " << params.vector_fetch_0_start << std::endl;
-    os << "vector_fetch_0_end: " << params.vector_fetch_0_end << std::endl;
-    os << "vector_fetch_0_step: " << params.vector_fetch_0_step << std::endl;
+    os << "vector_fetch_0_slice_dim: " << params.vector_fetch_0_slice_dim
+       << std::endl;
+    os << "vector_fetch_0_slice_start: " << params.vector_fetch_0_slice_start
+       << std::endl;
+    os << "vector_fetch_0_slice_end: " << params.vector_fetch_0_slice_end
+       << std::endl;
+    os << "vector_fetch_0_slice_step: " << params.vector_fetch_0_slice_step
+       << std::endl;
 
     os << "has_permute: " << params.has_permute << std::endl;
     for (int i = 0; i < 6; i++) {
-      os << "vector_fetch_0_dims[" << i
-         << "]: " << params.vector_fetch_0_dims[i] << std::endl;
+      os << "vector_fetch_0_permute_dims[" << i
+         << "]: " << params.vector_fetch_0_permute_dims[i] << std::endl;
     }
 
     os << "has_transpose: " << params.has_transpose << std::endl;
@@ -1309,14 +1313,19 @@ struct VectorParams : BaseParams {
       return false;
 
     if (lhs.has_slicing != rhs.has_slicing) return false;
-    if (lhs.vector_fetch_0_dim != rhs.vector_fetch_0_dim) return false;
-    if (lhs.vector_fetch_0_start != rhs.vector_fetch_0_start) return false;
-    if (lhs.vector_fetch_0_end != rhs.vector_fetch_0_end) return false;
-    if (lhs.vector_fetch_0_step != rhs.vector_fetch_0_step) return false;
+    if (lhs.vector_fetch_0_slice_dim != rhs.vector_fetch_0_slice_dim)
+      return false;
+    if (lhs.vector_fetch_0_slice_start != rhs.vector_fetch_0_slice_start)
+      return false;
+    if (lhs.vector_fetch_0_slice_end != rhs.vector_fetch_0_slice_end)
+      return false;
+    if (lhs.vector_fetch_0_slice_step != rhs.vector_fetch_0_slice_step)
+      return false;
 
     if (lhs.has_permute != rhs.has_permute) return false;
     for (int i = 0; i < 6; i++) {
-      if (lhs.vector_fetch_0_dims[i] != rhs.vector_fetch_0_dims[i])
+      if (lhs.vector_fetch_0_permute_dims[i] !=
+          rhs.vector_fetch_0_permute_dims[i])
         return false;
     }
 
