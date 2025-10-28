@@ -21,6 +21,10 @@ SC_MODULE(Harness) {
   sc_clock CCS_INIT_S1(clk);
   sc_signal<bool> CCS_INIT_S1(rstn);
 
+  //----------------------------------------------------------
+  // MATRIX UNIT CONNECTIONS
+  //----------------------------------------------------------
+
   Connections::Combinational<ac_int<64, false>> CCS_INIT_S1(
       serial_matrix_params_in);
 
@@ -54,6 +58,10 @@ SC_MODULE(Harness) {
 
   Connections::SyncChannel CCS_INIT_S1(matrix_unit_start_signal);
   Connections::SyncChannel CCS_INIT_S1(matrix_unit_done_signal);
+
+  //----------------------------------------------------------
+  // MATRIX VECTOR UNIT CONNECTIONS
+  //----------------------------------------------------------
 
 #if SUPPORT_MVM
   Connections::Combinational<ac_int<64, false>> CCS_INIT_S1(
@@ -93,9 +101,25 @@ SC_MODULE(Harness) {
       matrix_vector_unit_weight_scale_resp);
 #endif
 
+  Connections::Combinational<MemoryRequest> CCS_INIT_S1(
+      matrix_vector_unit_weight_dq_scale_req);
+  sc_fifo<OC_PORT_TYPE> matrix_vector_unit_weight_dq_scale_resp_fifo;
+  Connections::Combinational<OC_PORT_TYPE> CCS_INIT_S1(
+      matrix_vector_unit_weight_dq_scale_resp);
+
+  Connections::Combinational<MemoryRequest> CCS_INIT_S1(
+      matrix_vector_unit_weight_dq_zp_req);
+  sc_fifo<OC_PORT_TYPE> matrix_vector_unit_weight_dq_zp_resp_fifo;
+  Connections::Combinational<OC_PORT_TYPE> CCS_INIT_S1(
+      matrix_vector_unit_weight_dq_zp_resp);
+
   Connections::SyncChannel CCS_INIT_S1(matrix_vector_unit_start_signal);
   Connections::SyncChannel CCS_INIT_S1(matrix_vector_unit_done_signal);
 #endif
+
+  //----------------------------------------------------------
+  // DWC UNIT CONNECTIONS
+  //----------------------------------------------------------
 
 #if SUPPORT_DWC
   Connections::Combinational<ac_int<64, false>> CCS_INIT_S1(
@@ -105,13 +129,13 @@ SC_MODULE(Harness) {
   sc_fifo<ac_int<UNROLLFACTOR * DWC_DATATYPE::width, false>>
       dwc_input_resp_fifo;
   Connections::Combinational<ac_int<UNROLLFACTOR * DWC_DATATYPE::width, false>>
-      CCS_INIT_S1(dwc_input_data_resp);
+      CCS_INIT_S1(dwc_input_resp);
   Connections::Combinational<MemoryRequest> CCS_INIT_S1(dwc_weight_req);
   sc_fifo<ac_int<DWC_KERNEL_SIZE * DWC_DATATYPE::width, false>>
       dwc_weight_resp_fifo;
   Connections::Combinational<
       ac_int<DWC_KERNEL_SIZE * DWC_DATATYPE::width, false>>
-      CCS_INIT_S1(dwc_weight_data_resp);
+      CCS_INIT_S1(dwc_weight_resp);
   Connections::Combinational<MemoryRequest> CCS_INIT_S1(dwc_bias_req);
   sc_fifo<ac_int<ACCUM_BUFFER_DATATYPE::width, false>> dwc_bias_resp_fifo;
   Connections::Combinational<ac_int<ACCUM_BUFFER_DATATYPE::width, false>>
@@ -134,6 +158,10 @@ SC_MODULE(Harness) {
   Connections::SyncChannel CCS_INIT_S1(dwc_start_signal);
   Connections::SyncChannel CCS_INIT_S1(dwc_done_signal);
 #endif
+
+  //----------------------------------------------------------
+  // VECTOR UNIT CONNECTIONS
+  //----------------------------------------------------------
 
   Connections::Combinational<ac_int<64, false>> CCS_INIT_S1(
       serial_vector_params_in);
@@ -169,13 +197,13 @@ SC_MODULE(Harness) {
   std::deque<sc_time> start_times;
   std::deque<sc_time> operation_start_times;
 
-  Harness(sc_module_name, std::vector<Operation>, DataLoader *);
+  Harness(sc_module_name, std::vector<Operation>, DataLoader*);
   SC_HAS_PROCESS(Harness);
 
  private:
   std::vector<Operation> operations;
-  DataLoader *dataloader;
-  AccessCounter *access_counter;
+  DataLoader* dataloader;
+  AccessCounter* access_counter;
 
 #ifdef SIM_Accelerator
   CCS_DESIGN(Accelerator) CCS_INIT_S1(accelerator);
@@ -198,18 +226,18 @@ SC_MODULE(Harness) {
       Connections::Combinational<ac_int<width, false>> * data_out,
       Connections::Combinational<ac_int<ADDRESS_WIDTH, false>> * address_out);
 
-  void read_input_request();
-  void send_input_response();
-  void read_weight_request();
-  void send_weight_response();
-  void read_bias_request();
-  void send_bias_response();
+  void read_matrix_unit_input_request();
+  void send_matrix_unit_input_response();
+  void read_matrix_unit_weight_request();
+  void send_matrix_unit_weight_response();
+  void read_matrix_unit_bias_request();
+  void send_matrix_unit_bias_response();
 
 #if SUPPORT_MX
-  void read_input_scale_request();
-  void send_input_scale_response();
-  void read_weight_scale_request();
-  void send_weight_scale_response();
+  void read_matrix_unit_input_scale_request();
+  void send_matrix_unit_input_scale_response();
+  void read_matrix_unit_weight_scale_request();
+  void send_matrix_unit_weight_scale_response();
 #endif
 
   void read_matrix_vector_unit_input_request();
@@ -218,13 +246,16 @@ SC_MODULE(Harness) {
   void send_matrix_vector_unit_weight_response();
   void read_matrix_vector_unit_bias_request();
   void send_matrix_vector_unit_bias_response();
-
 #if SUPPORT_MX
   void read_matrix_vector_unit_input_scale_request();
   void send_matrix_vector_unit_input_scale_response();
   void read_matrix_vector_unit_weight_scale_request();
   void send_matrix_vector_unit_weight_scale_response();
 #endif
+  void read_matrix_vector_unit_weight_dq_scale_request();
+  void send_matrix_vector_unit_weight_dq_scale_response();
+  void read_matrix_vector_unit_weight_dq_zp_request();
+  void send_matrix_vector_unit_weight_dq_zp_response();
 
 #if SUPPORT_DWC
   void read_dwc_input_request();
@@ -256,10 +287,10 @@ SC_MODULE(Harness) {
   void start_monitor();
   void done_monitor();
 
-  void send_params(const std::deque<BaseParams *> &params);
-  void record_start(const std::deque<BaseParams *> &params,
-                    const Operation &operation, bool is_first);
-  void record_done(const std::deque<BaseParams *> &params,
-                   const Operation &operation, int runtime_scale, bool is_last);
+  void send_params(const std::deque<BaseParams*>& params);
+  void record_start(const std::deque<BaseParams*>& params,
+                    const Operation& operation, bool is_first);
+  void record_done(const std::deque<BaseParams*>& params,
+                   const Operation& operation, int runtime_scale, bool is_last);
 };
 #endif

@@ -395,6 +395,7 @@ def run_rtl_tests(
     num_processes,
     results_folder,
     keep_build=False,
+    scverify_test=None,
 ):
     check_environment_vars(
         ["DATATYPE", "IC_DIMENSION", "OC_DIMENSION", "TECHNOLOGY", "CLOCK_PERIOD"]
@@ -414,6 +415,8 @@ def run_rtl_tests(
         )
 
     model, (test, *_) = next(iter(layers.items()))
+    if scverify_test is not None:
+        test = scverify_test
     print(f"Running {model} {test}")
 
     # build VCS simulation binary
@@ -859,6 +862,16 @@ def main():
         required=False,
         help="Path to JSON file containing whitelist layers to skip",
     )
+    parser.add_argument(
+        "--scverify_test",
+        default=None,
+        help="(Internal use) Name of scverify test to run",
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Whether to dump RTL simulation waveform",
+    )
     args = parser.parse_args()
 
     args.models = [s.strip() for s in args.models.split(",")]
@@ -934,6 +947,7 @@ def main():
             args.num_processes,
             results_folder,
             args.keep_build,
+            args.scverify_test,
         )
     elif args.sims == "gold_model":
         success = run_gold_model_tests(layers, args.num_processes, results_folder)

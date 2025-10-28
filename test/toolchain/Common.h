@@ -83,11 +83,11 @@ std::map<std::string, unsigned int> get_vector_instruction_mapping() {
   return mapping;
 }
 
-inline MemorySource get_partition(const int &partition) {
+inline MemorySource get_partition(const int& partition) {
   return partition == 0 ? SRAM : RRAM;
 }
 
-inline std::vector<int> squeeze_shape(const std::vector<int> &input) {
+inline std::vector<int> squeeze_shape(const std::vector<int>& input) {
   std::vector<int> result;
   for (int value : input) {
     if (value > 1) {
@@ -97,7 +97,7 @@ inline std::vector<int> squeeze_shape(const std::vector<int> &input) {
   return result;
 }
 
-inline void squeeze_front_ones(std::vector<int> &vec) {
+inline void squeeze_front_ones(std::vector<int>& vec) {
   vec.erase(vec.begin(),
             std::find_if(vec.begin(), vec.end(), [](int x) { return x != 1; }));
 }
@@ -162,7 +162,7 @@ std::vector<int> prime_factors(int n) {
  * @return A vector of adjusted loop indices.
  * @throws std::runtime_error if the prime factors cannot be fully distributed.
  */
-std::vector<int> adjust_loop_indices(const std::vector<int> &loops,
+std::vector<int> adjust_loop_indices(const std::vector<int>& loops,
                                      int target_factor) {
   // Prime factorization of the target factor
   std::vector<int> remaining_factors = prime_factors(target_factor);
@@ -194,7 +194,7 @@ std::vector<int> adjust_loop_indices(const std::vector<int> &loops,
   return result;
 }
 
-bool is_transpose(const std::vector<int> &dims) {
+bool is_transpose(const std::vector<int>& dims) {
   int n = dims.size();
   // If there are fewer than 2 axes, there's nothing to swap.
   if (n < 2) return false;
@@ -253,8 +253,8 @@ std::pair<std::vector<int>, std::vector<int>> factor_out_non_broadcastable_dim(
   return {shape1, shape2};
 }
 
-void update_tensor_shape(codegen::Tensor &tensor,
-                         const std::vector<int> &new_shape) {
+void update_tensor_shape(codegen::Tensor& tensor,
+                         const std::vector<int>& new_shape) {
   if (is_soc_sim()) {
     tensor.clear_tiled_shape();
     for (int dim : new_shape) {
@@ -268,9 +268,9 @@ void update_tensor_shape(codegen::Tensor &tensor,
   }
 }
 
-void set_quantize_params(const codegen::Operation &param,
-                         VectorParams *vector_params,
-                         VectorInstructions &inst) {
+void set_quantize_params(const codegen::Operation& param,
+                         VectorParams* vector_params,
+                         VectorInstructions& inst) {
   const auto op_list = get_op_list(param);
   const auto last_op = op_list.back();
 
@@ -282,7 +282,7 @@ void set_quantize_params(const codegen::Operation &param,
     inst.vector_op3_src1 = VectorInstructions::from_immediate_2;
 
     // scalar scale factor
-    float *array = read_constant_param(scale);
+    float* array = read_constant_param(scale);
     VECTOR_DATATYPE immediate = array[0];
     inst.immediate2 = immediate.bits_rep();
 
@@ -307,11 +307,11 @@ void set_quantize_params(const codegen::Operation &param,
     vector_params->quantize_output_mx = true;
     vector_params->mx_scale_offset = get_address(param.outputs().tensors(0));
 
-    if (last_op.kwargs().contains("quant_code")) {
-      const auto code = last_op.kwargs().at("quant_code").tensor();
+    if (last_op.kwargs().contains("output_code")) {
+      const auto code = last_op.kwargs().at("output_code").tensor();
       const int size = get_size(code);
 
-      float *array = read_constant_param(code);
+      float* array = read_constant_param(code);
 
       for (int i = 0; i < size; i++) {
         vector_params->output_code[i] = array[i] * 2;
@@ -326,7 +326,7 @@ void set_quantize_params(const codegen::Operation &param,
 
 template <typename T, size_t N, int port_width, typename... Ts>
 bool try_fetch_params_for_type(ac_int<DTYPE_INDEX_WIDTH, false> dtype,
-                               int loop_bound, int &out_pf, int &out_fw) {
+                               int loop_bound, int& out_pf, int& out_fw) {
   if (get_type_index<T, Ts...>() != dtype) {
     return false;
   }
@@ -350,7 +350,7 @@ bool try_fetch_params_for_type(ac_int<DTYPE_INDEX_WIDTH, false> dtype,
 
 template <size_t N, int port_width, typename... Ts>
 int get_packing_factor(ac_int<DTYPE_INDEX_WIDTH, false> dtype, int loop_bound,
-                       int &effective_fetch_width) {
+                       int& effective_fetch_width) {
   int pf = 1;
 
   // fold: try each Ts in turn. ||-fold stops updating pf once one returns true.

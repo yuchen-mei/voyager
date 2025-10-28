@@ -36,15 +36,15 @@ class StdFloat {
 #endif
 
   template <int W, int E>
-  StdFloat(const ac_std_float<W, E> &other);
+  StdFloat(const ac_std_float<W, E>& other);
 
   template <int W, int I, bool S, ac_q_mode Q2, ac_o_mode O>
-  StdFloat(const ac_fixed<W, I, S, Q2, O> &other);
+  StdFloat(const ac_fixed<W, I, S, Q2, O>& other);
 
   template <int mantissa2, int exp2, bool use_dw_impl2, bool ieee_compliance2,
             ac_q_mode Q2>
-  StdFloat(const StdFloat<mantissa2, exp2, use_dw_impl2, ieee_compliance2, Q2>
-               &other);
+  StdFloat(const StdFloat<mantissa2, exp2, use_dw_impl2, ieee_compliance2, Q2>&
+               other);
 
   template <int WFX, int IFX, bool SFX, ac_q_mode QFX, ac_o_mode OFX>
   ac_fixed<WFX, IFX, SFX, QFX, OFX> to_ac_fixed() const {
@@ -76,7 +76,7 @@ class StdFloat {
 
   static StdFloat min() {
     StdFloat r;
-    r.float_val = ac_float_rep::min();
+    r.float_val = -ac_float_rep::max();
     return r;
   }
 
@@ -143,26 +143,26 @@ class StdFloat {
   template <int mantissa2, int exp2, bool use_dw_impl2, bool ieee_compliance2,
             ac_q_mode Q2>
   StdFloat<mantissa2, exp2, use_dw_impl2, ieee_compliance2, Q2> fma(
-      StdFloat &b,
-      StdFloat<mantissa2, exp2, use_dw_impl2, ieee_compliance2, Q2> &c);
+      StdFloat& b,
+      StdFloat<mantissa2, exp2, use_dw_impl2, ieee_compliance2, Q2>& c);
 
-  StdFloat operator+(const StdFloat &rhs) const;
-  StdFloat operator-(const StdFloat &rhs) const;
-  StdFloat operator*(const StdFloat &rhs) const;
-  StdFloat operator/(const StdFloat &rhs) const;
-  StdFloat &operator+=(const StdFloat &rhs);
-  StdFloat &operator-=(const StdFloat &rhs);
-  StdFloat &operator*=(const StdFloat &rhs);
-  StdFloat &operator/=(const StdFloat &rhs);
+  StdFloat operator+(const StdFloat& rhs) const;
+  StdFloat operator-(const StdFloat& rhs) const;
+  StdFloat operator*(const StdFloat& rhs) const;
+  StdFloat operator/(const StdFloat& rhs) const;
+  StdFloat& operator+=(const StdFloat& rhs);
+  StdFloat& operator-=(const StdFloat& rhs);
+  StdFloat& operator*=(const StdFloat& rhs);
+  StdFloat& operator/=(const StdFloat& rhs);
 
-  bool operator==(const StdFloat &rhs) const;
-  bool operator<(const StdFloat &rhs) const;
-  bool operator<=(const StdFloat &rhs) const;
+  bool operator==(const StdFloat& rhs) const;
+  bool operator<(const StdFloat& rhs) const;
+  bool operator<=(const StdFloat& rhs) const;
   operator float() const { return float_val.to_float(); }
 
 #ifndef NO_SYSC
   template <unsigned int Size>
-  void Marshall(Marshaller<Size> &m) {
+  void Marshall(Marshaller<Size>& m) {
     m & float_val.d;
   }
 #endif
@@ -189,7 +189,7 @@ template <int mantissa, int exp, bool use_dw_impl, bool ieee_compliance,
           ac_q_mode Q>
 template <int W, int E>
 StdFloat<mantissa, exp, use_dw_impl, ieee_compliance, Q>::StdFloat(
-    const ac_std_float<W, E> &other) {
+    const ac_std_float<W, E>& other) {
   float_val = ac_float_rep(other);
 }
 
@@ -197,7 +197,7 @@ template <int mantissa, int exp, bool use_dw_impl, bool ieee_compliance,
           ac_q_mode Q>
 template <int W, int I, bool S, ac_q_mode Q2, ac_o_mode O>
 StdFloat<mantissa, exp, use_dw_impl, ieee_compliance, Q>::StdFloat(
-    const ac_fixed<W, I, S, Q2, O> &other) {
+    const ac_fixed<W, I, S, Q2, O>& other) {
   float_val = ac_float_rep(other);
 }
 
@@ -206,8 +206,8 @@ template <int mantissa, int exp, bool use_dw_impl, bool ieee_compliance,
 template <int mantissa2, int exp2, bool use_dw_impl2, bool ieee_compliance2,
           ac_q_mode Q2>
 StdFloat<mantissa, exp, use_dw_impl, ieee_compliance, Q>::StdFloat(
-    const StdFloat<mantissa2, exp2, use_dw_impl2, ieee_compliance2, Q2>
-        &other) {
+    const StdFloat<mantissa2, exp2, use_dw_impl2, ieee_compliance2, Q2>&
+        other) {
   float_val = static_cast<ac_float_rep>(other.float_val);
 }
 
@@ -215,7 +215,7 @@ template <int mantissa, int exp, bool use_dw_impl, bool ieee_compliance,
           ac_q_mode Q>
 inline StdFloat<mantissa, exp, use_dw_impl, ieee_compliance, Q>
 StdFloat<mantissa, exp, use_dw_impl, ieee_compliance, Q>::operator+(
-    const StdFloat &rhs) const {
+    const StdFloat& rhs) const {
   return float_val.template add<Q, !ieee_compliance>(rhs.float_val);
 }
 
@@ -223,7 +223,7 @@ template <int mantissa, int exp, bool use_dw_impl, bool ieee_compliance,
           ac_q_mode Q>
 inline StdFloat<mantissa, exp, use_dw_impl, ieee_compliance, Q>
 StdFloat<mantissa, exp, use_dw_impl, ieee_compliance, Q>::operator-(
-    const StdFloat &rhs) const {
+    const StdFloat& rhs) const {
   return float_val.template sub<Q, !ieee_compliance>(rhs.float_val);
 }
 
@@ -231,7 +231,7 @@ template <int mantissa, int exp, bool use_dw_impl, bool ieee_compliance,
           ac_q_mode Q>
 inline StdFloat<mantissa, exp, use_dw_impl, ieee_compliance, Q>
 StdFloat<mantissa, exp, use_dw_impl, ieee_compliance, Q>::operator*(
-    const StdFloat &rhs) const {
+    const StdFloat& rhs) const {
   return float_val.template mult<Q, !ieee_compliance>(rhs.float_val);
 }
 
@@ -239,42 +239,42 @@ template <int mantissa, int exp, bool use_dw_impl, bool ieee_compliance,
           ac_q_mode Q>
 inline StdFloat<mantissa, exp, use_dw_impl, ieee_compliance, Q>
 StdFloat<mantissa, exp, use_dw_impl, ieee_compliance, Q>::operator/(
-    const StdFloat &rhs) const {
+    const StdFloat& rhs) const {
   return float_val.template div<Q, !ieee_compliance>(rhs.float_val);
 }
 
 template <int mantissa, int exp, bool use_dw_impl, bool ieee_compliance,
           ac_q_mode Q>
-inline StdFloat<mantissa, exp, use_dw_impl, ieee_compliance, Q> &
+inline StdFloat<mantissa, exp, use_dw_impl, ieee_compliance, Q>&
 StdFloat<mantissa, exp, use_dw_impl, ieee_compliance, Q>::operator+=(
-    const StdFloat &rhs) {
+    const StdFloat& rhs) {
   *this = float_val.template add<Q, !ieee_compliance>(rhs.float_val);
   return *this;
 }
 
 template <int mantissa, int exp, bool use_dw_impl, bool ieee_compliance,
           ac_q_mode Q>
-inline StdFloat<mantissa, exp, use_dw_impl, ieee_compliance, Q> &
+inline StdFloat<mantissa, exp, use_dw_impl, ieee_compliance, Q>&
 StdFloat<mantissa, exp, use_dw_impl, ieee_compliance, Q>::operator-=(
-    const StdFloat &rhs) {
+    const StdFloat& rhs) {
   *this = float_val.template sub<Q, !ieee_compliance>(rhs.float_val);
   return *this;
 }
 
 template <int mantissa, int exp, bool use_dw_impl, bool ieee_compliance,
           ac_q_mode Q>
-inline StdFloat<mantissa, exp, use_dw_impl, ieee_compliance, Q> &
+inline StdFloat<mantissa, exp, use_dw_impl, ieee_compliance, Q>&
 StdFloat<mantissa, exp, use_dw_impl, ieee_compliance, Q>::operator*=(
-    const StdFloat &rhs) {
+    const StdFloat& rhs) {
   *this = float_val.template mult<Q, !ieee_compliance>(rhs.float_val);
   return *this;
 }
 
 template <int mantissa, int exp, bool use_dw_impl, bool ieee_compliance,
           ac_q_mode Q>
-inline StdFloat<mantissa, exp, use_dw_impl, ieee_compliance, Q> &
+inline StdFloat<mantissa, exp, use_dw_impl, ieee_compliance, Q>&
 StdFloat<mantissa, exp, use_dw_impl, ieee_compliance, Q>::operator/=(
-    const StdFloat &rhs) {
+    const StdFloat& rhs) {
   *this = float_val.template div<Q, !ieee_compliance>(rhs.float_val);
   return *this;
 }
@@ -282,21 +282,21 @@ StdFloat<mantissa, exp, use_dw_impl, ieee_compliance, Q>::operator/=(
 template <int mantissa, int exp, bool use_dw_impl, bool ieee_compliance,
           ac_q_mode Q>
 inline bool StdFloat<mantissa, exp, use_dw_impl, ieee_compliance,
-                     Q>::operator==(const StdFloat &rhs) const {
+                     Q>::operator==(const StdFloat& rhs) const {
   return float_val == rhs.float_val;
 }
 
 template <int mantissa, int exp, bool use_dw_impl, bool ieee_compliance,
           ac_q_mode Q>
 inline bool StdFloat<mantissa, exp, use_dw_impl, ieee_compliance, Q>::operator<(
-    const StdFloat &rhs) const {
+    const StdFloat& rhs) const {
   return float_val < rhs.float_val;
 }
 
 template <int mantissa, int exp, bool use_dw_impl, bool ieee_compliance,
           ac_q_mode Q>
-inline bool StdFloat<mantissa, exp, use_dw_impl, ieee_compliance, Q>::operator<=(
-    const StdFloat &rhs) const {
+inline bool StdFloat<mantissa, exp, use_dw_impl, ieee_compliance,
+                     Q>::operator<=(const StdFloat& rhs) const {
   return float_val <= rhs.float_val;
 }
 
@@ -306,8 +306,8 @@ template <int mantissa2, int exp2, bool use_dw_impl2, bool ieee_compliance2,
           ac_q_mode Q2>
 StdFloat<mantissa2, exp2, use_dw_impl2, ieee_compliance2, Q2>
 StdFloat<mantissa, exp, use_dw_impl, ieee_compliance, Q>::fma(
-    StdFloat<mantissa, exp, use_dw_impl, ieee_compliance, Q> &b,
-    StdFloat<mantissa2, exp2, use_dw_impl2, ieee_compliance2, Q2> &c) {
+    StdFloat<mantissa, exp, use_dw_impl, ieee_compliance, Q>& b,
+    StdFloat<mantissa2, exp2, use_dw_impl2, ieee_compliance2, Q2>& c) {
   StdFloat<mantissa2, exp2, use_dw_impl2, ieee_compliance2, Q2>
       a_higherprecision(*this);
   StdFloat<mantissa2, exp2, use_dw_impl2, ieee_compliance2, Q2>

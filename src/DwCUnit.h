@@ -103,7 +103,7 @@ SC_MODULE(DwCUnit) {
     param_deserializer.serial_params_in(serial_params_in);
     param_deserializer.dwc_params_out(params_in);
 
-    MulAddTree<Input, Weight, Psum, Output> *mul_add_tree_ptr[UNROLLFACTOR];
+    MulAddTree<Input, Weight, Psum, Output>* mul_add_tree_ptr[UNROLLFACTOR];
 
     for (int i = 0; i < UNROLLFACTOR; i++) {
 #ifdef __SYNTHESIS__

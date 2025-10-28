@@ -178,38 +178,25 @@ SC_MODULE(VectorFetchUnit) {
       ac_int<8, false> offset_y = (padding_y + 1) / 2;
 
       ac_int<LOOP_WIDTH, false> loop_counters[2][3];
-      ac_int<LOOP_WIDTH, false> loop_starts[2][3];
       ac_int<LOOP_WIDTH, false> loop_ends[2][3];
-      ac_int<LOOP_WIDTH, false> loop_steps[2][3];
 
-      ac_int<LOOP_WIDTH, false> loop_starts_flat[6] = {
-          0, 0, 0, 0, 0, 0,
-      };
-      ac_int<LOOP_WIDTH, false> loop_steps_flat[6] = {
-          1, 1, 1, 1, 1, 1,
-      };
-      ac_int<LOOP_WIDTH, false> loop_ends_flat[6] = {
-          params.vector_fetch_0_loops[0][0], params.vector_fetch_0_loops[0][1],
-          params.vector_fetch_0_loops[0][2], params.vector_fetch_0_loops[1][0],
-          params.vector_fetch_0_loops[1][1], params.vector_fetch_0_loops[1][2],
-      };
       ac_int<LOOP_WIDTH, false> loop_bounds[6] = {
           params.vector_fetch_0_loops[0][0], params.vector_fetch_0_loops[0][1],
           params.vector_fetch_0_loops[0][2], params.vector_fetch_0_loops[1][0],
           params.vector_fetch_0_loops[1][1], params.vector_fetch_0_loops[1][2],
       };
 
-      if (params.has_slicing) {
-        loop_starts_flat[params.vector_fetch_0_dim] =
-            params.vector_fetch_0_start;
-        loop_ends_flat[params.vector_fetch_0_dim] = params.vector_fetch_0_end;
-        loop_steps_flat[params.vector_fetch_0_dim] = params.vector_fetch_0_step;
-      }
-
-      if (params.has_permute) {
+      ac_int<LOOP_WIDTH, false> loop_ends_flat[6];
 #pragma hls_unroll yes
-        for (int dim = 0; dim < 6; dim++) {
-          loop_ends_flat[dim] = loop_bounds[params.vector_fetch_0_dims[dim]];
+      for (ac_int<3, false> dim = 0; dim < 6; dim++) {
+        if (params.has_permute) {
+          loop_ends_flat[dim] =
+              loop_bounds[params.vector_fetch_0_permute_dims[dim]];
+        } else if (params.has_slicing &&
+                   dim == params.vector_fetch_0_slice_dim) {
+          loop_ends_flat[dim] = params.vector_fetch_0_slice_end;
+        } else {
+          loop_ends_flat[dim] = loop_bounds[dim];
         }
       }
 
@@ -217,10 +204,8 @@ SC_MODULE(VectorFetchUnit) {
       for (int i = 0; i < 2; i++) {
 #pragma hls_unroll yes
         for (int j = 0; j < 3; j++) {
-          int index = i * 3 + j;
-          loop_starts[i][j] = loop_starts_flat[index];
-          loop_ends[i][j] = loop_ends_flat[index] - loop_steps_flat[index];
-          loop_steps[i][j] = loop_steps_flat[index];
+          int index = i ? j + 3 : j;
+          loop_ends[i][j] = loop_ends_flat[index] - 1;
         }
       }
 
@@ -240,24 +225,12 @@ SC_MODULE(VectorFetchUnit) {
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
-    LOOP_0_0:
-      for (loop_counters[0][0] = loop_starts[0][0];;
-           loop_counters[0][0] += loop_steps[0][0]) {
-      LOOP_0_1:
-        for (loop_counters[0][1] = loop_starts[0][1];;
-             loop_counters[0][1] += loop_steps[0][1]) {
-        LOOP_0_2:
-          for (loop_counters[0][2] = loop_starts[0][2];;
-               loop_counters[0][2] += loop_steps[0][2]) {
-          LOOP_1_0:
-            for (loop_counters[1][0] = loop_starts[1][0];;
-                 loop_counters[1][0] += loop_steps[1][0]) {
-            LOOP_1_1:
-              for (loop_counters[1][1] = loop_starts[1][1];;
-                   loop_counters[1][1] += loop_steps[1][1]) {
-              LOOP_1_2:
-                for (loop_counters[1][2] = loop_starts[1][2];;
-                     loop_counters[1][2] += loop_steps[1][2]) {
+      for (loop_counters[0][0] = 0;; loop_counters[0][0]++) {
+        for (loop_counters[0][1] = 0;; loop_counters[0][1]++) {
+          for (loop_counters[0][2] = 0;; loop_counters[0][2]++) {
+            for (loop_counters[1][0] = 0;; loop_counters[1][0]++) {
+              for (loop_counters[1][1] = 0;; loop_counters[1][1]++) {
+                for (loop_counters[1][2] = 0;; loop_counters[1][2]++) {
                   ac_int<32, false> address;
                   bool in_bound = true;
                   bool switch_accumulation_buffer_bank = false;
@@ -276,11 +249,11 @@ SC_MODULE(VectorFetchUnit) {
                       loop_counters[1][params.vector_fetch_0_k_loop_idx[1]];
 
                   if (params.vector_fetch_0_mode == 1) {
+                    // Tiled indexing with padding and stride
                     ac_int<16, true> y = y1 * stride_y + y0 - offset_y;
                     ac_int<16, true> x = x1 * stride_x + x0 - offset_x;
                     ac_int<16, false> k = (k1 * K1 + k0) * stride_k;
 
-                  ADDRESS_GEN0_MODE_1:
                     if (params.has_transpose) {
                       address = y * X * K + (k + x0) * X + x1 * BUFSIZE;
                     } else {
@@ -289,6 +262,7 @@ SC_MODULE(VectorFetchUnit) {
 
                     in_bound = x >= 0 && x < X && y >= 0 && y < Y;
                   } else if (params.vector_fetch_0_mode == 2) {
+                    // Flat indexing with broadcasting, permute, slicing
                     ac_int<LOOP_WIDTH, false> indices[6] = {
                         loop_counters[0][0], loop_counters[0][1],
                         loop_counters[0][2], loop_counters[1][0],
@@ -306,28 +280,42 @@ SC_MODULE(VectorFetchUnit) {
                       ac_int<LOOP_WIDTH, false> permuted_indices[6];
 #pragma hls_unroll yes
                       for (int i = 0; i < 6; i++) {
-                        permuted_indices[params.vector_fetch_0_dims[i]] =
+                        permuted_indices[params
+                                             .vector_fetch_0_permute_dims[i]] =
                             indices[i];
                       }
 #pragma hls_unroll yes
                       for (int i = 0; i < 6; i++) {
                         indices[i] = permuted_indices[i];
                       }
+                    } else if (params.has_slicing) {
+                      ac_int<LOOP_WIDTH, false> orig_index =
+                          indices[params.vector_fetch_0_slice_dim];
+                      ac_int<LOOP_WIDTH, false> final_index =
+                          params.vector_fetch_0_slice_start +
+                          orig_index * params.vector_fetch_0_slice_step;
+                      indices[params.vector_fetch_0_slice_dim] = final_index;
                     }
 
-                  ADDRESS_GEN0_MODE_2:
                     address =
                         (indices[0] * loop_bound_0 + indices[1] * loop_bound_1 +
                          indices[2] * loop_bound_2 + indices[3] * loop_bound_3 +
                          indices[4] * loop_bound_4 + indices[5]) *
                         stride_k;
-                  } else if (params.vector_fetch_0_mode == 3) {
-                  // read from accumulation buffer
-                  ADDRESS_GEN0_MODE_3:
-                    address = k0 * Y0 * X0 + y0 * X0 + x0;
-                    switch_accumulation_buffer_bank =
-                        k0 == K1 - 1 && y0 == Y0 - 1 && x0 == X0 - 1;
                   }
+#if DOUBLE_BUFFERED_ACCUM_BUFFER
+                  else if (params.vector_fetch_0_mode == 3) {
+                    // Feeding accumulation buffer addresses
+                    address = k0 * Y0 * X0 + y0 * X0 + x0;
+                    accumulation_buffer_read_address[accumulation_buffer_bank]
+                        .Push(address);
+                    if (k0 == K1 - 1 && y0 == Y0 - 1 && x0 == X0 - 1) {
+                      accumulation_buffer_done[accumulation_buffer_bank]
+                          .SyncPush();
+                      accumulation_buffer_bank = !accumulation_buffer_bank;
+                    }
+                  }
+#endif
 
                   if (params.vector_fetch_0_mode == 1 ||
                       params.vector_fetch_0_mode == 2) {
@@ -343,38 +331,27 @@ SC_MODULE(VectorFetchUnit) {
                       vector_fetch_0_data_done.write(in_bound);
                     }
                   }
-#if DOUBLE_BUFFERED_ACCUM_BUFFER
-                  else {
-                    accumulation_buffer_read_address[accumulation_buffer_bank]
-                        .Push(address);
-                    if (switch_accumulation_buffer_bank) {
-                      accumulation_buffer_done[accumulation_buffer_bank]
-                          .SyncPush();
-                      accumulation_buffer_bank = !accumulation_buffer_bank;
-                    }
-                  }
-#endif
-                  if (loop_counters[1][2] >= loop_ends[1][2]) {
+                  if (loop_counters[1][2] == loop_ends[1][2]) {
                     break;
                   }
                 }
-                if (loop_counters[1][1] >= loop_ends[1][1]) {
+                if (loop_counters[1][1] == loop_ends[1][1]) {
                   break;
                 }
               }
-              if (loop_counters[1][0] >= loop_ends[1][0]) {
+              if (loop_counters[1][0] == loop_ends[1][0]) {
                 break;
               }
             }
-            if (loop_counters[0][2] >= loop_ends[0][2]) {
+            if (loop_counters[0][2] == loop_ends[0][2]) {
               break;
             }
           }
-          if (loop_counters[0][1] >= loop_ends[0][1]) {
+          if (loop_counters[0][1] == loop_ends[0][1]) {
             break;
           }
         }
-        if (loop_counters[0][0] >= loop_ends[0][0]) {
+        if (loop_counters[0][0] == loop_ends[0][0]) {
           break;
         }
       }
@@ -480,8 +457,8 @@ SC_MODULE(VectorFetchUnit) {
           for (ac_int<10, false> col = 0;; col++) {
             auto bits = vector_fetch_0_packed_bits.Pop();
 
-            Pack1D<VectorType, width> outputs;
-            bool found = (unpack_vector_data<InputTypes, VectorType, width,
+            Pack1D<VectorType, BUFSIZE> outputs;
+            bool found = (unpack_vector_data<InputTypes, VectorType, BUFSIZE,
                                              MAX_RESPONSE_WIDTH, InputTypes...>(
                               params.vector_fetch_0_dtype, bits, outputs, 0) ||
                           ...);
@@ -493,11 +470,10 @@ SC_MODULE(VectorFetchUnit) {
             }
 #endif
 
-            Pack1D<VectorType, width> dequantized;
-            vdequantize<VectorType, VectorType, width>(
+            Pack1D<VectorType, BUFSIZE> dequantized;
+            vdequantize<VectorType, VectorType, BUFSIZE>(
                 outputs, dequantized, params.vector_fetch_0_dq_scale);
 
-            // We may not use all the data in the response
 #pragma hls_unroll yes
             for (int row = 0; row < BUFSIZE; row++) {
               buffer[row][col] = dequantized[row];

@@ -23,14 +23,14 @@
 inline int max(int a, int b) { return a > b ? a : b; }
 
 template <class T>
-void swap_(T &a, T &b) {
+void swap_(T& a, T& b) {
   T tmp = a;
   a = b;
   b = tmp;
 }
 
 template <int srcWidth, int dstWidth>
-void copy_(ac_int<srcWidth, false> src, ac_int<dstWidth, false> &dst) {
+void copy_(ac_int<srcWidth, false> src, ac_int<dstWidth, false>& dst) {
   if (dstWidth > srcWidth) {
     dst = src;
     dst <<= dstWidth - srcWidth;
@@ -40,14 +40,14 @@ void copy_(ac_int<srcWidth, false> src, ac_int<dstWidth, false> &dst) {
 }
 
 template <int nbits>
-void twos_complement(ac_int<nbits, false> &value) {
+void twos_complement(ac_int<nbits, false>& value) {
   value = static_cast<ac_int<nbits, false>>(value.bit_complement() + 1);
 }
 
 template <int nbits, int es, int fbits>
 void convert_(const bool sign, const int scale,
               const ac_int<fbits, false> fraction_in,
-              ac_int<nbits, false> &bits) {
+              ac_int<nbits, false>& bits) {
   if (nbits == 8 && es == 1 && scale < -13) {
     bits = 0;
     return;
@@ -91,8 +91,8 @@ void convert_(const bool sign, const int scale,
 }
 
 template <int nbits, int es, int fbits>
-void decode(ac_int<nbits, false> bits, bool &sign, int &scale,
-            ac_int<fbits, false> &fraction) {
+void decode(ac_int<nbits, false> bits, bool& sign, int& scale,
+            ac_int<fbits, false>& fraction) {
   sign = bits[nbits - 1];
   if (sign) twos_complement(bits);  // convert to positive value
   bits <<= 1;                       // remove sign bit
@@ -142,10 +142,10 @@ class Posit {
 #endif
 
   template <int nbits2, int es2>
-  Posit(const Posit<nbits2, es2> &other);
+  Posit(const Posit<nbits2, es2>& other);
 
   template <int mantissa, int exp>
-  Posit(const StdFloat<mantissa, exp> &other);
+  Posit(const StdFloat<mantissa, exp>& other);
 
   ac_int<nbits, false> bits_rep() { return bits; }
   void set_bits(int i) { bits = i; }
@@ -174,17 +174,17 @@ class Posit {
     bits >>= 2;
   }
 
-  Posit operator+(const Posit &rhs) const;
-  Posit operator-(const Posit &rhs) const;
-  Posit operator*(const Posit &rhs) const;
-  Posit operator/(const Posit &rhs) const;
+  Posit operator+(const Posit& rhs) const;
+  Posit operator-(const Posit& rhs) const;
+  Posit operator*(const Posit& rhs) const;
+  Posit operator/(const Posit& rhs) const;
 
-  Posit &operator+=(const Posit &rhs);
-  Posit &operator-=(const Posit &rhs);
-  Posit &operator*=(const Posit &rhs);
-  Posit &operator/=(const Posit &rhs);
+  Posit& operator+=(const Posit& rhs);
+  Posit& operator-=(const Posit& rhs);
+  Posit& operator*=(const Posit& rhs);
+  Posit& operator/=(const Posit& rhs);
 
-  bool operator<(const Posit &rhs) const;
+  bool operator<(const Posit& rhs) const;
 
   template <int mantissa, int exp, bool use_dw_impl, bool ieee_compliance,
             ac_q_mode Q>
@@ -220,12 +220,12 @@ class Posit {
 // SystemC is not compatible with C++17
 #ifndef NO_SYSC
   template <unsigned int Size>
-  void Marshall(Marshaller<Size> &m) {
+  void Marshall(Marshaller<Size>& m) {
     m & bits;
   }
 
-  inline friend void sc_trace(sc_trace_file *tf, const Posit &posit,
-                              const std::string &name) {
+  inline friend void sc_trace(sc_trace_file* tf, const Posit& posit,
+                              const std::string& name) {
     sc_trace(tf, posit.bits, name + ".bits");
   }
 #endif
@@ -248,14 +248,14 @@ Posit<nbits, es>::Posit(const float f) {
 
 template <int nbits, int es>
 template <int nbits2, int es2>
-Posit<nbits, es>::Posit(const Posit<nbits2, es2> &other) {
+Posit<nbits, es>::Posit(const Posit<nbits2, es2>& other) {
   typename Posit<nbits2, es2>::decoded tmp(other);
   *this = tmp;
 }
 
 template <int nbits, int es>
 template <int mantissa, int exp>
-Posit<nbits, es>::Posit(const StdFloat<mantissa, exp> &other) {
+Posit<nbits, es>::Posit(const StdFloat<mantissa, exp>& other) {
   if (other.float_val.d == 0) {
     bits = 0;
   } else {
@@ -299,7 +299,7 @@ Posit<nbits, es> exponential(Posit<nbits, es> val) {
 
 template <int nbits, int es>
 inline Posit<nbits, es> Posit<nbits, es>::operator+(
-    const Posit<nbits, es> &rhs) const {
+    const Posit<nbits, es>& rhs) const {
   decoded op1 = *this;
   decoded op2 = rhs;
   return op1 + op2;
@@ -307,7 +307,7 @@ inline Posit<nbits, es> Posit<nbits, es>::operator+(
 
 template <int nbits, int es>
 inline Posit<nbits, es> Posit<nbits, es>::operator-(
-    const Posit<nbits, es> &rhs) const {
+    const Posit<nbits, es>& rhs) const {
   decoded op1 = *this;
   decoded op2 = rhs;
   return op1 - op2;
@@ -315,7 +315,7 @@ inline Posit<nbits, es> Posit<nbits, es>::operator-(
 
 template <int nbits, int es>
 inline Posit<nbits, es> Posit<nbits, es>::operator*(
-    const Posit<nbits, es> &rhs) const {
+    const Posit<nbits, es>& rhs) const {
   decoded op1 = *this;
   decoded op2 = rhs;
   return op1 * op2;
@@ -323,42 +323,42 @@ inline Posit<nbits, es> Posit<nbits, es>::operator*(
 
 template <int nbits, int es>
 inline Posit<nbits, es> Posit<nbits, es>::operator/(
-    const Posit<nbits, es> &rhs) const {
+    const Posit<nbits, es>& rhs) const {
   Posit<nbits, es> op2 = rhs;
   op2.reciprocal();
   return *this * op2;
 }
 
 template <int nbits, int es>
-inline Posit<nbits, es> &Posit<nbits, es>::operator+=(
-    const Posit<nbits, es> &rhs) {
+inline Posit<nbits, es>& Posit<nbits, es>::operator+=(
+    const Posit<nbits, es>& rhs) {
   *this = *this + rhs;
   return *this;
 }
 
 template <int nbits, int es>
-inline Posit<nbits, es> &Posit<nbits, es>::operator-=(
-    const Posit<nbits, es> &rhs) {
+inline Posit<nbits, es>& Posit<nbits, es>::operator-=(
+    const Posit<nbits, es>& rhs) {
   *this = *this - rhs;
   return *this;
 }
 
 template <int nbits, int es>
-inline Posit<nbits, es> &Posit<nbits, es>::operator*=(
-    const Posit<nbits, es> &rhs) {
+inline Posit<nbits, es>& Posit<nbits, es>::operator*=(
+    const Posit<nbits, es>& rhs) {
   *this = *this * rhs;
   return *this;
 }
 
 template <int nbits, int es>
-inline Posit<nbits, es> &Posit<nbits, es>::operator/=(
-    const Posit<nbits, es> &rhs) {
+inline Posit<nbits, es>& Posit<nbits, es>::operator/=(
+    const Posit<nbits, es>& rhs) {
   *this = *this / rhs;
   return *this;
 }
 
 template <int nbits, int es>
-inline bool Posit<nbits, es>::operator<(const Posit<nbits, es> &rhs) const {
+inline bool Posit<nbits, es>::operator<(const Posit<nbits, es>& rhs) const {
   bool lhs_sign = bits[nbits - 1];
   bool rhs_sign = rhs.bits[nbits - 1];
   if (lhs_sign ^ rhs_sign) {
@@ -377,7 +377,7 @@ inline bool Posit<nbits, es>::operator<(const Posit<nbits, es> &rhs) const {
 }
 
 template <int nbits, int es>
-inline std::ostream &operator<<(std::ostream &os, const Posit<nbits, es> &val) {
+inline std::ostream& operator<<(std::ostream& os, const Posit<nbits, es>& val) {
 #ifndef __SYNTHESIS__
   os << static_cast<float>(val) << " ";
 #else

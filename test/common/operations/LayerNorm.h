@@ -3,14 +3,14 @@
 #include "test/common/operations/Common.h"
 
 template <typename T>
-inline T *layer_norm(std::any input_ptr, std::any weight_ptr, std::any bias_ptr,
+inline T* layer_norm(std::any input_ptr, std::any weight_ptr, std::any bias_ptr,
                      const std::vector<int> input_shape,
                      const std::vector<int> normalized_shape) {
-  T *inputs = std::any_cast<T *>(input_ptr);
-  T *weights = std::any_cast<T *>(weight_ptr);
-  T *bias = std::any_cast<T *>(bias_ptr);
+  T* inputs = std::any_cast<T*>(input_ptr);
+  T* weights = std::any_cast<T*>(weight_ptr);
+  T* bias = std::any_cast<T*>(bias_ptr);
 
-  T *output = new T[get_size(input_shape)];
+  T* output = new T[get_size(input_shape)];
 
   const int outer_dim = get_size(normalized_shape);
   const int inner_dim = get_size(input_shape) / outer_dim;
@@ -85,21 +85,21 @@ inline T *layer_norm(std::any input_ptr, std::any weight_ptr, std::any bias_ptr,
 }
 
 template <typename T>
-inline T *layer_norm(std::map<std::string, std::any> &kwargs,
+inline T* layer_norm(std::map<std::string, std::any>& kwargs,
                      const codegen::OpOverload op) {
   assert(op.target() == "layer_norm");
 
   const auto input = op.kwargs().at("input").tensor();
   std::any input_ptr = kwargs[input.node()];
 
-  std::any weight_ptr = static_cast<T *>(nullptr);
+  std::any weight_ptr = static_cast<T*>(nullptr);
 
   if (op.kwargs().contains("weight")) {
     const auto weight = op.kwargs().at("weight").tensor();
     weight_ptr = kwargs[weight.node()];
   }
 
-  std::any bias_ptr = static_cast<T *>(nullptr);
+  std::any bias_ptr = static_cast<T*>(nullptr);
 
   if (op.kwargs().contains("bias")) {
     const auto bias = op.kwargs().at("bias").tensor();

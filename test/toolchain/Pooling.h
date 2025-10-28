@@ -3,11 +3,11 @@
 #include "test/common/Tiling.h"
 #include "test/toolchain/Common.h"
 
-void MapPoolingOperation(const codegen::Operation &param,
-                         std::deque<BaseParams *> &mapped_params,
-                         std::deque<AcceleratorMemoryMap> &memory_maps) {
-  VectorParams *vector_params = new VectorParams;
-  VectorInstructionConfig *vector_instruction_config =
+void MapPoolingOperation(const codegen::Operation& param,
+                         std::deque<BaseParams*>& mapped_params,
+                         std::deque<AcceleratorMemoryMap>& memory_maps) {
+  VectorParams* vector_params = new VectorParams;
+  VectorInstructionConfig* vector_instruction_config =
       new VectorInstructionConfig;
 
   const auto op_list = get_op_list(param);

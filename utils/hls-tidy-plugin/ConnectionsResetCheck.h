@@ -1,5 +1,5 @@
-#ifndef LLVM_CLANG_TOOLS_EXTRA_TIDY_CONNECTIONSRESETCHECK_H
-#define LLVM_CLANG_TOOLS_EXTRA_TIDY_CONNECTIONSRESETCHECK_H
+#ifndef LLVM_CLANG_TOOLS_EXTRA_TIDY_CONNECTIONS_RESET_CHECK_H
+#define LLVM_CLANG_TOOLS_EXTRA_TIDY_CONNECTIONS_RESET_CHECK_H
 
 #include "clang-tidy/ClangTidyCheck.h"
 
@@ -9,14 +9,14 @@ namespace hls {
 
 class ConnectionsResetCheck : public ClangTidyCheck {
  public:
-  ConnectionsResetCheck(llvm::StringRef Name, ClangTidyContext *Context);
+  ConnectionsResetCheck(llvm::StringRef name, ClangTidyContext* context);
 
-  void registerMatchers(ast_matchers::MatchFinder *Finder) override;
-  void check(const ast_matchers::MatchFinder::MatchResult &Result) override;
+  void registerMatchers(ast_matchers::MatchFinder* finder) override;
+  void check(const ast_matchers::MatchFinder::MatchResult& result) override;
 };
 
 }  // namespace hls
 }  // namespace tidy
 }  // namespace clang
 
-#endif  // LLVM_CLANG_TOOLS_EXTRA_TIDY_CONNECTIONSRESETCHECK_H
+#endif  // LLVM_CLANG_TOOLS_EXTRA_TIDY_CONNECTIONS_RESET_CHECK_H

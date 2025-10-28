@@ -2,9 +2,9 @@
 
 #include "test/toolchain/Common.h"
 
-void MapMicroscaling(const codegen::Operation &param,
-                     std::deque<BaseParams *> &mapped_params,
-                     std::deque<AcceleratorMemoryMap> &memory_maps) {
+void MapMicroscaling(const codegen::Operation& param,
+                     std::deque<BaseParams*>& mapped_params,
+                     std::deque<AcceleratorMemoryMap>& memory_maps) {
   const auto op_list = get_op_list(param);
   const auto quantize_mx_op = op_list[0];
 
@@ -30,8 +30,8 @@ void MapMicroscaling(const codegen::Operation &param,
         "Microscaling only supported on second to last dimension");
   }
 
-  VectorParams *vector_params = new VectorParams;
-  VectorInstructionConfig *vector_instruction_config =
+  VectorParams* vector_params = new VectorParams;
+  VectorInstructionConfig* vector_instruction_config =
       new VectorInstructionConfig;
   AcceleratorMemoryMap memory_map;
 

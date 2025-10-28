@@ -14,7 +14,7 @@
 
 template <typename T, unsigned int width>
 ac_int<T::width, false> get_serialized_params(
-    Connections::In<ac_int<64, false>> &serial_params_in) {
+    Connections::In<ac_int<64, false>>& serial_params_in) {
   ac_int<((T::width + width - 1) / width) * width, false> padded_params;
   for (int i = 0; i < padded_params.width / width; i++) {
     ac_int<width, false> bits = serial_params_in.Pop();

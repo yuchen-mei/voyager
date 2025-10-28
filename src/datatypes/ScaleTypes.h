@@ -32,7 +32,7 @@ class UFloat {
 #endif
 
   template <int W2, int E2>
-  UFloat(const ac_std_float<W2, E2> &other) {
+  UFloat(const ac_std_float<W2, E2>& other) {
     if constexpr (width == e_width) {
       d = other.d.template slc<E2>(W2 - E2 - 1);
     } else {
@@ -43,7 +43,7 @@ class UFloat {
 
   template <int mantissa, int exp, bool use_dw_impl, bool ieee_compliance,
             ac_q_mode Q>
-  UFloat(const StdFloat<mantissa, exp, use_dw_impl, ieee_compliance, Q> &other)
+  UFloat(const StdFloat<mantissa, exp, use_dw_impl, ieee_compliance, Q>& other)
       : UFloat(other.float_val) {}
 
   ac_float_rep to_ac_float() const {
@@ -54,7 +54,7 @@ class UFloat {
 
   ac_int<W, true> bits_rep() { return d; }
 
-  void set_bits(const ac_int<W, true> &rhs) { d = rhs; }
+  void set_bits(const ac_int<W, true>& rhs) { d = rhs; }
 
   bool is_zero() const { return d == ac_float_rep::zero().data(); }
 
@@ -70,7 +70,7 @@ class UFloat {
     return r;
   }
 
-  UFloat operator*(const UFloat &rhs) const {
+  UFloat operator*(const UFloat& rhs) const {
     if constexpr (W == E) {
       int exp = d + rhs.d - ac_float_rep::exp_bias;
       ac_int<E, true> e_r = exp;
@@ -82,11 +82,11 @@ class UFloat {
     }
   }
 
-  bool operator<(const UFloat &other) const {
+  bool operator<(const UFloat& other) const {
     return to_ac_float() < other.to_ac_float();
   }
 
-  bool operator==(const UFloat &other) const { return d == other.d; }
+  bool operator==(const UFloat& other) const { return d == other.d; }
 
 #ifndef __SYNTHESIS__
   operator float() const { return to_ac_float().to_float(); }
@@ -100,7 +100,7 @@ class UFloat {
 
 #ifndef NO_SYSC
   template <unsigned int Size>
-  void Marshall(Marshaller<Size> &m) {
+  void Marshall(Marshaller<Size>& m) {
     m & d;
   }
 #endif

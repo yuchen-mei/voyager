@@ -101,7 +101,7 @@ SC_MODULE(ProcessingElement) {
       PEInput<Input> input = input_in.Pop();
       Psum psum = psum_in.Pop();
 
-      if (input.swapWeights) {
+      if (input.swap_weights) {
         weight_reg = stored_weight.Pop();
       }
 

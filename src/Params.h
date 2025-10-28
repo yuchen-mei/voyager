@@ -88,6 +88,7 @@ struct MatrixParams : BaseParams {
     input_transpose = false;
     weight_transpose = false;
     write_output_to_accum_buffer = false;
+    weight_dequant = false;
   }
 #endif
 
@@ -152,12 +153,16 @@ struct MatrixParams : BaseParams {
   bool input_transpose;
   bool weight_transpose;
   bool write_output_to_accum_buffer;
+  bool weight_dequant;
+
+  ac_int<ADDRESS_WIDTH, false> dq_scale_offset;
+  ac_int<ADDRESS_WIDTH, false> dq_zero_point_offset;
 
   static const unsigned int base_width =
-      5 * 64 /* OFFSETS */ + (12 + 10) * LOOP_WIDTH /* Loops */ +
+      7 * 64 /* OFFSETS */ + (12 + 10) * LOOP_WIDTH /* Loops */ +
       21 * 3 /* Loop indices */ + 5 /* stride */ + 2 /* padding */ +
       8 /* Head Size */ + 2 /* num_channels */ + 3 /*fx_unrolling_lg2*/ +
-      11 * 1 /* Bools */;
+      12 * 1 /* Bools */;
 
   static const unsigned int extra_width =
       2 * DTYPE_INDEX_WIDTH + 36 +
@@ -254,6 +259,10 @@ struct MatrixParams : BaseParams {
     m & input_transpose;
     m & weight_transpose;
     m & write_output_to_accum_buffer;
+    m & weight_dequant;
+
+    m & dq_scale_offset;
+    m & dq_zero_point_offset;
   }
 
   inline friend void sc_trace(sc_trace_file* tf, const MatrixParams& params,
@@ -361,6 +370,9 @@ struct MatrixParams : BaseParams {
     os << "weight_transpose: " << params.weight_transpose << std::endl;
     os << "write_output_to_accum_buffer: "
        << params.write_output_to_accum_buffer << std::endl;
+    os << "weight_dequant: " << params.weight_dequant << std::endl;
+    os << "dq_scale_offset: " << params.dq_scale_offset << std::endl;
+    os << "dq_zero_point_offset: " << params.dq_zero_point_offset << std::endl;
     return os;
   }
 
@@ -441,6 +453,10 @@ struct MatrixParams : BaseParams {
     if (lhs.weight_transpose != rhs.weight_transpose) return false;
     if (lhs.write_output_to_accum_buffer != rhs.write_output_to_accum_buffer)
       return false;
+    if (lhs.weight_dequant != rhs.weight_dequant) return false;
+
+    if (lhs.dq_scale_offset != rhs.dq_scale_offset) return false;
+    if (lhs.dq_zero_point_offset != rhs.dq_zero_point_offset) return false;
 
     // If all members are equal, return true
     return true;
@@ -728,14 +744,14 @@ struct VectorParams : BaseParams {
     vector_fetch_2_broadcast = 0;
 
     has_slicing = false;
-    vector_fetch_0_dim = 0;
-    vector_fetch_0_start = 0;
-    vector_fetch_0_end = 0;
-    vector_fetch_0_step = 0;
+    vector_fetch_0_slice_dim = 0;
+    vector_fetch_0_slice_start = 0;
+    vector_fetch_0_slice_end = 0;
+    vector_fetch_0_slice_step = 0;
 
     has_permute = false;
     for (int i = 0; i < 6; i++) {
-      vector_fetch_0_dims[i] = i;
+      vector_fetch_0_permute_dims[i] = i;
     }
 
     has_transpose = false;
@@ -826,13 +842,13 @@ struct VectorParams : BaseParams {
 
   // Address generator 0 slicing and reshape
   bool has_slicing;
-  ac_int<3, false> vector_fetch_0_dim;
-  ac_int<11, false> vector_fetch_0_start;
-  ac_int<11, false> vector_fetch_0_end;
-  ac_int<11, false> vector_fetch_0_step;
+  ac_int<3, false> vector_fetch_0_slice_dim;
+  ac_int<11, false> vector_fetch_0_slice_start;
+  ac_int<11, false> vector_fetch_0_slice_end;
+  ac_int<11, false> vector_fetch_0_slice_step;
 
   bool has_permute;
-  ac_int<3, false> vector_fetch_0_dims[6];
+  ac_int<3, false> vector_fetch_0_permute_dims[6];
 
   bool has_transpose;
 
@@ -972,14 +988,14 @@ struct VectorParams : BaseParams {
 
     // Slicing and reshape
     m & has_slicing;
-    m & vector_fetch_0_dim;
-    m & vector_fetch_0_start;
-    m & vector_fetch_0_end;
-    m & vector_fetch_0_step;
+    m & vector_fetch_0_slice_dim;
+    m & vector_fetch_0_slice_start;
+    m & vector_fetch_0_slice_end;
+    m & vector_fetch_0_slice_step;
 
     m & has_permute;
     for (int i = 0; i < 6; i++) {
-      m& vector_fetch_0_dims[i];
+      m& vector_fetch_0_permute_dims[i];
     }
 
     m & has_transpose;
@@ -1144,15 +1160,19 @@ struct VectorParams : BaseParams {
     }
 
     os << "has_slicing: " << params.has_slicing << std::endl;
-    os << "vector_fetch_0_dim: " << params.vector_fetch_0_dim << std::endl;
-    os << "vector_fetch_0_start: " << params.vector_fetch_0_start << std::endl;
-    os << "vector_fetch_0_end: " << params.vector_fetch_0_end << std::endl;
-    os << "vector_fetch_0_step: " << params.vector_fetch_0_step << std::endl;
+    os << "vector_fetch_0_slice_dim: " << params.vector_fetch_0_slice_dim
+       << std::endl;
+    os << "vector_fetch_0_slice_start: " << params.vector_fetch_0_slice_start
+       << std::endl;
+    os << "vector_fetch_0_slice_end: " << params.vector_fetch_0_slice_end
+       << std::endl;
+    os << "vector_fetch_0_slice_step: " << params.vector_fetch_0_slice_step
+       << std::endl;
 
     os << "has_permute: " << params.has_permute << std::endl;
     for (int i = 0; i < 6; i++) {
-      os << "vector_fetch_0_dims[" << i
-         << "]: " << params.vector_fetch_0_dims[i] << std::endl;
+      os << "vector_fetch_0_permute_dims[" << i
+         << "]: " << params.vector_fetch_0_permute_dims[i] << std::endl;
     }
 
     os << "has_transpose: " << params.has_transpose << std::endl;
@@ -1293,14 +1313,19 @@ struct VectorParams : BaseParams {
       return false;
 
     if (lhs.has_slicing != rhs.has_slicing) return false;
-    if (lhs.vector_fetch_0_dim != rhs.vector_fetch_0_dim) return false;
-    if (lhs.vector_fetch_0_start != rhs.vector_fetch_0_start) return false;
-    if (lhs.vector_fetch_0_end != rhs.vector_fetch_0_end) return false;
-    if (lhs.vector_fetch_0_step != rhs.vector_fetch_0_step) return false;
+    if (lhs.vector_fetch_0_slice_dim != rhs.vector_fetch_0_slice_dim)
+      return false;
+    if (lhs.vector_fetch_0_slice_start != rhs.vector_fetch_0_slice_start)
+      return false;
+    if (lhs.vector_fetch_0_slice_end != rhs.vector_fetch_0_slice_end)
+      return false;
+    if (lhs.vector_fetch_0_slice_step != rhs.vector_fetch_0_slice_step)
+      return false;
 
     if (lhs.has_permute != rhs.has_permute) return false;
     for (int i = 0; i < 6; i++) {
-      if (lhs.vector_fetch_0_dims[i] != rhs.vector_fetch_0_dims[i])
+      if (lhs.vector_fetch_0_permute_dims[i] !=
+          rhs.vector_fetch_0_permute_dims[i])
         return false;
     }
 

@@ -17,42 +17,42 @@ namespace hls {
 
 namespace {
 
-bool isConnectionsType(QualType QT) {
-  if (QT.isNull()) return false;
-  if (QT->isPointerType() || QT->isReferenceType()) {
-    QT = QT->getPointeeType();
+bool is_connections_type(QualType qt) {
+  if (qt.isNull()) return false;
+  if (qt->isPointerType() || qt->isReferenceType()) {
+    qt = qt->getPointeeType();
   }
-  QT = QT.getUnqualifiedType();
+  qt = qt.getUnqualifiedType();
 
-  const CXXRecordDecl *Record = QT->getAsCXXRecordDecl();
-  if (!Record) return false;
+  const CXXRecordDecl* record = qt->getAsCXXRecordDecl();
+  if (!record) return false;
 
-  std::string Name = Record->getQualifiedNameAsString();
-  return Name.find("Connections::Combinational") != std::string::npos ||
-         Name.find("Connections::In") != std::string::npos ||
-         Name.find("Connections::Out") != std::string::npos;
+  std::string name = record->getQualifiedNameAsString();
+  return name.find("Connections::Combinational") != std::string::npos ||
+         name.find("Connections::In") != std::string::npos ||
+         name.find("Connections::Out") != std::string::npos;
 }
 
-const ValueDecl *findBaseDecl(const Expr *E) {
-  if (!E) return nullptr;
-  E = E->IgnoreParenImpCasts();
+const ValueDecl* find_base_decl(const Expr* expr) {
+  if (!expr) return nullptr;
+  expr = expr->IgnoreParenImpCasts();
 
-  if (const auto *DRE = dyn_cast<DeclRefExpr>(E)) {
-    return DRE->getDecl();
+  if (const auto* dre = dyn_cast<DeclRefExpr>(expr)) {
+    return dre->getDecl();
   }
 
-  if (const auto *ME = dyn_cast<MemberExpr>(E)) {
-    if (const auto *FD = dyn_cast<FieldDecl>(ME->getMemberDecl())) {
-      return FD;
+  if (const auto* me = dyn_cast<MemberExpr>(expr)) {
+    if (const auto* fd = dyn_cast<FieldDecl>(me->getMemberDecl())) {
+      return fd;
     }
-    return findBaseDecl(ME->getBase());
+    return find_base_decl(me->getBase());
   }
 
-  if (const auto *ASE = dyn_cast<ArraySubscriptExpr>(E)) {
-    return findBaseDecl(ASE->getBase());
+  if (const auto* ase = dyn_cast<ArraySubscriptExpr>(expr)) {
+    return find_base_decl(ase->getBase());
   }
 
-  if (isa<CXXThisExpr>(E)) {
+  if (isa<CXXThisExpr>(expr)) {
     return nullptr;
   }
 
@@ -60,33 +60,33 @@ const ValueDecl *findBaseDecl(const Expr *E) {
 }
 
 class ConnectionsVisitor : public RecursiveASTVisitor<ConnectionsVisitor> {
-  ASTContext &Context;
-  std::map<const ValueDecl *, SourceLocation> &UsedConnections;
-  std::set<const ValueDecl *> &ResetConnections;
-  const FunctionDecl *CurrentFunction;
+  ASTContext& context;
+  std::map<const ValueDecl*, SourceLocation>& used_connections;
+  std::set<const ValueDecl*>& reset_connections;
+  const FunctionDecl* current_function;
 
  public:
-  ConnectionsVisitor(ASTContext &Ctx,
-                     std::map<const ValueDecl *, SourceLocation> &Used,
-                     std::set<const ValueDecl *> &Reset,
-                     const FunctionDecl *Func)
-      : Context(Ctx),
-        UsedConnections(Used),
-        ResetConnections(Reset),
-        CurrentFunction(Func) {}
+  ConnectionsVisitor(ASTContext& ctx,
+                     std::map<const ValueDecl*, SourceLocation>& used,
+                     std::set<const ValueDecl*>& reset,
+                     const FunctionDecl* func)
+      : context(ctx),
+        used_connections(used),
+        reset_connections(reset),
+        current_function(func) {}
 
-  bool VisitCallExpr(CallExpr *Call) {
-    if (const auto *MemberCall = dyn_cast<CXXMemberCallExpr>(Call)) {
-      const CXXMethodDecl *Method = MemberCall->getMethodDecl();
-      if (Method) {
-        std::string MethodName = Method->getNameAsString();
-        if (MethodName == "Reset" || MethodName == "ResetRead" ||
-            MethodName == "ResetWrite") {
-          const Expr *ObjectExpr = MemberCall->getImplicitObjectArgument();
-          if (ObjectExpr && isConnectionsType(ObjectExpr->getType())) {
-            const ValueDecl *Decl = findBaseDecl(ObjectExpr);
-            if (Decl) {
-              ResetConnections.insert(Decl);
+  bool VisitCallExpr(CallExpr* call) {
+    if (const auto* member_call = dyn_cast<CXXMemberCallExpr>(call)) {
+      const CXXMethodDecl* method = member_call->getMethodDecl();
+      if (method) {
+        std::string method_name = method->getNameAsString();
+        if (method_name == "Reset" || method_name == "ResetRead" ||
+            method_name == "ResetWrite") {
+          const Expr* object_expr = member_call->getImplicitObjectArgument();
+          if (object_expr && is_connections_type(object_expr->getType())) {
+            const ValueDecl* decl = find_base_decl(object_expr);
+            if (decl) {
+              reset_connections.insert(decl);
               return true;
             }
           }
@@ -94,23 +94,23 @@ class ConnectionsVisitor : public RecursiveASTVisitor<ConnectionsVisitor> {
       }
     }
 
-    if (const auto *MemberCall = dyn_cast<CXXMemberCallExpr>(Call)) {
-      const Expr *ObjectExpr = MemberCall->getImplicitObjectArgument();
-      if (ObjectExpr && isConnectionsType(ObjectExpr->getType())) {
-        const ValueDecl *Decl = findBaseDecl(ObjectExpr);
-        if (Decl && UsedConnections.find(Decl) == UsedConnections.end()) {
-          UsedConnections[Decl] = Call->getBeginLoc();
+    if (const auto* member_call = dyn_cast<CXXMemberCallExpr>(call)) {
+      const Expr* object_expr = member_call->getImplicitObjectArgument();
+      if (object_expr && is_connections_type(object_expr->getType())) {
+        const ValueDecl* decl = find_base_decl(object_expr);
+        if (decl && used_connections.find(decl) == used_connections.end()) {
+          used_connections[decl] = call->getBeginLoc();
         }
       }
     }
 
-    for (const Expr *Arg : Call->arguments()) {
-      if (!Arg) continue;
-      const Expr *ArgClean = Arg->IgnoreParenImpCasts();
-      if (isConnectionsType(ArgClean->getType())) {
-        const ValueDecl *Decl = findBaseDecl(ArgClean);
-        if (Decl && UsedConnections.find(Decl) == UsedConnections.end()) {
-          UsedConnections[Decl] = Arg->getBeginLoc();
+    for (const Expr* arg : call->arguments()) {
+      if (!arg) continue;
+      const Expr* arg_clean = arg->IgnoreParenImpCasts();
+      if (is_connections_type(arg_clean->getType())) {
+        const ValueDecl* decl = find_base_decl(arg_clean);
+        if (decl && used_connections.find(decl) == used_connections.end()) {
+          used_connections[decl] = arg->getBeginLoc();
         }
       }
     }
@@ -121,43 +121,44 @@ class ConnectionsVisitor : public RecursiveASTVisitor<ConnectionsVisitor> {
 
 }  // end anonymous namespace
 
-ConnectionsResetCheck::ConnectionsResetCheck(StringRef Name,
-                                             ClangTidyContext *Context)
-    : ClangTidyCheck(Name, Context) {}
+ConnectionsResetCheck::ConnectionsResetCheck(StringRef name,
+                                             ClangTidyContext* context)
+    : ClangTidyCheck(name, context) {}
 
-void ConnectionsResetCheck::registerMatchers(MatchFinder *Finder) {
-  Finder->addMatcher(
+void ConnectionsResetCheck::registerMatchers(MatchFinder* finder) {
+  finder->addMatcher(
       functionDecl(isDefinition(), hasDescendant(callExpr(
                                        callee(functionDecl(hasName("wait"))))))
-          .bind("funcWithWait"),
+          .bind("func_with_wait"),
       this);
 }
 
-void ConnectionsResetCheck::check(const MatchFinder::MatchResult &Result) {
-  const auto *Func = Result.Nodes.getNodeAs<FunctionDecl>("funcWithWait");
-  if (!Func || !Func->hasBody()) return;
+void ConnectionsResetCheck::check(const MatchFinder::MatchResult& result) {
+  const auto* func = result.Nodes.getNodeAs<FunctionDecl>("func_with_wait");
+  if (!func || !func->hasBody()) return;
 
-  ASTContext *Context = Result.Context;
-  const Stmt *Body = Func->getBody();
+  ASTContext* context = result.Context;
+  const Stmt* body = func->getBody();
 
-  std::map<const ValueDecl *, SourceLocation> usedConnections;
-  std::set<const ValueDecl *> resetConnections;
+  std::map<const ValueDecl*, SourceLocation> used_connections;
+  std::set<const ValueDecl*> reset_connections;
 
-  ConnectionsVisitor Visitor(*Context, usedConnections, resetConnections, Func);
-  Visitor.TraverseStmt(const_cast<Stmt *>(Body));
+  ConnectionsVisitor visitor(*context, used_connections, reset_connections,
+                             func);
+  visitor.TraverseStmt(const_cast<Stmt*>(body));
 
-  for (const auto &Pair : usedConnections) {
-    const ValueDecl *Decl = Pair.first;
-    const SourceLocation Loc = Pair.second;
+  for (const auto& pair : used_connections) {
+    const ValueDecl* decl = pair.first;
+    const SourceLocation loc = pair.second;
 
-    if (resetConnections.find(Decl) == resetConnections.end()) {
-      diag(Loc,
-           "Connection '%0' is used in function '%1' with wait(), but is not "
+    if (reset_connections.find(decl) == reset_connections.end()) {
+      diag(loc,
+           "connection '%0' is used in function '%1' with wait(), but is not "
            "reset with Reset/ResetRead/ResetWrite")
-          << Decl->getNameAsString() << Func->getNameAsString();
+          << decl->getNameAsString() << func->getNameAsString();
 
-      diag(Decl->getLocation(), "declaration of '%0' here", DiagnosticIDs::Note)
-          << Decl->getNameAsString();
+      diag(decl->getLocation(), "declaration of '%0' here", DiagnosticIDs::Note)
+          << decl->getNameAsString();
     }
   }
 }

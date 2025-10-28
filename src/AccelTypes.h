@@ -24,26 +24,26 @@ struct MemoryRequest {
   static const unsigned int width = 64 + 32;
 
   template <unsigned int Size>
-  void Marshall(Marshaller<Size> &m) {
+  void Marshall(Marshaller<Size>& m) {
     m & address;
     m & burst_size;
   }
 
-  inline friend void sc_trace(sc_trace_file *tf, const MemoryRequest &request,
-                              const std::string &name) {
+  inline friend void sc_trace(sc_trace_file* tf, const MemoryRequest& request,
+                              const std::string& name) {
     sc_trace(tf, request.address, name + ".address");
     sc_trace(tf, request.burst_size, name + ".burst_size");
   }
 
-  inline friend std::ostream &operator<<(ostream &os,
-                                         const MemoryRequest &request) {
+  inline friend std::ostream& operator<<(ostream& os,
+                                         const MemoryRequest& request) {
     os << request.address << " ";
     os << request.burst_size << " ";
     return os;
   }
 
-  inline friend bool operator==(const MemoryRequest &lhs,
-                                const MemoryRequest &rhs) {
+  inline friend bool operator==(const MemoryRequest& lhs,
+                                const MemoryRequest& rhs) {
     return lhs.address == rhs.address && lhs.burst_size == rhs.burst_size;
   }
 };
@@ -51,31 +51,31 @@ struct MemoryRequest {
 template <typename T>
 struct PEInput {
   T data;
-  ac_int<1, false> swapWeights;
+  ac_int<1, false> swap_weights;
 
   static const unsigned int width = T::width + 1;
 
   template <unsigned int Size>
-  void Marshall(Marshaller<Size> &m) {
+  void Marshall(Marshaller<Size>& m) {
     m & data;
-    m & swapWeights;
+    m & swap_weights;
   }
 
-  inline friend void sc_trace(sc_trace_file *tf, const PEInput &peInput,
-                              const std::string &name) {
+  inline friend void sc_trace(sc_trace_file* tf, const PEInput& peInput,
+                              const std::string& name) {
     sc_trace(tf, peInput.data, name + ".data");
-    sc_trace(tf, peInput.swapWeights, name + ".swapWeights");
+    sc_trace(tf, peInput.swap_weights, name + ".swap_weights");
   }
 
-  inline friend std::ostream &operator<<(ostream &os, const PEInput &peInput) {
+  inline friend std::ostream& operator<<(ostream& os, const PEInput& peInput) {
     os << peInput.data << " ";
-    os << peInput.swapWeights << " ";
+    os << peInput.swap_weights << " ";
 
     return os;
   }
 
-  inline friend bool operator==(const PEInput &lhs, const PEInput &rhs) {
-    return lhs.data == rhs.data && lhs.swapWeights == rhs.swapWeights;
+  inline friend bool operator==(const PEInput& lhs, const PEInput& rhs) {
+    return lhs.data == rhs.data && lhs.swap_weights == rhs.swap_weights;
   }
 };
 
@@ -92,26 +92,26 @@ struct PEWeight {
   static const unsigned int width = T::width + TAG_WIDTH;
 
   template <unsigned int Size>
-  void Marshall(Marshaller<Size> &m) {
+  void Marshall(Marshaller<Size>& m) {
     m & data;
     m & tag;
   }
 
-  inline friend void sc_trace(sc_trace_file *tf, const PEWeight &peWeight,
-                              const std::string &name) {
+  inline friend void sc_trace(sc_trace_file* tf, const PEWeight& peWeight,
+                              const std::string& name) {
     sc_trace(tf, peWeight.data, name + ".data");
     sc_trace(tf, peWeight.tag, name + ".tag");
   }
 
-  inline friend std::ostream &operator<<(ostream &os,
-                                         const PEWeight &peWeight) {
+  inline friend std::ostream& operator<<(ostream& os,
+                                         const PEWeight& peWeight) {
     os << peWeight.data << " ";
     os << peWeight.tag << " ";
 
     return os;
   }
 
-  inline friend bool operator==(const PEWeight &lhs, const PEWeight &rhs) {
+  inline friend bool operator==(const PEWeight& lhs, const PEWeight& rhs) {
     return lhs.data == rhs.data && lhs.tag == rhs.tag;
   }
 };
@@ -128,18 +128,18 @@ class Pack1D {
 
   operator int() const { return Pack1D<T, pack_width>(); }
 
-  T &operator[](unsigned int i) { return this->value[i]; }
-  const T &operator[](unsigned int i) const { return this->value[i]; }
+  T& operator[](unsigned int i) { return this->value[i]; }
+  const T& operator[](unsigned int i) const { return this->value[i]; }
 
   template <unsigned int Size>
-  void Marshall(Marshaller<Size> &m) {
+  void Marshall(Marshaller<Size>& m) {
 #pragma hls_unroll yes
     for (unsigned int i = 0; i < pack_width; i++) {
-      m &value[i];
+      m& value[i];
     }
   }
 
-  inline friend bool operator==(const Pack1D &lhs, const Pack1D &rhs) {
+  inline friend bool operator==(const Pack1D& lhs, const Pack1D& rhs) {
     for (unsigned int i = 0; i < pack_width; i++) {
       if (!(lhs.value[i] == rhs.value[i])) {
         return false;
@@ -167,28 +167,28 @@ class Pack1D<PEInput<ac_int<W, false>>, pack_width> {
     return Pack1D<PEInput<ac_int<W, false>>, pack_width>();
   }
 
-  PEInput<ac_int<W, false>> &operator[](unsigned int i) {
+  PEInput<ac_int<W, false>>& operator[](unsigned int i) {
     return this->value[i];
   }
 
-  const PEInput<ac_int<W, false>> &operator[](unsigned int i) const {
+  const PEInput<ac_int<W, false>>& operator[](unsigned int i) const {
     return this->value[i];
   }
 
   template <unsigned int Size>
-  void Marshall(Marshaller<Size> &m) {
+  void Marshall(Marshaller<Size>& m) {
 #pragma hls_unroll yes
     for (unsigned int i = 0; i < pack_width; i++) {
-      m &value[i].data;
+      m& value[i].data;
     }
 
 #pragma hls_unroll yes
     for (unsigned int i = 0; i < pack_width; i++) {
-      m &value[i].swapWeights;
+      m& value[i].swap_weights;
     }
   }
 
-  inline friend bool operator==(const Pack1D &lhs, const Pack1D &rhs) {
+  inline friend bool operator==(const Pack1D& lhs, const Pack1D& rhs) {
     for (unsigned int i = 0; i < pack_width; i++) {
       if (lhs.value[i] != rhs.value[i]) {
         return false;
@@ -214,28 +214,28 @@ class Pack1D<PEWeight<ac_int<W, false>>, pack_width> {
     return Pack1D<PEWeight<ac_int<W, false>>, pack_width>();
   }
 
-  PEWeight<ac_int<W, false>> &operator[](unsigned int i) {
+  PEWeight<ac_int<W, false>>& operator[](unsigned int i) {
     return this->value[i];
   }
 
-  const PEWeight<ac_int<W, false>> &operator[](unsigned int i) const {
+  const PEWeight<ac_int<W, false>>& operator[](unsigned int i) const {
     return this->value[i];
   }
 
   template <unsigned int Size>
-  void Marshall(Marshaller<Size> &m) {
+  void Marshall(Marshaller<Size>& m) {
 #pragma hls_unroll yes
     for (unsigned int i = 0; i < pack_width; i++) {
-      m &value[i].data;
+      m& value[i].data;
     }
 
 #pragma hls_unroll yes
     for (unsigned int i = 0; i < pack_width; i++) {
-      m &value[i].tag;
+      m& value[i].tag;
     }
   }
 
-  inline friend bool operator==(const Pack1D &lhs, const Pack1D &rhs) {
+  inline friend bool operator==(const Pack1D& lhs, const Pack1D& rhs) {
     for (unsigned int i = 0; i < pack_width; i++) {
       if (lhs.value[i] != rhs.value[i]) {
         return false;
@@ -258,23 +258,23 @@ class Pack1D<PEInput<Posit<W, es>>, pack_width> {
 
   operator int() const { return Pack1D<PEInput<Posit<W, es>>, pack_width>(); }
 
-  PEInput<Posit<W, es>> &operator[](unsigned int i) { return this->value[i]; }
-  const PEInput<Posit<W, es>> &operator[](unsigned int i) const {
+  PEInput<Posit<W, es>>& operator[](unsigned int i) { return this->value[i]; }
+  const PEInput<Posit<W, es>>& operator[](unsigned int i) const {
     return this->value[i];
   }
   template <unsigned int Size>
-  void Marshall(Marshaller<Size> &m) {
+  void Marshall(Marshaller<Size>& m) {
 #pragma hls_unroll yes
     for (unsigned int i = 0; i < pack_width; i++) {
-      m &value[i].data.bits;
+      m& value[i].data.bits;
     }
 #pragma hls_unroll yes
     for (unsigned int i = 0; i < pack_width; i++) {
-      m &value[i].swapWeights;
+      m& value[i].swap_weights;
     }
   }
 
-  inline friend bool operator==(const Pack1D &lhs, const Pack1D &rhs) {
+  inline friend bool operator==(const Pack1D& lhs, const Pack1D& rhs) {
     for (unsigned int i = 0; i < pack_width; i++) {
       if (!(lhs.value[i] == rhs.value[i])) {
         return false;
@@ -297,23 +297,23 @@ class Pack1D<PEWeight<Posit<W, es>>, pack_width> {
 
   operator int() const { return Pack1D<PEWeight<Posit<W, es>>, pack_width>(); }
 
-  PEWeight<Posit<W, es>> &operator[](unsigned int i) { return this->value[i]; }
-  const PEWeight<Posit<W, es>> &operator[](unsigned int i) const {
+  PEWeight<Posit<W, es>>& operator[](unsigned int i) { return this->value[i]; }
+  const PEWeight<Posit<W, es>>& operator[](unsigned int i) const {
     return this->value[i];
   }
   template <unsigned int Size>
-  void Marshall(Marshaller<Size> &m) {
+  void Marshall(Marshaller<Size>& m) {
 #pragma hls_unroll yes
     for (unsigned int i = 0; i < pack_width; i++) {
-      m &value[i].data.bits;
+      m& value[i].data.bits;
     }
 #pragma hls_unroll yes
     for (unsigned int i = 0; i < pack_width; i++) {
-      m &value[i].tag;
+      m& value[i].tag;
     }
   }
 
-  inline friend bool operator==(const Pack1D &lhs, const Pack1D &rhs) {
+  inline friend bool operator==(const Pack1D& lhs, const Pack1D& rhs) {
     for (unsigned int i = 0; i < pack_width; i++) {
       if (!(lhs.value[i] == rhs.value[i])) {
         return false;
@@ -335,18 +335,18 @@ class Pack1D<StdFloat<mantissa, exp>, pack_width> {
 
   operator int() const { return Pack1D<StdFloat<mantissa, exp>, pack_width>(); }
 
-  StdFloat<mantissa, exp> &operator[](size_t i) { return value[i]; }
-  const StdFloat<mantissa, exp> &operator[](size_t i) const { return value[i]; }
+  StdFloat<mantissa, exp>& operator[](size_t i) { return value[i]; }
+  const StdFloat<mantissa, exp>& operator[](size_t i) const { return value[i]; }
 
   template <unsigned int Size>
-  void Marshall(Marshaller<Size> &m) {
+  void Marshall(Marshaller<Size>& m) {
 #pragma hls_unroll yes
     for (unsigned int i = 0; i < pack_width; i++) {
-      m &value[i].float_val.d;
+      m& value[i].float_val.d;
     }
   }
 
-  inline friend bool operator==(const Pack1D &lhs, const Pack1D &rhs) {
+  inline friend bool operator==(const Pack1D& lhs, const Pack1D& rhs) {
     for (unsigned int i = 0; i < pack_width; i++) {
       if (!(lhs.value[i] == rhs.value[i])) {
         return false;
@@ -372,25 +372,25 @@ class Pack1D<PEInput<StdFloat<mantissa, exp>>, pack_width> {
     return Pack1D<PEInput<StdFloat<mantissa, exp>>, pack_width>();
   }
 
-  PEInput<StdFloat<mantissa, exp>> &operator[](unsigned int i) {
+  PEInput<StdFloat<mantissa, exp>>& operator[](unsigned int i) {
     return this->value[i];
   }
-  const PEInput<StdFloat<mantissa, exp>> &operator[](unsigned int i) const {
+  const PEInput<StdFloat<mantissa, exp>>& operator[](unsigned int i) const {
     return this->value[i];
   }
   template <unsigned int Size>
-  void Marshall(Marshaller<Size> &m) {
+  void Marshall(Marshaller<Size>& m) {
 #pragma hls_unroll yes
     for (unsigned int i = 0; i < pack_width; i++) {
-      m &value[i].data.float_val.d;
+      m& value[i].data.float_val.d;
     }
 #pragma hls_unroll yes
     for (unsigned int i = 0; i < pack_width; i++) {
-      m &value[i].swapWeights;
+      m& value[i].swap_weights;
     }
   }
 
-  inline friend bool operator==(const Pack1D &lhs, const Pack1D &rhs) {
+  inline friend bool operator==(const Pack1D& lhs, const Pack1D& rhs) {
     for (unsigned int i = 0; i < pack_width; i++) {
       if (!(lhs.value[i] == rhs.value[i])) {
         return false;
@@ -416,25 +416,25 @@ class Pack1D<PEWeight<StdFloat<mantissa, exp>>, pack_width> {
     return Pack1D<PEWeight<StdFloat<mantissa, exp>>, pack_width>();
   }
 
-  PEWeight<StdFloat<mantissa, exp>> &operator[](unsigned int i) {
+  PEWeight<StdFloat<mantissa, exp>>& operator[](unsigned int i) {
     return this->value[i];
   }
-  const PEWeight<StdFloat<mantissa, exp>> &operator[](unsigned int i) const {
+  const PEWeight<StdFloat<mantissa, exp>>& operator[](unsigned int i) const {
     return this->value[i];
   }
   template <unsigned int Size>
-  void Marshall(Marshaller<Size> &m) {
+  void Marshall(Marshaller<Size>& m) {
 #pragma hls_unroll yes
     for (unsigned int i = 0; i < pack_width; i++) {
-      m &value[i].data.float_val.d;
+      m& value[i].data.float_val.d;
     }
 #pragma hls_unroll yes
     for (unsigned int i = 0; i < pack_width; i++) {
-      m &value[i].tag;
+      m& value[i].tag;
     }
   }
 
-  inline friend bool operator==(const Pack1D &lhs, const Pack1D &rhs) {
+  inline friend bool operator==(const Pack1D& lhs, const Pack1D& rhs) {
     for (unsigned int i = 0; i < pack_width; i++) {
       if (!(lhs.value[i] == rhs.value[i])) {
         return false;
@@ -456,18 +456,18 @@ class Pack1D<Int<W, S>, pack_width> {
 
   operator int() const { return Pack1D<Int<W, S>, pack_width>(); }
 
-  Int<W, S> &operator[](size_t i) { return value[i]; }
-  const Int<W, S> &operator[](size_t i) const { return value[i]; }
+  Int<W, S>& operator[](size_t i) { return value[i]; }
+  const Int<W, S>& operator[](size_t i) const { return value[i]; }
 
   template <unsigned int Size>
-  void Marshall(Marshaller<Size> &m) {
+  void Marshall(Marshaller<Size>& m) {
 #pragma hls_unroll yes
     for (unsigned int i = 0; i < pack_width; i++) {
-      m &value[i].int_val;
+      m& value[i].int_val;
     }
   }
 
-  inline friend bool operator==(const Pack1D &lhs, const Pack1D &rhs) {
+  inline friend bool operator==(const Pack1D& lhs, const Pack1D& rhs) {
     for (unsigned int i = 0; i < pack_width; i++) {
       if (!(lhs.value[i] == rhs.value[i])) {
         return false;
@@ -490,23 +490,23 @@ class Pack1D<PEInput<Int<W, S>>, pack_width> {
 
   operator int() const { return Pack1D<PEInput<Int<W, S>>, pack_width>(); }
 
-  PEInput<Int<W, S>> &operator[](unsigned int i) { return this->value[i]; }
-  const PEInput<Int<W, S>> &operator[](unsigned int i) const {
+  PEInput<Int<W, S>>& operator[](unsigned int i) { return this->value[i]; }
+  const PEInput<Int<W, S>>& operator[](unsigned int i) const {
     return this->value[i];
   }
   template <unsigned int Size>
-  void Marshall(Marshaller<Size> &m) {
+  void Marshall(Marshaller<Size>& m) {
 #pragma hls_unroll yes
     for (unsigned int i = 0; i < pack_width; i++) {
-      m &value[i].data.int_val;
+      m& value[i].data.int_val;
     }
 #pragma hls_unroll yes
     for (unsigned int i = 0; i < pack_width; i++) {
-      m &value[i].swapWeights;
+      m& value[i].swap_weights;
     }
   }
 
-  inline friend bool operator==(const Pack1D &lhs, const Pack1D &rhs) {
+  inline friend bool operator==(const Pack1D& lhs, const Pack1D& rhs) {
     for (unsigned int i = 0; i < pack_width; i++) {
       if (!(lhs.value[i] == rhs.value[i])) {
         return false;
@@ -529,23 +529,23 @@ class Pack1D<PEWeight<Int<W, S>>, pack_width> {
 
   operator int() const { return Pack1D<PEWeight<Int<W, S>>, pack_width>(); }
 
-  PEWeight<Int<W, S>> &operator[](unsigned int i) { return this->value[i]; }
-  const PEWeight<Int<W, S>> &operator[](unsigned int i) const {
+  PEWeight<Int<W, S>>& operator[](unsigned int i) { return this->value[i]; }
+  const PEWeight<Int<W, S>>& operator[](unsigned int i) const {
     return this->value[i];
   }
   template <unsigned int Size>
-  void Marshall(Marshaller<Size> &m) {
+  void Marshall(Marshaller<Size>& m) {
 #pragma hls_unroll yes
     for (unsigned int i = 0; i < pack_width; i++) {
-      m &value[i].data.int_val;
+      m& value[i].data.int_val;
     }
 #pragma hls_unroll yes
     for (unsigned int i = 0; i < pack_width; i++) {
-      m &value[i].tag;
+      m& value[i].tag;
     }
   }
 
-  inline friend bool operator==(const Pack1D &lhs, const Pack1D &rhs) {
+  inline friend bool operator==(const Pack1D& lhs, const Pack1D& rhs) {
     for (unsigned int i = 0; i < pack_width; i++) {
       if (!(lhs.value[i] == rhs.value[i])) {
         return false;
@@ -567,18 +567,18 @@ class Pack1D<NormalFloat4, pack_width> {
 
   operator int() const { return Pack1D<NormalFloat4, pack_width>(); }
 
-  NormalFloat4 &operator[](size_t i) { return value[i]; }
-  const NormalFloat4 &operator[](size_t i) const { return value[i]; }
+  NormalFloat4& operator[](size_t i) { return value[i]; }
+  const NormalFloat4& operator[](size_t i) const { return value[i]; }
 
   template <unsigned int Size>
-  void Marshall(Marshaller<Size> &m) {
+  void Marshall(Marshaller<Size>& m) {
 #pragma hls_unroll yes
     for (unsigned int i = 0; i < pack_width; i++) {
-      m &value[i].index;
+      m& value[i].index;
     }
   }
 
-  inline friend bool operator==(const Pack1D &lhs, const Pack1D &rhs) {
+  inline friend bool operator==(const Pack1D& lhs, const Pack1D& rhs) {
     for (unsigned int i = 0; i < pack_width; i++) {
       if (!(lhs.value[i] == rhs.value[i])) {
         return false;
@@ -601,24 +601,24 @@ class Pack1D<PEInput<NormalFloat4>, pack_width> {
 
   operator int() const { return Pack1D<PEInput<NormalFloat4>, pack_width>(); }
 
-  PEInput<NormalFloat4> &operator[](unsigned int i) { return this->value[i]; }
-  const PEInput<NormalFloat4> &operator[](unsigned int i) const {
+  PEInput<NormalFloat4>& operator[](unsigned int i) { return this->value[i]; }
+  const PEInput<NormalFloat4>& operator[](unsigned int i) const {
     return this->value[i];
   }
 
   template <unsigned int Size>
-  void Marshall(Marshaller<Size> &m) {
+  void Marshall(Marshaller<Size>& m) {
 #pragma hls_unroll yes
     for (unsigned int i = 0; i < pack_width; i++) {
-      m &value[i].data.index;
+      m& value[i].data.index;
     }
 #pragma hls_unroll yes
     for (unsigned int i = 0; i < pack_width; i++) {
-      m &value[i].swapWeights;
+      m& value[i].swap_weights;
     }
   }
 
-  inline friend bool operator==(const Pack1D &lhs, const Pack1D &rhs) {
+  inline friend bool operator==(const Pack1D& lhs, const Pack1D& rhs) {
     for (unsigned int i = 0; i < pack_width; i++) {
       if (!(lhs.value[i] == rhs.value[i])) {
         return false;
@@ -641,24 +641,24 @@ class Pack1D<PEWeight<NormalFloat4>, pack_width> {
 
   operator int() const { return Pack1D<PEWeight<NormalFloat4>, pack_width>(); }
 
-  PEWeight<NormalFloat4> &operator[](unsigned int i) { return this->value[i]; }
-  const PEWeight<NormalFloat4> &operator[](unsigned int i) const {
+  PEWeight<NormalFloat4>& operator[](unsigned int i) { return this->value[i]; }
+  const PEWeight<NormalFloat4>& operator[](unsigned int i) const {
     return this->value[i];
   }
 
   template <unsigned int Size>
-  void Marshall(Marshaller<Size> &m) {
+  void Marshall(Marshaller<Size>& m) {
 #pragma hls_unroll yes
     for (unsigned int i = 0; i < pack_width; i++) {
-      m &value[i].data.index;
+      m& value[i].data.index;
     }
 #pragma hls_unroll yes
     for (unsigned int i = 0; i < pack_width; i++) {
-      m &value[i].tag;
+      m& value[i].tag;
     }
   }
 
-  inline friend bool operator==(const Pack1D &lhs, const Pack1D &rhs) {
+  inline friend bool operator==(const Pack1D& lhs, const Pack1D& rhs) {
     for (unsigned int i = 0; i < pack_width; i++) {
       if (!(lhs.value[i] == rhs.value[i])) {
         return false;
@@ -680,18 +680,18 @@ class Pack1D<UFloat<W, E>, pack_width> {
 
   operator int() const { return Pack1D<UFloat<W, E>, pack_width>(); }
 
-  UFloat<W, E> &operator[](size_t i) { return value[i]; }
-  const UFloat<W, E> &operator[](size_t i) const { return value[i]; }
+  UFloat<W, E>& operator[](size_t i) { return value[i]; }
+  const UFloat<W, E>& operator[](size_t i) const { return value[i]; }
 
   template <unsigned int Size>
-  void Marshall(Marshaller<Size> &m) {
+  void Marshall(Marshaller<Size>& m) {
 #pragma hls_unroll yes
     for (unsigned int i = 0; i < pack_width; i++) {
-      m &value[i].d;
+      m& value[i].d;
     }
   }
 
-  inline friend bool operator==(const Pack1D &lhs, const Pack1D &rhs) {
+  inline friend bool operator==(const Pack1D& lhs, const Pack1D& rhs) {
     for (unsigned int i = 0; i < pack_width; i++) {
       if (!(lhs.value[i] == rhs.value[i])) {
         return false;
@@ -712,27 +712,27 @@ class Transaction {
   static const unsigned int width = 3 + 16 + Pack1D<T, payload_size>::width;
 
   template <unsigned int Size>
-  void Marshall(Marshaller<Size> &m) {
-    m &this->op;
-    m &this->immediate;
+  void Marshall(Marshaller<Size>& m) {
+    m& this->op;
+    m& this->immediate;
     for (unsigned i = 0; i < payload_size; i++) {
-      m &this->payload[i].float_val.d;
+      m& this->payload[i].float_val.d;
     }
   }
 
-  inline friend void sc_trace(sc_trace_file *tf, const Transaction &params,
-                              const std::string &name) {
+  inline friend void sc_trace(sc_trace_file* tf, const Transaction& params,
+                              const std::string& name) {
     sc_trace(tf, params.op, name + ".op");
   }
 
-  inline friend std::ostream &operator<<(std::ostream &os,
-                                         const Transaction &route) {
+  inline friend std::ostream& operator<<(std::ostream& os,
+                                         const Transaction& route) {
     os << "op: " << route.op << std::endl;
     return os;
   }
 
-  inline friend bool operator==(const Transaction &lhs,
-                                const Transaction &rhs) {
+  inline friend bool operator==(const Transaction& lhs,
+                                const Transaction& rhs) {
     return (lhs.op == rhs.op && lhs.immediate == rhs.immediate &&
             lhs.payload == rhs.payload);
   }
@@ -748,30 +748,30 @@ class Pack1D<Transaction<StdFloat<mantissa, exp>, payload_size>, pack_width> {
   Pack1D() {}
   Pack1D(const int a) {}
 
-  Transaction<StdFloat<mantissa, exp>, payload_size> &operator[](size_t i) {
+  Transaction<StdFloat<mantissa, exp>, payload_size>& operator[](size_t i) {
     return value[i];
   }
-  const Transaction<StdFloat<mantissa, exp>, payload_size> &operator[](
+  const Transaction<StdFloat<mantissa, exp>, payload_size>& operator[](
       size_t i) const {
     return value[i];
   }
 
   template <unsigned int Size>
-  void Marshall(Marshaller<Size> &m) {
+  void Marshall(Marshaller<Size>& m) {
     for (unsigned i = 0; i < pack_width; i++) {
-      m &value[i].op;
+      m& value[i].op;
     }
     for (unsigned i = 0; i < pack_width; i++) {
-      m &value[i].immediate;
+      m& value[i].immediate;
     }
     for (unsigned i = 0; i < pack_width; i++) {
       for (unsigned j = 0; j < payload_size; j++) {
-        m &value[i].payload[j].float_val.d;
+        m& value[i].payload[j].float_val.d;
       }
     }
   }
 
-  inline friend bool operator==(const Pack1D &lhs, const Pack1D &rhs) {
+  inline friend bool operator==(const Pack1D& lhs, const Pack1D& rhs) {
     for (unsigned i = 0; i < pack_width; i++) {
       if (!(lhs.value[i] == rhs.value[i])) {
         return false;
@@ -791,22 +791,22 @@ struct BufferWriteRequest {
   static const unsigned int width = 16 + T::width + 1;
 
   template <unsigned int Size>
-  void Marshall(Marshaller<Size> &m) {
+  void Marshall(Marshaller<Size>& m) {
     m & address;
     m & data;
     m & last;
   }
 
-  inline friend void sc_trace(sc_trace_file *tf,
-                              const BufferWriteRequest &request,
-                              const std::string &name) {
+  inline friend void sc_trace(sc_trace_file* tf,
+                              const BufferWriteRequest& request,
+                              const std::string& name) {
     sc_trace(tf, request.address, name + ".address");
     sc_trace(tf, request.data, name + ".data");
     sc_trace(tf, request.last, name + ".last");
   }
 
-  inline friend std::ostream &operator<<(ostream &os,
-                                         const BufferWriteRequest &request) {
+  inline friend std::ostream& operator<<(ostream& os,
+                                         const BufferWriteRequest& request) {
     os << request.address << " ";
     os << request.data << " ";
     os << request.last << " ";
@@ -814,8 +814,8 @@ struct BufferWriteRequest {
     return os;
   }
 
-  inline friend bool operator==(const BufferWriteRequest &lhs,
-                                const BufferWriteRequest &rhs) {
+  inline friend bool operator==(const BufferWriteRequest& lhs,
+                                const BufferWriteRequest& rhs) {
     return lhs.address == rhs.address && lhs.data == rhs.data &&
            lhs.last == rhs.last;
   }
@@ -828,28 +828,28 @@ struct BufferReadRequest {
   static const unsigned int width = 16 + 1;
 
   template <unsigned int Size>
-  void Marshall(Marshaller<Size> &m) {
+  void Marshall(Marshaller<Size>& m) {
     m & address;
     m & last;
   }
 
-  inline friend void sc_trace(sc_trace_file *tf,
-                              const BufferReadRequest &request,
-                              const std::string &name) {
+  inline friend void sc_trace(sc_trace_file* tf,
+                              const BufferReadRequest& request,
+                              const std::string& name) {
     sc_trace(tf, request.address, name + ".address");
     sc_trace(tf, request.last, name + ".last");
   }
 
-  inline friend std::ostream &operator<<(ostream &os,
-                                         const BufferReadRequest &request) {
+  inline friend std::ostream& operator<<(ostream& os,
+                                         const BufferReadRequest& request) {
     os << request.address << " ";
     os << request.last << " ";
 
     return os;
   }
 
-  inline friend bool operator==(const BufferReadRequest &lhs,
-                                const BufferReadRequest &rhs) {
+  inline friend bool operator==(const BufferReadRequest& lhs,
+                                const BufferReadRequest& rhs) {
     return lhs.address == rhs.address && lhs.last == rhs.last;
   }
 };
@@ -862,35 +862,35 @@ struct BufferReadResponse {
   static const unsigned int width = T::width + 1;
 
   template <unsigned int Size>
-  void Marshall(Marshaller<Size> &m) {
+  void Marshall(Marshaller<Size>& m) {
     m & data;
     m & last;
   }
 
-  inline friend void sc_trace(sc_trace_file *tf,
-                              const BufferReadResponse &response,
-                              const std::string &name) {
+  inline friend void sc_trace(sc_trace_file* tf,
+                              const BufferReadResponse& response,
+                              const std::string& name) {
     sc_trace(tf, response.data, name + ".data");
     sc_trace(tf, response.last, name + ".last");
   }
 
-  inline friend std::ostream &operator<<(ostream &os,
-                                         const BufferReadResponse &response) {
+  inline friend std::ostream& operator<<(ostream& os,
+                                         const BufferReadResponse& response) {
     os << response.data << " ";
     os << response.last << " ";
 
     return os;
   }
 
-  inline friend bool operator==(const BufferReadResponse &lhs,
-                                const BufferReadResponse &rhs) {
+  inline friend bool operator==(const BufferReadResponse& lhs,
+                                const BufferReadResponse& rhs) {
     return lhs.data == rhs.data && lhs.last == rhs.last;
   }
 };
 
 template <typename T, size_t pack_width>
-inline bool operator==(const Pack1D<T, pack_width> &lhs,
-                       const Pack1D<T, pack_width> &rhs) {
+inline bool operator==(const Pack1D<T, pack_width>& lhs,
+                       const Pack1D<T, pack_width>& rhs) {
   bool is_equal = true;
 #pragma hls_unroll yes
   for (unsigned int i = 0; i < pack_width; i++) {
@@ -900,13 +900,13 @@ inline bool operator==(const Pack1D<T, pack_width> &lhs,
 }
 
 template <typename T, size_t pack_width>
-inline void sc_trace(sc_trace_file *tf, const Pack1D<T, pack_width> &vec,
-                     const std::string &name) {
+inline void sc_trace(sc_trace_file* tf, const Pack1D<T, pack_width>& vec,
+                     const std::string& name) {
   sc_trace(tf, vec.value, name);
 }
 
 template <typename T, size_t pack_width>
-inline std::ostream &operator<<(ostream &os, const Pack1D<T, pack_width> &vec) {
+inline std::ostream& operator<<(ostream& os, const Pack1D<T, pack_width>& vec) {
   for (int i = 0; i < pack_width; i++) {
     os << vec[i] << " ";
   }

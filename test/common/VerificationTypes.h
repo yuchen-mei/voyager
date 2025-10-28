@@ -17,7 +17,7 @@
 #include "test/compiler/proto/param.pb.h"
 // IWYU pragma: end_exports
 
-#define DRAM_SIZE_MB (1024 * 1024LL * 1024LL)
+#define DRAM_SIZE_MB (2 * 1024 * 1024LL * 1024LL)
 #define SRAM_SIZE_MB (16 * 1024 * 1024)
 #define REFERENCE_MEMORY_SIZE (8 * 1024 * 1024)
 
@@ -256,4 +256,15 @@ inline std::vector<int> get_tile_index(std::vector<int> shape, int index) {
     }
   }
   return tile_index;
+}
+
+inline float get_tensor_scalar_scale(const codegen::Tensor& tensor) {
+  if (!tensor.has_dequant()) {
+    return 1.0f;
+  }
+
+  const auto& dequantize_op = tensor.dequant();
+  const auto scale_tensor = dequantize_op.kwargs().at("scale").tensor();
+  float* scale_val = read_constant_param(scale_tensor);
+  return scale_val[0];
 }

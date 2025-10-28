@@ -12,7 +12,7 @@
 #include "test/toolchain/MapOperation.h"
 
 Harness::Harness(sc_module_name name, std::vector<Operation> operations,
-                 DataLoader *dataloader)
+                 DataLoader* dataloader)
     : sc_module(name),
       clk("clk", std::stod(std::getenv("CLOCK_PERIOD")), SC_NS, 0.5, 0, SC_NS,
           true),
@@ -75,15 +75,23 @@ Harness::Harness(sc_module_name name, std::vector<Operation> operations,
   accelerator.matrix_vector_unit_weight_scale_resp(
       matrix_vector_unit_weight_scale_resp);
 #endif
+  accelerator.matrix_vector_unit_weight_dq_scale_req(
+      matrix_vector_unit_weight_dq_scale_req);
+  accelerator.matrix_vector_unit_weight_dq_scale_resp(
+      matrix_vector_unit_weight_dq_scale_resp);
+  accelerator.matrix_vector_unit_weight_dq_zp_req(
+      matrix_vector_unit_weight_dq_zp_req);
+  accelerator.matrix_vector_unit_weight_dq_zp_resp(
+      matrix_vector_unit_weight_dq_zp_resp);
   accelerator.matrix_vector_unit_start_signal(matrix_vector_unit_start_signal);
   accelerator.matrix_vector_unit_done_signal(matrix_vector_unit_done_signal);
 #endif
 #if SUPPORT_DWC
   accelerator.serial_dwc_params_in(serial_dwc_params_in);
   accelerator.dwc_input_req(dwc_input_req);
-  accelerator.dwc_input_resp(dwc_input_data_resp);
+  accelerator.dwc_input_resp(dwc_input_resp);
   accelerator.dwc_weight_req(dwc_weight_req);
-  accelerator.dwc_weight_resp(dwc_weight_data_resp);
+  accelerator.dwc_weight_resp(dwc_weight_resp);
   accelerator.dwc_bias_req(dwc_bias_req);
   accelerator.dwc_bias_resp(dwc_bias_resp);
 #if SUPPORT_MX
@@ -111,178 +119,54 @@ Harness::Harness(sc_module_name name, std::vector<Operation> operations,
 
   SC_CTHREAD(reset, clk);
 
-  SC_THREAD(read_input_request);
-  sensitive << clk.posedge_event();
+#define REGISTER_FN(NAME)           \
+  SC_THREAD(NAME);                  \
+  sensitive << clk.posedge_event(); \
   async_reset_signal_is(rstn, false);
 
-  SC_THREAD(send_input_response);
-  sensitive << clk.posedge_event();
-  async_reset_signal_is(rstn, false);
+#define REGISTER_IO_FN(NAME)          \
+  REGISTER_FN(read_##NAME##_request); \
+  REGISTER_FN(send_##NAME##_response);
 
-  SC_THREAD(read_weight_request);
-  sensitive << clk.posedge_event();
-  async_reset_signal_is(rstn, false);
-
-  SC_THREAD(send_weight_response);
-  sensitive << clk.posedge_event();
-  async_reset_signal_is(rstn, false);
-
-  SC_THREAD(read_bias_request);
-  sensitive << clk.posedge_event();
-  async_reset_signal_is(rstn, false);
-
-  SC_THREAD(send_bias_response);
-  sensitive << clk.posedge_event();
-  async_reset_signal_is(rstn, false);
-
+  REGISTER_IO_FN(matrix_unit_input)
+  REGISTER_IO_FN(matrix_unit_weight)
+  REGISTER_IO_FN(matrix_unit_bias)
 #if SUPPORT_MX
-  SC_THREAD(read_input_scale_request);
-  sensitive << clk.posedge_event();
-  async_reset_signal_is(rstn, false);
-
-  SC_THREAD(send_input_scale_response);
-  sensitive << clk.posedge_event();
-  async_reset_signal_is(rstn, false);
-
-  SC_THREAD(read_weight_scale_request);
-  sensitive << clk.posedge_event();
-  async_reset_signal_is(rstn, false);
-
-  SC_THREAD(send_weight_scale_response);
-  sensitive << clk.posedge_event();
-  async_reset_signal_is(rstn, false);
+  REGISTER_IO_FN(matrix_unit_input_scale)
+  REGISTER_IO_FN(matrix_unit_weight_scale)
 #endif
 
 #if SUPPORT_MVM
-  SC_THREAD(read_matrix_vector_unit_input_request);
-  sensitive << clk.posedge_event();
-  async_reset_signal_is(rstn, false);
-
-  SC_THREAD(send_matrix_vector_unit_input_response);
-  sensitive << clk.posedge_event();
-  async_reset_signal_is(rstn, false);
-
-  SC_THREAD(read_matrix_vector_unit_weight_request);
-  sensitive << clk.posedge_event();
-  async_reset_signal_is(rstn, false);
-
-  SC_THREAD(send_matrix_vector_unit_weight_response);
-  sensitive << clk.posedge_event();
-  async_reset_signal_is(rstn, false);
-
-  SC_THREAD(read_matrix_vector_unit_bias_request);
-  sensitive << clk.posedge_event();
-  async_reset_signal_is(rstn, false);
-
-  SC_THREAD(send_matrix_vector_unit_bias_response);
-  sensitive << clk.posedge_event();
-  async_reset_signal_is(rstn, false);
-
+  REGISTER_IO_FN(matrix_vector_unit_input)
+  REGISTER_IO_FN(matrix_vector_unit_weight)
+  REGISTER_IO_FN(matrix_vector_unit_bias)
 #if SUPPORT_MX
-  SC_THREAD(read_matrix_vector_unit_input_scale_request);
-  sensitive << clk.posedge_event();
-  async_reset_signal_is(rstn, false);
-
-  SC_THREAD(send_matrix_vector_unit_input_scale_response);
-  sensitive << clk.posedge_event();
-  async_reset_signal_is(rstn, false);
-
-  SC_THREAD(read_matrix_vector_unit_weight_scale_request);
-  sensitive << clk.posedge_event();
-  async_reset_signal_is(rstn, false);
-
-  SC_THREAD(send_matrix_vector_unit_weight_scale_response);
-  sensitive << clk.posedge_event();
-  async_reset_signal_is(rstn, false);
+  REGISTER_IO_FN(matrix_vector_unit_input_scale)
+  REGISTER_IO_FN(matrix_vector_unit_weight_scale)
 #endif
+  REGISTER_IO_FN(matrix_vector_unit_weight_dq_scale)
+  REGISTER_IO_FN(matrix_vector_unit_weight_dq_zp)
 #endif
 
 #if SUPPORT_DWC
-  SC_THREAD(read_dwc_input_request);
-  sensitive << clk.posedge_event();
-  async_reset_signal_is(rstn, false);
-
-  SC_THREAD(send_dwc_input_response);
-  sensitive << clk.posedge_event();
-  async_reset_signal_is(rstn, false);
-
-  SC_THREAD(read_dwc_weight_request);
-  sensitive << clk.posedge_event();
-  async_reset_signal_is(rstn, false);
-
-  SC_THREAD(send_dwc_weight_response);
-  sensitive << clk.posedge_event();
-  async_reset_signal_is(rstn, false);
-
-  SC_THREAD(read_dwc_bias_request);
-  sensitive << clk.posedge_event();
-  async_reset_signal_is(rstn, false);
-
-  SC_THREAD(send_dwc_bias_response);
-  sensitive << clk.posedge_event();
-  async_reset_signal_is(rstn, false);
+  REGISTER_IO_FN(dwc_input)
+  REGISTER_IO_FN(dwc_weight)
+  REGISTER_IO_FN(dwc_bias)
 #if SUPPORT_MX
-  SC_THREAD(read_dwc_input_scale_request);
-  sensitive << clk.posedge_event();
-  async_reset_signal_is(rstn, false);
-
-  SC_THREAD(send_dwc_input_scale_response);
-  sensitive << clk.posedge_event();
-  async_reset_signal_is(rstn, false);
-
-  SC_THREAD(read_dwc_weight_scale_request);
-  sensitive << clk.posedge_event();
-  async_reset_signal_is(rstn, false);
-
-  SC_THREAD(send_dwc_weight_scale_response);
-  sensitive << clk.posedge_event();
-  async_reset_signal_is(rstn, false);
+  REGISTER_IO_FN(dwc_input_scale)
+  REGISTER_IO_FN(dwc_weight_scale)
 #endif
 #endif
 
-  SC_THREAD(read_vector_fetch_0_request);
-  sensitive << clk.posedge_event();
-  async_reset_signal_is(rstn, false);
+  REGISTER_IO_FN(vector_fetch_0)
+  REGISTER_IO_FN(vector_fetch_1)
+  REGISTER_IO_FN(vector_fetch_2)
 
-  SC_THREAD(send_vector_fetch_0_response);
-  sensitive << clk.posedge_event();
-  async_reset_signal_is(rstn, false);
-
-  SC_THREAD(read_vector_fetch_1_request);
-  sensitive << clk.posedge_event();
-  async_reset_signal_is(rstn, false);
-
-  SC_THREAD(send_vector_fetch_1_response);
-  sensitive << clk.posedge_event();
-  async_reset_signal_is(rstn, false);
-
-  SC_THREAD(read_vector_fetch_2_request);
-  sensitive << clk.posedge_event();
-  async_reset_signal_is(rstn, false);
-
-  SC_THREAD(send_vector_fetch_2_response);
-  sensitive << clk.posedge_event();
-  async_reset_signal_is(rstn, false);
-
-  SC_THREAD(store_vector_outputs);
-  sensitive << clk.posedge_event();
-  async_reset_signal_is(rstn, false);
-
-  SC_THREAD(store_scale_outputs);
-  sensitive << clk.posedge_event();
-  async_reset_signal_is(rstn, false);
-
-  SC_THREAD(param_sender);
-  sensitive << clk.posedge_event();
-  async_reset_signal_is(rstn, false);
-
-  SC_THREAD(start_monitor);
-  sensitive << clk.posedge_event();
-  async_reset_signal_is(rstn, false);
-
-  SC_THREAD(done_monitor);
-  sensitive << clk.posedge_event();
-  async_reset_signal_is(rstn, false);
+  REGISTER_FN(store_vector_outputs)
+  REGISTER_FN(store_scale_outputs)
+  REGISTER_FN(param_sender)
+  REGISTER_FN(start_monitor)
+  REGISTER_FN(done_monitor)
 
   access_counter = new AccessCounter();
 // do not set access counters for an RTL simulation
@@ -294,15 +178,15 @@ Harness::Harness(sc_module_name name, std::vector<Operation> operations,
 
 template <int width>
 void Harness::process_read_request(
-    Connections::Combinational<MemoryRequest> *request_out,
-    sc_fifo<ac_int<width, false>> *data_fifo) {
+    Connections::Combinational<MemoryRequest>* request_out,
+    sc_fifo<ac_int<width, false>>* data_fifo) {
   request_out->ResetRead();
 
   constexpr int num_bytes = width / 8;
 
-  const auto array_memory = (ArrayMemory *)(dataloader->memory_interface);
+  const auto array_memory = (ArrayMemory*)(dataloader->memory_interface);
   const int mem_idx = is_soc_sim() ? 1 : 0;
-  char *memory = array_memory->memories[mem_idx];
+  char* memory = array_memory->memories[mem_idx];
 
   wait();
 
@@ -332,8 +216,8 @@ void Harness::process_read_request(
 
 template <int width>
 void Harness::send_data_response(
-    sc_fifo<ac_int<width, false>> *data_fifo,
-    Connections::Combinational<ac_int<width, false>> *response) {
+    sc_fifo<ac_int<width, false>>* data_fifo,
+    Connections::Combinational<ac_int<width, false>>* response) {
   response->ResetWrite();
 
   wait();
@@ -345,16 +229,16 @@ void Harness::send_data_response(
 
 template <int width>
 void Harness::process_write_request(
-    Connections::Combinational<ac_int<width, false>> *data_out,
-    Connections::Combinational<ac_int<ADDRESS_WIDTH, false>> *address_out) {
+    Connections::Combinational<ac_int<width, false>>* data_out,
+    Connections::Combinational<ac_int<ADDRESS_WIDTH, false>>* address_out) {
   data_out->ResetRead();
   address_out->ResetRead();
 
   constexpr int num_bytes = width / 8;
 
-  const auto array_memory = (ArrayMemory *)(dataloader->memory_interface);
+  const auto array_memory = (ArrayMemory*)(dataloader->memory_interface);
   const int mem_idx = is_soc_sim() ? 1 : 0;
-  char *memory = array_memory->memories[mem_idx];
+  char* memory = array_memory->memories[mem_idx];
 
   wait();
 
@@ -371,172 +255,48 @@ void Harness::process_write_request(
   }
 }
 
-void Harness::read_input_request() {
-  process_read_request(&matrix_unit_input_req, &matrix_unit_input_resp_fifo);
-}
+#define DEFINE_IO_FN(NAME)                                \
+  void Harness::read_##NAME##_request() {                 \
+    process_read_request(&NAME##_req, &NAME##_resp_fifo); \
+  }                                                       \
+                                                          \
+  void Harness::send_##NAME##_response() {                \
+    send_data_response(&NAME##_resp_fifo, &NAME##_resp);  \
+  }
 
-void Harness::send_input_response() {
-  send_data_response(&matrix_unit_input_resp_fifo, &matrix_unit_input_resp);
-}
-
-void Harness::read_weight_request() {
-  process_read_request(&matrix_unit_weight_req, &matrix_unit_weight_resp_fifo);
-}
-
-void Harness::send_weight_response() {
-  send_data_response(&matrix_unit_weight_resp_fifo, &matrix_unit_weight_resp);
-}
-
-void Harness::read_bias_request() {
-  process_read_request(&matrix_unit_bias_req, &matrix_unit_bias_resp_fifo);
-}
-
-void Harness::send_bias_response() {
-  send_data_response(&matrix_unit_bias_resp_fifo, &matrix_unit_bias_resp);
-}
-
+DEFINE_IO_FN(matrix_unit_input)
+DEFINE_IO_FN(matrix_unit_weight)
+DEFINE_IO_FN(matrix_unit_bias)
 #if SUPPORT_MX
-void Harness::read_input_scale_request() {
-  process_read_request(&matrix_unit_input_scale_req,
-                       &matrix_unit_input_scale_resp_fifo);
-}
-
-void Harness::send_input_scale_response() {
-  send_data_response(&matrix_unit_input_scale_resp_fifo,
-                     &matrix_unit_input_scale_resp);
-}
-
-void Harness::read_weight_scale_request() {
-  process_read_request(&matrix_unit_weight_scale_req,
-                       &matrix_unit_weight_scale_resp_fifo);
-}
-
-void Harness::send_weight_scale_response() {
-  send_data_response(&matrix_unit_weight_scale_resp_fifo,
-                     &matrix_unit_weight_scale_resp);
-}
+DEFINE_IO_FN(matrix_unit_input_scale)
+DEFINE_IO_FN(matrix_unit_weight_scale)
 #endif
 
 #if SUPPORT_MVM
-void Harness::read_matrix_vector_unit_input_request() {
-  process_read_request(&matrix_vector_unit_input_req,
-                       &matrix_vector_unit_input_resp_fifo);
-}
-
-void Harness::send_matrix_vector_unit_input_response() {
-  send_data_response(&matrix_vector_unit_input_resp_fifo,
-                     &matrix_vector_unit_input_resp);
-}
-
-void Harness::read_matrix_vector_unit_weight_request() {
-  process_read_request(&matrix_vector_unit_weight_req,
-                       &matrix_vector_unit_weight_resp_fifo);
-}
-
-void Harness::send_matrix_vector_unit_weight_response() {
-  send_data_response(&matrix_vector_unit_weight_resp_fifo,
-                     &matrix_vector_unit_weight_resp);
-}
-
-void Harness::read_matrix_vector_unit_bias_request() {
-  process_read_request(&matrix_vector_unit_bias_req,
-                       &matrix_vector_unit_bias_resp_fifo);
-}
-
-void Harness::send_matrix_vector_unit_bias_response() {
-  send_data_response(&matrix_vector_unit_bias_resp_fifo,
-                     &matrix_vector_unit_bias_resp);
-}
-
+DEFINE_IO_FN(matrix_vector_unit_input)
+DEFINE_IO_FN(matrix_vector_unit_weight)
+DEFINE_IO_FN(matrix_vector_unit_bias)
 #if SUPPORT_MX
-void Harness::read_matrix_vector_unit_input_scale_request() {
-  process_read_request(&matrix_vector_unit_input_scale_req,
-                       &matrix_vector_unit_input_scale_resp_fifo);
-}
-
-void Harness::send_matrix_vector_unit_input_scale_response() {
-  send_data_response(&matrix_vector_unit_input_scale_resp_fifo,
-                     &matrix_vector_unit_input_scale_resp);
-}
-
-void Harness::read_matrix_vector_unit_weight_scale_request() {
-  process_read_request(&matrix_vector_unit_weight_scale_req,
-                       &matrix_vector_unit_weight_scale_resp_fifo);
-}
-
-void Harness::send_matrix_vector_unit_weight_scale_response() {
-  send_data_response(&matrix_vector_unit_weight_scale_resp_fifo,
-                     &matrix_vector_unit_weight_scale_resp);
-}
+DEFINE_IO_FN(matrix_vector_unit_input_scale)
+DEFINE_IO_FN(matrix_vector_unit_weight_scale)
 #endif
+DEFINE_IO_FN(matrix_vector_unit_weight_dq_scale)
+DEFINE_IO_FN(matrix_vector_unit_weight_dq_zp)
 #endif
 
 #if SUPPORT_DWC
-void Harness::read_dwc_input_request() {
-  process_read_request(&dwc_input_req, &dwc_input_resp_fifo);
-}
-
-void Harness::send_dwc_input_response() {
-  send_data_response(&dwc_input_resp_fifo, &dwc_input_data_resp);
-}
-
-void Harness::read_dwc_weight_request() {
-  process_read_request(&dwc_weight_req, &dwc_weight_resp_fifo);
-}
-
-void Harness::send_dwc_weight_response() {
-  send_data_response(&dwc_weight_resp_fifo, &dwc_weight_data_resp);
-}
-
-void Harness::read_dwc_bias_request() {
-  process_read_request(&dwc_bias_req, &dwc_bias_resp_fifo);
-}
-
-void Harness::send_dwc_bias_response() {
-  send_data_response(&dwc_bias_resp_fifo, &dwc_bias_resp);
-}
+DEFINE_IO_FN(dwc_input)
+DEFINE_IO_FN(dwc_weight)
+DEFINE_IO_FN(dwc_bias)
 #if SUPPORT_MX
-void Harness::read_dwc_input_scale_request() {
-  process_read_request(&dwc_input_scale_req, &dwc_input_scale_resp_fifo);
-}
-
-void Harness::send_dwc_input_scale_response() {
-  send_data_response(&dwc_input_scale_resp_fifo, &dwc_input_scale_resp);
-}
-
-void Harness::read_dwc_weight_scale_request() {
-  process_read_request(&dwc_weight_scale_req, &dwc_weight_scale_resp_fifo);
-}
-
-void Harness::send_dwc_weight_scale_response() {
-  send_data_response(&dwc_weight_scale_resp_fifo, &dwc_weight_scale_resp);
-}
+DEFINE_IO_FN(dwc_input_scale)
+DEFINE_IO_FN(dwc_weight_scale)
 #endif
 #endif
 
-void Harness::read_vector_fetch_0_request() {
-  process_read_request(&vector_fetch_0_req, &vector_fetch_0_resp_fifo);
-}
-
-void Harness::send_vector_fetch_0_response() {
-  send_data_response(&vector_fetch_0_resp_fifo, &vector_fetch_0_resp);
-}
-
-void Harness::read_vector_fetch_1_request() {
-  process_read_request(&vector_fetch_1_req, &vector_fetch_1_resp_fifo);
-}
-
-void Harness::send_vector_fetch_1_response() {
-  send_data_response(&vector_fetch_1_resp_fifo, &vector_fetch_1_resp);
-}
-
-void Harness::read_vector_fetch_2_request() {
-  process_read_request(&vector_fetch_2_req, &vector_fetch_2_resp_fifo);
-}
-
-void Harness::send_vector_fetch_2_response() {
-  send_data_response(&vector_fetch_2_resp_fifo, &vector_fetch_2_resp);
-}
+DEFINE_IO_FN(vector_fetch_0)
+DEFINE_IO_FN(vector_fetch_1)
+DEFINE_IO_FN(vector_fetch_2)
 
 void Harness::store_vector_outputs() {
   process_write_request(&vector_output, &vector_output_address);
@@ -556,7 +316,7 @@ void Harness::reset() {
 template <typename T, unsigned int width>
 void send_serialized_params(
     T params,
-    Connections::Combinational<ac_int<width, false>> *serial_params_in) {
+    Connections::Combinational<ac_int<width, false>>* serial_params_in) {
   ac_int<T::width, false> serialized_params;
   vector_to_type(TypeToBits<T>(params), false, &serialized_params);
 
@@ -569,9 +329,9 @@ void send_serialized_params(
   }
 }
 
-void Harness::send_params(const std::deque<BaseParams *> &params) {
+void Harness::send_params(const std::deque<BaseParams*>& params) {
   for (size_t idx = 0; idx < params.size(); idx++) {
-    if (auto *matrix_params = dynamic_cast<MatrixParams *>(params[idx])) {
+    if (auto* matrix_params = dynamic_cast<MatrixParams*>(params[idx])) {
 #if SUPPORT_MVM
       if (matrix_params->is_fc) {
         send_serialized_params<MatrixParams, 64>(
@@ -587,15 +347,15 @@ void Harness::send_params(const std::deque<BaseParams *> &params) {
     }
 
 #if SUPPORT_DWC
-    if (auto *dwc_params = dynamic_cast<DwCParams *>(params[idx])) {
+    if (auto* dwc_params = dynamic_cast<DwCParams*>(params[idx])) {
       send_serialized_params<DwCParams, 64>(*dwc_params, &serial_dwc_params_in);
       idx++;
     }
 #endif
 
-    if (auto *vector_params = dynamic_cast<VectorParams *>(params[idx])) {
-      VectorInstructionConfig *vector_config =
-          dynamic_cast<VectorInstructionConfig *>(params[++idx]);
+    if (auto* vector_params = dynamic_cast<VectorParams*>(params[idx])) {
+      VectorInstructionConfig* vector_config =
+          dynamic_cast<VectorInstructionConfig*>(params[++idx]);
 
       send_serialized_params<VectorParams, 64>(*vector_params,
                                                &serial_vector_params_in);
@@ -610,11 +370,11 @@ void Harness::send_params(const std::deque<BaseParams *> &params) {
   }
 }
 
-void Harness::record_start(const std::deque<BaseParams *> &params,
-                           const Operation &operation, bool is_first) {
+void Harness::record_start(const std::deque<BaseParams*>& params,
+                           const Operation& operation, bool is_first) {
   for (size_t idx = 0; idx < params.size(); idx++) {
-    BaseParams *base_param = params[idx];
-    MatrixParams *matrix_params = dynamic_cast<MatrixParams *>(base_param);
+    BaseParams* base_param = params[idx];
+    MatrixParams* matrix_params = dynamic_cast<MatrixParams*>(base_param);
     bool has_matrix_params = matrix_params != nullptr;
 
     if (has_matrix_params) {
@@ -622,7 +382,7 @@ void Harness::record_start(const std::deque<BaseParams *> &params,
     }
 
 #if SUPPORT_DWC
-    DwCParams *dwc_params = dynamic_cast<DwCParams *>(base_param);
+    DwCParams* dwc_params = dynamic_cast<DwCParams*>(base_param);
     bool has_dwc_params = dwc_params != nullptr;
 
     if (has_dwc_params) {
@@ -630,13 +390,13 @@ void Harness::record_start(const std::deque<BaseParams *> &params,
     }
 #endif
 
-    VectorParams *vector_params = dynamic_cast<VectorParams *>(base_param);
-    VectorInstructionConfig *vector_config = nullptr;
+    VectorParams* vector_params = dynamic_cast<VectorParams*>(base_param);
+    VectorInstructionConfig* vector_config = nullptr;
     bool has_vector_params = vector_params != nullptr;
 
     if (has_vector_params) {
       base_param = params[++idx];
-      vector_config = dynamic_cast<VectorInstructionConfig *>(base_param);
+      vector_config = dynamic_cast<VectorInstructionConfig*>(base_param);
     }
 
     // Wait for start signals
@@ -702,12 +462,12 @@ void Harness::record_start(const std::deque<BaseParams *> &params,
   }
 }
 
-void Harness::record_done(const std::deque<BaseParams *> &params,
-                          const Operation &operation, int runtime_scale,
+void Harness::record_done(const std::deque<BaseParams*>& params,
+                          const Operation& operation, int runtime_scale,
                           bool is_last) {
   for (size_t idx = 0; idx < params.size(); idx++) {
-    BaseParams *base_param = params[idx];
-    MatrixParams *matrix_params = dynamic_cast<MatrixParams *>(base_param);
+    BaseParams* base_param = params[idx];
+    MatrixParams* matrix_params = dynamic_cast<MatrixParams*>(base_param);
     bool has_matrix_params = matrix_params != nullptr;
 
     if (has_matrix_params) {
@@ -715,7 +475,7 @@ void Harness::record_done(const std::deque<BaseParams *> &params,
     }
 
 #if SUPPORT_DWC
-    DwCParams *dwc_params = dynamic_cast<DwCParams *>(base_param);
+    DwCParams* dwc_params = dynamic_cast<DwCParams*>(base_param);
     bool has_dwc_params = dwc_params != nullptr;
 
     if (has_dwc_params) {
@@ -723,13 +483,13 @@ void Harness::record_done(const std::deque<BaseParams *> &params,
     }
 #endif
 
-    VectorParams *vector_params = dynamic_cast<VectorParams *>(base_param);
-    VectorInstructionConfig *vector_config = nullptr;
+    VectorParams* vector_params = dynamic_cast<VectorParams*>(base_param);
+    VectorInstructionConfig* vector_config = nullptr;
     bool has_vector_params = vector_params != nullptr;
 
     if (has_vector_params) {
       base_param = params[++idx];
-      vector_config = dynamic_cast<VectorInstructionConfig *>(base_param);
+      vector_config = dynamic_cast<VectorInstructionConfig*>(base_param);
     }
 
     // Wait for done signals
@@ -781,20 +541,20 @@ void Harness::record_done(const std::deque<BaseParams *> &params,
   }
 }
 
-std::deque<BaseParams *> offset_param_addresses(std::deque<BaseParams *> params,
-                                                int offset) {
-  std::deque<BaseParams *> new_params;
+std::deque<BaseParams*> offset_param_addresses(std::deque<BaseParams*> params,
+                                               int offset) {
+  std::deque<BaseParams*> new_params;
   for (const auto base_param : params) {
-    if (auto *mp = dynamic_cast<MatrixParams *>(base_param)) {
-      auto *param = new MatrixParams(*mp);
+    if (auto* mp = dynamic_cast<MatrixParams*>(base_param)) {
+      auto* param = new MatrixParams(*mp);
       param->input_offset += offset;
       param->weight_offset += offset;
       param->bias_offset += offset;
       param->input_scale_offset += offset;
       param->weight_scale_offset += offset;
       new_params.push_back(param);
-    } else if (auto *vp = dynamic_cast<VectorParams *>(base_param)) {
-      auto *param = new VectorParams(*vp);
+    } else if (auto* vp = dynamic_cast<VectorParams*>(base_param)) {
+      auto* param = new VectorParams(*vp);
       param->vector_fetch_0_offset += offset;
       param->vector_fetch_1_offset += offset;
       param->vector_fetch_2_offset += offset;
@@ -824,7 +584,7 @@ void Harness::param_sender() {
     const auto param = operation.param;
 
     std::deque<AcceleratorMemoryMap> memory_maps;
-    std::deque<BaseParams *> accelerator_params;
+    std::deque<BaseParams*> accelerator_params;
     MapOperation(operation, accelerator_params, memory_maps);
 
     if (is_soc_sim()) {
@@ -875,7 +635,7 @@ void Harness::start_monitor() {
     const auto param = operation.param;
 
     std::deque<AcceleratorMemoryMap> memory_maps;
-    std::deque<BaseParams *> accelerator_params;
+    std::deque<BaseParams*> accelerator_params;
     MapOperation(operation, accelerator_params, memory_maps);
 
     if (is_soc_sim()) {
@@ -913,7 +673,7 @@ void Harness::done_monitor() {
     const auto param = operation.param;
 
     std::deque<AcceleratorMemoryMap> memory_maps;
-    std::deque<BaseParams *> accelerator_params;
+    std::deque<BaseParams*> accelerator_params;
     MapOperation(operation, accelerator_params, memory_maps);
 
     int runtime_scale = 1;
@@ -961,7 +721,7 @@ void Harness::done_monitor() {
 #endif
 
 void run_accelerator(std::vector<Operation> operations,
-                     DataLoader *dataloader) {
+                     DataLoader* dataloader) {
 #ifdef CFLOAT
   spdlog::error(
       "The SystemC model does not support the CFloat datatype. Only the gold "

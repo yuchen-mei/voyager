@@ -22,6 +22,7 @@
 // IWYU pragma: end_exports
 
 namespace DataTypes {
+typedef Int<2, false> uint2;
 typedef Int<2, true> int2;
 typedef Int<4, true> int4;
 typedef Int<6, true> int6;
@@ -49,6 +50,11 @@ typedef UFloat<8, 5> fp8_e5m3;
 template <typename T>
 struct TypeName {
   static std::string name() { return "Unknown"; }
+};
+
+template <>
+struct TypeName<uint2> {
+  static std::string name() { return "uint2"; }
 };
 
 template <>
@@ -135,6 +141,7 @@ struct TypeName<posit8> {
 
 // clang-format off
 #define SUPPORTED_TYPES          \
+  DataTypes::uint2,              \
   DataTypes::int2,               \
   DataTypes::int4,               \
   DataTypes::int6,               \

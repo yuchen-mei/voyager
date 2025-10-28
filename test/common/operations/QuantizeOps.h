@@ -116,3 +116,86 @@ Output* dequantize_tensor(std::any input, std::any scale,
                           codegen::Tensor tensor) {
   return dequantize_helper<Output, SUPPORTED_TYPES>(input, scale, tensor);
 }
+
+template <typename Input, typename Scale, typename Vector, typename Output>
+bool dequantize_group(std::any input, std::any scale, std::any zero_point,
+                      Output*& output, codegen::Tensor tensor, int block_size,
+                      int axis) {
+  if (tensor.dtype() != DataTypes::TypeName<Input>::name()) {
+    return false;
+  }
+
+  const auto input_shape = get_shape(tensor);
+
+  Input* casted_input = std::any_cast<Input*>(input);
+  Scale* casted_scale = std::any_cast<Scale*>(scale);
+  Scale* casted_zero_point = std::any_cast<Scale*>(zero_point);
+
+  const int num_dims = input_shape.size();
+  if (axis < 0) {
+    axis += num_dims;
+  }
+
+  // Compute broadcast shape for scales and zero_points
+  std::vector<int> scale_shape = input_shape;
+  scale_shape[axis] = (scale_shape[axis] + block_size - 1) / block_size;
+
+  const int output_size = get_size(input_shape);
+  output = new Output[output_size];
+
+  // Elementwise dequantization with broadcasting
+  for (int i = 0; i < output_size; ++i) {
+    std::vector<int> indices_a = get_indices(i, input_shape);
+    std::vector<int> indices_b(num_dims);
+
+    // Map input indices to scale/zero_point indices
+    for (int d = 0; d < num_dims; ++d) {
+      if (scale_shape[d] == input_shape[d]) {
+        indices_b[d] = indices_a[d];
+      } else if (input_shape[d] % scale_shape[d] == 0) {
+        indices_b[d] = indices_a[d] / block_size;
+      } else {
+        throw std::runtime_error(
+            "Invalid shape for broadcasting in dequantize!");
+      }
+    }
+
+    int flat_idx_b = get_flat_index(indices_b, scale_shape);
+
+    Vector s_val = casted_scale[flat_idx_b];
+    Vector zp_val =
+        casted_zero_point ? casted_zero_point[flat_idx_b] : Scale::zero();
+    output[i] = (static_cast<Vector>(casted_input[i]) - zp_val) * s_val;
+  }
+
+  delete[] casted_input;
+  delete[] casted_scale;
+  if (casted_zero_point) {
+    delete[] casted_zero_point;
+  }
+
+  return true;
+}
+
+template <typename Output, typename Scale, typename Vector, typename... Ts>
+Output* dequantize_group_helper(std::any input, std::any scale,
+                                std::any zero_point, codegen::Tensor tensor,
+                                int block_size, int axis) {
+  Output* output = nullptr;
+  bool matched =
+      (dequantize_group<Ts, Scale, Vector, Output>(
+           input, scale, zero_point, output, tensor, block_size, axis) ||
+       ...);
+  if (!matched) {
+    throw std::runtime_error("Unsupported tensor dtype: " + tensor.dtype());
+  }
+  return output;
+}
+
+template <typename Output, typename Scale, typename Vector>
+Output* dequantize_tensor_group(std::any input, std::any scale,
+                                std::any zero_point, codegen::Tensor tensor,
+                                int block_size, int axis) {
+  return dequantize_group_helper<Output, Scale, Vector, SUPPORTED_TYPES>(
+      input, scale, zero_point, tensor, block_size, axis);
+}

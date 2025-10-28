@@ -2,9 +2,9 @@
 
 #include "test/toolchain/Common.h"
 
-void MapLayerNorm(const codegen::Operation &param,
-                  std::deque<BaseParams *> &mapped_params,
-                  std::deque<AcceleratorMemoryMap> &memory_maps) {
+void MapLayerNorm(const codegen::Operation& param,
+                  std::deque<BaseParams*>& mapped_params,
+                  std::deque<AcceleratorMemoryMap>& memory_maps) {
   const auto op_list = get_op_list(param);
   const auto layer_norm_op = op_list[0];
 
@@ -19,8 +19,8 @@ void MapLayerNorm(const codegen::Operation &param,
     output = param.outputs().tensors(1);
   }
 
-  VectorParams *vector_params;
-  VectorInstructionConfig *vinstr_config;
+  VectorParams* vector_params;
+  VectorInstructionConfig* vinstr_config;
   AcceleratorMemoryMap memory_map;
 
   const auto input_shape = squeeze_shape(get_shape(input));

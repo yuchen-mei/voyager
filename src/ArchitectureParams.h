@@ -116,8 +116,8 @@ using F9 = StdFloat<3, 5>;
 
 #elif defined(MXNF4)
 
-#define INPUT_DATATYPE DataTypes::int2, DataTypes::int4, DataTypes::int6
-#define WEIGHT_DATATYPE DataTypes::int2, DataTypes::int4, DataTypes::int6
+#define INPUT_DATATYPE DataTypes::uint2, DataTypes::int4, DataTypes::int6
+#define WEIGHT_DATATYPE DataTypes::uint2, DataTypes::int4, DataTypes::int6
 #define ACCUM_DATATYPE DataTypes::int18
 #define ACCUM_BUFFER_DATATYPE DataTypes::bfloat16
 #define VECTOR_DATATYPE DataTypes::bfloat16
@@ -135,7 +135,7 @@ using F9 = StdFloat<3, 5>;
 
 #define IC_PORT_WIDTH (IC_DIMENSION * 4)
 #define OC_PORT_WIDTH (OC_DIMENSION * 4)
-#define VECTOR_UNIT_WIDTH 16
+#define VECTOR_UNIT_WIDTH (OC_DIMENSION / 2)
 #define MV_UNIT_WIDTH (OC_DIMENSION * 2)
 
 #define SUPPORT_MX true

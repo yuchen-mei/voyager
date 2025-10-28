@@ -17,80 +17,81 @@ namespace hls {
 
 namespace {
 
-bool hasUnrollPragma(SourceLocation Loc, const SourceManager &SM) {
-  if (Loc.isMacroID()) Loc = SM.getExpansionLoc(Loc);
+bool has_unroll_pragma(SourceLocation loc, const SourceManager& sm) {
+  if (loc.isMacroID()) loc = sm.getExpansionLoc(loc);
 
-  FileID FID = SM.getFileID(Loc);
-  unsigned Line = SM.getSpellingLineNumber(Loc);
+  FileID fid = sm.getFileID(loc);
+  unsigned line = sm.getSpellingLineNumber(loc);
 
   // Only look at the line immediately before
-  if (Line == 1) return false;
+  if (line == 1) return false;
 
-  SourceLocation PrevLineStart = SM.translateLineCol(FID, Line - 1, 1);
-  if (PrevLineStart.isInvalid()) return false;
+  SourceLocation prev_line_start = sm.translateLineCol(fid, line - 1, 1);
+  if (prev_line_start.isInvalid()) return false;
 
-  SourceLocation LoopStart =
-      Lexer::getLocForEndOfToken(PrevLineStart, 0, SM, LangOptions());
+  SourceLocation loop_start =
+      Lexer::getLocForEndOfToken(prev_line_start, 0, sm, LangOptions());
 
-  StringRef LineText = Lexer::getSourceText(
-      CharSourceRange::getCharRange(PrevLineStart, Loc), SM, LangOptions(), 0);
+  StringRef line_text =
+      Lexer::getSourceText(CharSourceRange::getCharRange(prev_line_start, loc),
+                           sm, LangOptions(), 0);
 
   // Strip whitespace
-  LineText = LineText.trim();
+  line_text = line_text.trim();
 
-  return LineText.starts_with("#pragma hls_unroll yes");
+  return line_text.starts_with("#pragma hls_unroll yes");
 }
 
 class UnrollVisitor : public RecursiveASTVisitor<UnrollVisitor> {
  public:
-  UnrollVisitor(ASTContext &Context, ClangTidyCheck *Check)
-      : Context(Context), Check(Check) {}
+  UnrollVisitor(ASTContext& context, ClangTidyCheck* check)
+      : context(context), check(check) {}
 
-  bool TraverseStmt(Stmt *S) {
-    if (!S) return true;
+  bool TraverseStmt(Stmt* stmt) {
+    if (!stmt) return true;
 
-    if (auto *FS = dyn_cast<ForStmt>(S)) {
-      bool isUnrolled =
-          hasUnrollPragma(FS->getBeginLoc(), Context.getSourceManager());
-      bool wasInsideUnrolled = insideUnrolled;
+    if (auto* for_stmt = dyn_cast<ForStmt>(stmt)) {
+      bool is_unrolled = has_unroll_pragma(for_stmt->getBeginLoc(),
+                                           context.getSourceManager());
+      bool was_inside_unrolled = inside_unrolled;
 
-      if (wasInsideUnrolled && !isUnrolled) {
-        Check->diag(FS->getBeginLoc(),
-                    "Loop is nested inside a '#pragma hls_unroll yes' loop but "
+      if (was_inside_unrolled && !is_unrolled) {
+        check->diag(for_stmt->getBeginLoc(),
+                    "loop is nested inside a '#pragma hls_unroll yes' loop but "
                     "is missing its own unroll pragma");
       }
 
-      insideUnrolled = isUnrolled || insideUnrolled;
-      RecursiveASTVisitor::TraverseStmt(S);
-      insideUnrolled = wasInsideUnrolled;
+      inside_unrolled = is_unrolled || inside_unrolled;
+      RecursiveASTVisitor::TraverseStmt(stmt);
+      inside_unrolled = was_inside_unrolled;
       return true;
     }
 
-    return RecursiveASTVisitor::TraverseStmt(S);
+    return RecursiveASTVisitor::TraverseStmt(stmt);
   }
 
  private:
-  ASTContext &Context;
-  ClangTidyCheck *Check;
-  bool insideUnrolled = false;
+  ASTContext& context;
+  ClangTidyCheck* check;
+  bool inside_unrolled = false;
 };
 
 }  // namespace
 
-HLSUnrollNestedCheck::HLSUnrollNestedCheck(StringRef Name,
-                                           ClangTidyContext *Context)
-    : ClangTidyCheck(Name, Context) {}
+HLSUnrollNestedCheck::HLSUnrollNestedCheck(StringRef name,
+                                           ClangTidyContext* context)
+    : ClangTidyCheck(name, context) {}
 
-void HLSUnrollNestedCheck::registerMatchers(MatchFinder *Finder) {
-  Finder->addMatcher(functionDecl(isDefinition()).bind("func"), this);
+void HLSUnrollNestedCheck::registerMatchers(MatchFinder* finder) {
+  finder->addMatcher(functionDecl(isDefinition()).bind("func"), this);
 }
 
-void HLSUnrollNestedCheck::check(const MatchFinder::MatchResult &Result) {
-  const auto *Func = Result.Nodes.getNodeAs<FunctionDecl>("func");
-  if (!Func || !Func->hasBody()) return;
+void HLSUnrollNestedCheck::check(const MatchFinder::MatchResult& result) {
+  const auto* func = result.Nodes.getNodeAs<FunctionDecl>("func");
+  if (!func || !func->hasBody()) return;
 
-  UnrollVisitor Visitor(*Result.Context, this);
-  Visitor.TraverseDecl(const_cast<FunctionDecl *>(Func));
+  UnrollVisitor visitor(*result.Context, this);
+  visitor.TraverseDecl(const_cast<FunctionDecl*>(func));
 }
 
 }  // namespace hls

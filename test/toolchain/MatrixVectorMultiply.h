@@ -2,31 +2,31 @@
 
 #include "test/toolchain/Common.h"
 
-void MapMatrixVectorMultiply(const codegen::Operation &param,
-                             std::deque<BaseParams *> &mapped_params,
-                             std::deque<AcceleratorMemoryMap> &memory_maps) {
+void MapMatrixVectorMultiply(const codegen::Operation& param,
+                             std::deque<BaseParams*>& mapped_params,
+                             std::deque<AcceleratorMemoryMap>& memory_maps) {
   const auto op_list = get_op_list(param);
   const auto matrix_op = op_list[0];
 
   const auto input = matrix_op.kwargs().at("input").tensor();
-  const auto weight = matrix_op.kwargs().at("weight").tensor();
+  bool is_matmul = matrix_op.target().find("matmul") != std::string::npos;
+  std::string weight_key = is_matmul ? "other" : "weight";
+  const auto weight = matrix_op.kwargs().at(weight_key).tensor();
   const auto output = param.output();
   bool has_bias = matrix_op.kwargs().contains("bias");
 
   int output_dim = weight.shape(0);
   int reduction_dim = weight.shape(1);
 
-  VectorParams *vector_params = new VectorParams;
-  VectorInstructionConfig *vector_instruction_config =
+  VectorParams* vector_params = new VectorParams;
+  VectorInstructionConfig* vector_instruction_config =
       new VectorInstructionConfig;
-  AcceleratorMemoryMap accelerator_memory_map;
 
   // round output_dim up to a multiple of DIMENSION
-  output_dim = (output_dim + OC_DIMENSION - 1) / OC_DIMENSION * OC_DIMENSION;
+  output_dim = (output_dim + VECTOR_UNIT_WIDTH - 1) / VECTOR_UNIT_WIDTH *
+               VECTOR_UNIT_WIDTH;
 
   // input is a vector of size reduction_dim
-  const auto input_memory = input.memory();
-  accelerator_memory_map["vector0"] = get_partition(input_memory.partition());
   vector_params->vector_fetch_0_offset = get_address(input);
   vector_params->vector_fetch_0_mode = 2;
   vector_params->vector_fetch_0_broadcast = 0b010000;
@@ -50,8 +50,6 @@ void MapMatrixVectorMultiply(const codegen::Operation &param,
   vector_params->vector_fetch_0_loops[1][2] = reduction_dim / OC_DIMENSION;
 
   // weight is a matrix of output_dim x reduction_dim
-  const auto weight_memory = weight.memory();
-  accelerator_memory_map["vector1"] = get_partition(weight_memory.partition());
   vector_params->vector_fetch_1_offset = get_address(weight);
   vector_params->vector_fetch_1_mode = true;
   vector_params->vector_fetch_1_dtype =
@@ -81,8 +79,6 @@ void MapMatrixVectorMultiply(const codegen::Operation &param,
   // bias
   if (has_bias) {
     const auto bias = matrix_op.kwargs().at("bias").tensor();
-    const auto bias_memory = bias.memory();
-    accelerator_memory_map["vector2"] = get_partition(bias_memory.partition());
     vector_params->vector_fetch_2_offset = get_address(bias);
     vector_params->vector_fetch_2_mode = true;
     vector_params->vector_fetch_2_broadcast = 0b011;
@@ -112,8 +108,6 @@ void MapMatrixVectorMultiply(const codegen::Operation &param,
   }
 
   // output
-  const auto output_memory = output.memory();
-  accelerator_memory_map["outputs"] = get_partition(output_memory.partition());
   vector_params->vector_output_offset = get_address(output);
   vector_params->output_dtype =
       get_index_from_type_name<OUTPUT_DATATYPES>(output.dtype());
@@ -134,9 +128,10 @@ void MapMatrixVectorMultiply(const codegen::Operation &param,
   // inst0 - start reduction engine
   VectorInstructions vinst0;
   vinst0.op_type = VectorInstructions::reduction;
-  vinst0.reduce_count = reduction_dim / OC_DIMENSION;
+  vinst0.reduce_count = reduction_dim / VECTOR_UNIT_WIDTH;
   vinst0.reduce_op = VectorInstructions::radd;
-  vinst0.rdest = VectorInstructions::to_op0;
+  vinst0.rdest =
+      has_bias ? VectorInstructions::to_op0 : VectorInstructions::to_memory;
   vinst0.immediate0 = 1;
   vector_instruction_config->inst[0] = vinst0;
 
@@ -164,9 +159,8 @@ void MapMatrixVectorMultiply(const codegen::Operation &param,
   }
 
   vector_instruction_config->num_inst = has_bias ? 3 : 2;
-  vector_instruction_config->repeat_count = output_dim / OC_DIMENSION;
+  vector_instruction_config->repeat_count = output_dim / VECTOR_UNIT_WIDTH;
 
   mapped_params.push_back(vector_params);
   mapped_params.push_back(vector_instruction_config);
-  memory_maps.push_back(accelerator_memory_map);
 }

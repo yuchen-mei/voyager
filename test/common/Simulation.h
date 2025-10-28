@@ -10,7 +10,7 @@
 #include "test/common/operations/Common.h"
 #include "test/compiler/proto/param.pb.h"
 
-void run_accelerator(std::vector<Operation> params, DataLoader *memory);
+void run_accelerator(std::vector<Operation> params, DataLoader* memory);
 
 class Simulation {
  public:
@@ -29,14 +29,14 @@ class Simulation {
   float tolerance = 0.1;
   std::vector<std::string> tests;
   std::vector<std::string> sims;
-  Network *network;
+  Network* network;
   std::vector<Operation> operations;
-  std::map<std::string, MemoryInterface *> memories;
-  std::map<std::string, DataLoader *> dataloaders;
+  std::map<std::string, MemoryInterface*> memories;
+  std::map<std::string, DataLoader*> dataloaders;
 
  private:
-  std::string get_env_var(std::string const &name);
+  std::string get_env_var(std::string const& name);
 
   template <typename T>
-  void split_string(const std::string &in_string, char delim, T result);
+  void split_string(const std::string& in_string, char delim, T result);
 };

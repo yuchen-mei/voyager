@@ -25,11 +25,14 @@ SC_MODULE(MulAddTree) {
   Connections::In<Pack1D<Weight, DWC_KERNEL_SIZE>> CCS_INIT_S1(weight_in);
   Connections::In<Pack1D<Input, DWC_KERNEL_SIZE>> CCS_INIT_S1(input_in);
 #if SUPPORT_MX
-  Connections::In<Pack1D<SCALE_DATATYPE, DWC_KERNEL_SIZE>> CCS_INIT_S1(weight_scale_in);
-  Connections::In<Pack1D<SCALE_DATATYPE, DWC_KERNEL_SIZE>> CCS_INIT_S1(input_scale_in);
+  Connections::In<Pack1D<SCALE_DATATYPE, DWC_KERNEL_SIZE>> CCS_INIT_S1(
+      weight_scale_in);
+  Connections::In<Pack1D<SCALE_DATATYPE, DWC_KERNEL_SIZE>> CCS_INIT_S1(
+      input_scale_in);
 #endif
   Connections::In<ac_int<1, false>> CCS_INIT_S1(update_weight);
-  Connections::In<Pack1D<ac_int<1, false>, DWC_KERNEL_SIZE>> CCS_INIT_S1(weight_mask);
+  Connections::In<Pack1D<ac_int<1, false>, DWC_KERNEL_SIZE>> CCS_INIT_S1(
+      weight_mask);
   Connections::In<Output> CCS_INIT_S1(bias_in);
 
   Connections::Out<Output> CCS_INIT_S1(adder_out);
@@ -73,8 +76,10 @@ SC_MODULE(MulAddTree) {
       Pack1D<ac_int<1, false>, DWC_KERNEL_SIZE> mask = weight_mask.Pop();
       Pack1D<Weight, DWC_KERNEL_SIZE> weight = weight_in.Pop();
 #if SUPPORT_MX
-      Pack1D<SCALE_DATATYPE, DWC_KERNEL_SIZE> weight_scale = weight_scale_in.Pop();
-      Pack1D<SCALE_DATATYPE, DWC_KERNEL_SIZE> input_scale = input_scale_in.Pop();
+      Pack1D<SCALE_DATATYPE, DWC_KERNEL_SIZE> weight_scale =
+          weight_scale_in.Pop();
+      Pack1D<SCALE_DATATYPE, DWC_KERNEL_SIZE> input_scale =
+          input_scale_in.Pop();
       if (update_weight_sig) {
         weight_scale_reg = weight_scale;
       }
@@ -89,18 +94,18 @@ SC_MODULE(MulAddTree) {
 #pragma hls_unroll yes
       for (int i = 0; i < 9; i++) {
 #if SUPPORT_MX
-        if (mask[i]){
-          mul_unscaled_results[i] = static_cast<Psum>(input[i]) *
-                           static_cast<Psum>(weight_reg[i]);
+        if (mask[i]) {
+          mul_unscaled_results[i] =
+              static_cast<Psum>(input[i]) * static_cast<Psum>(weight_reg[i]);
           mul_scale[i] = static_cast<Output>(input_scale[i]) *
-                           static_cast<Output>(weight_scale_reg[i]);
-          mul_results[i] = static_cast<Output>(mul_unscaled_results[i]) *
-                           mul_scale[i];
+                         static_cast<Output>(weight_scale_reg[i]);
+          mul_results[i] =
+              static_cast<Output>(mul_unscaled_results[i]) * mul_scale[i];
         } else {
           mul_results[i] = Output::zero();
         }
 #else
-        if (mask[i]){
+        if (mask[i]) {
           mul_results[i] = static_cast<Psum>(input[i]) * weight_reg[i];
         } else {
           mul_results[i] = Psum::zero();
@@ -109,12 +114,12 @@ SC_MODULE(MulAddTree) {
       }
 #pragma hls_unroll yes
       for (int i = 0; i < 4; i++) {
-          out_partial[i] = mul_results[i * 2] + mul_results[i * 2 + 1];
+        out_partial[i] = mul_results[i * 2] + mul_results[i * 2 + 1];
       }
       out_partial[4] = out_partial[0] + out_partial[1];
       out_partial[5] = out_partial[2] + out_partial[3];
       out_partial[6] = out_partial[4] + out_partial[5] + mul_results[8];
-      
+
       Output output = bias_reg + static_cast<Output>(out_partial[6]);
       adder_out.Push(output);
     }

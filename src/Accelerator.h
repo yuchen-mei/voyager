@@ -86,6 +86,16 @@ SC_MODULE(Accelerator) {
       matrix_vector_unit_weight_scale_resp);
 #endif
 
+  Connections::Out<MemoryRequest> CCS_INIT_S1(
+      matrix_vector_unit_weight_dq_scale_req);
+  Connections::Out<MemoryRequest> CCS_INIT_S1(
+      matrix_vector_unit_weight_dq_zp_req);
+
+  Connections::In<ac_int<OC_PORT_WIDTH, false>> CCS_INIT_S1(
+      matrix_vector_unit_weight_dq_scale_resp);
+  Connections::In<ac_int<OC_PORT_WIDTH, false>> CCS_INIT_S1(
+      matrix_vector_unit_weight_dq_zp_resp);
+
   Connections::Combinational<Pack1D<VECTOR_DATATYPE, VECTOR_UNIT_WIDTH>>
       matrix_vector_unit_data;
   Connections::SyncOut CCS_INIT_S1(matrix_vector_unit_start_signal);
@@ -204,6 +214,14 @@ SC_MODULE(Accelerator) {
     matrix_vector_unit.weight_scale_req(matrix_vector_unit_weight_scale_req);
     matrix_vector_unit.weight_scale_resp(matrix_vector_unit_weight_scale_resp);
 #endif
+    matrix_vector_unit.weight_dq_scale_req(
+        matrix_vector_unit_weight_dq_scale_req);
+    matrix_vector_unit.weight_dq_scale_resp(
+        matrix_vector_unit_weight_dq_scale_resp);
+    matrix_vector_unit.weight_dq_zero_point_req(
+        matrix_vector_unit_weight_dq_zp_req);
+    matrix_vector_unit.weight_dq_zero_point_resp(
+        matrix_vector_unit_weight_dq_zp_resp);
     matrix_vector_unit.matrix_out(matrix_vector_unit_data);
     matrix_vector_unit.start_signal(matrix_vector_unit_start_signal);
     matrix_vector_unit.done_signal(matrix_vector_unit_done_signal);

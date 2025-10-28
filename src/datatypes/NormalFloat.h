@@ -23,7 +23,7 @@ class NormalFloat4 {
   ac_int_rep index;
 
   NormalFloat4() : index(7) {}
-  NormalFloat4(const ac_int_rep &other) : index(other) {}
+  NormalFloat4(const ac_int_rep& other) : index(other) {}
 
 #ifndef __SYNTHESIS__
   NormalFloat4(const float other) : index(other) {}
@@ -32,7 +32,7 @@ class NormalFloat4 {
   template <int mantissa, int exp, bool use_dw_impl, bool ieee_compliance,
             ac_q_mode Q>
   NormalFloat4(
-      const StdFloat<mantissa, exp, use_dw_impl, ieee_compliance, Q> &other);
+      const StdFloat<mantissa, exp, use_dw_impl, ieee_compliance, Q>& other);
 
   ac_int<4, false> bits_rep() { return index; }
 
@@ -63,14 +63,14 @@ class NormalFloat4 {
     return f;
   }
 
-  friend std::ostream &operator<<(std::ostream &os, const NormalFloat4 &nf) {
+  friend std::ostream& operator<<(std::ostream& os, const NormalFloat4& nf) {
     os << NormalFloat4::code[nf.index];
     return os;
   }
 
 #ifndef NO_SYSC
   template <unsigned int Size>
-  void Marshall(Marshaller<Size> &m) {
+  void Marshall(Marshaller<Size>& m) {
     m & index;
   }
 #endif
@@ -79,7 +79,7 @@ class NormalFloat4 {
 template <int mantissa, int exp, bool use_dw_impl, bool ieee_compliance,
           ac_q_mode Q>
 NormalFloat4::NormalFloat4(
-    const StdFloat<mantissa, exp, use_dw_impl, ieee_compliance, Q> &other) {
+    const StdFloat<mantissa, exp, use_dw_impl, ieee_compliance, Q>& other) {
   using ac_float_t = typename StdFloat<mantissa, exp, use_dw_impl,
                                        ieee_compliance, Q>::ac_float_rep;
 

@@ -11,20 +11,18 @@
 #include "test/toolchain/Softmax.h"
 #include "test/toolchain/VectorOps.h"
 
-void MapOperation(const Operation &operation,
-                  std::deque<BaseParams *> &mapped_params,
-                  std::deque<AcceleratorMemoryMap> &memory_maps) {
+void MapOperation(const Operation& operation,
+                  std::deque<BaseParams*>& mapped_params,
+                  std::deque<AcceleratorMemoryMap>& memory_maps) {
   const auto param = operation.param;
   const auto op_list = get_op_list(param);
   const auto first_op = op_list[0];
 
   if (GEMM_OPS.find(first_op.target()) != GEMM_OPS.end()) {
-#if !SUPPORT_MVM
-    if (is_fc_layer(first_op)) {
+    auto input = first_op.kwargs().at("input").tensor();
+    if (is_fc_layer(first_op) && input.dtype() == "bfloat16") {
       MapMatrixVectorMultiply(param, mapped_params, memory_maps);
-    } else
-#endif
-    {
+    } else {
       MapMatrixOperation(operation, mapped_params, memory_maps);
     }
   } else if (first_op.target() == "layer_norm") {

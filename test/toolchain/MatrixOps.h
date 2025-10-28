@@ -12,10 +12,10 @@
 #include "test/toolchain/ApproximationConstants.h"
 #include "test/toolchain/Common.h"
 
-void set_vector_fetch_1(const codegen::Tensor &tensor, const Tiling &tiling,
-                        VectorParams *vector_params) {
+void set_vector_fetch_1(const codegen::Tensor& tensor, const Tiling& tiling,
+                        VectorParams* vector_params) {
   int nonzero_dims = 0;
-  for (const int &dim : tensor.shape()) {
+  for (const int& dim : tensor.shape()) {
     if (dim != 1) nonzero_dims++;
   }
 
@@ -60,14 +60,15 @@ void set_vector_fetch_1(const codegen::Tensor &tensor, const Tiling &tiling,
     }
   }
 
-  DataTypes::bfloat16 scale = tensor.scale() != 0 ? tensor.scale() : 1.0;
+  float scale_val = get_tensor_scalar_scale(tensor);
+  DataTypes::bfloat16 scale = scale_val != 0 ? scale_val : 1.0;
   vector_params->vector_fetch_1_dq_scale = scale.bits_rep();
 }
 
-void set_vector_fetch_2(const codegen::Tensor &tensor, const Tiling &tiling,
-                        VectorParams *vector_params) {
+void set_vector_fetch_2(const codegen::Tensor& tensor, const Tiling& tiling,
+                        VectorParams* vector_params) {
   int nonzero_dims = 0;
-  for (const int &dim : tensor.shape()) {
+  for (const int& dim : tensor.shape()) {
     if (dim != 1) nonzero_dims++;
   }
 
@@ -112,12 +113,13 @@ void set_vector_fetch_2(const codegen::Tensor &tensor, const Tiling &tiling,
     }
   }
 
-  DataTypes::bfloat16 scale = tensor.scale() != 0 ? tensor.scale() : 1.0;
+  float scale_val = get_tensor_scalar_scale(tensor);
+  DataTypes::bfloat16 scale = scale_val != 0 ? scale_val : 1.0;
   vector_params->vector_fetch_2_dq_scale = scale.bits_rep();
 }
 
 void set_immediate(const float scalar, const int stage,
-                   const std::string opcode, VectorInstructions &inst) {
+                   const std::string opcode, VectorInstructions& inst) {
   VECTOR_DATATYPE immediate = scalar;
 
   if (opcode == "div" || opcode == "div_") {
@@ -154,7 +156,7 @@ void set_immediate(const float scalar, const int stage,
  * this particular instruction, given the accelerator's configuration. It should
  * only be called if we have a double-buffered accumulation buffer.
  */
-static bool should_use_direct_path(const VectorParams *vector_params) {
+static bool should_use_direct_path(const VectorParams* vector_params) {
   assert(DOUBLE_BUFFERED_ACCUM_BUFFER);
 
   // This is how much bandwidth we have available, in bits per cycle. It
@@ -197,13 +199,13 @@ static bool should_use_direct_path(const VectorParams *vector_params) {
   return should_use_direct_path;
 }
 
-void MapMatrixOperation(const Operation &operation,
-                        std::deque<BaseParams *> &mapped_params,
-                        std::deque<AcceleratorMemoryMap> &memory_maps) {
-  MatrixParams *matrix_params;
-  DwCParams *dwc_params;
+void MapMatrixOperation(const Operation& operation,
+                        std::deque<BaseParams*>& mapped_params,
+                        std::deque<AcceleratorMemoryMap>& memory_maps) {
+  MatrixParams* matrix_params;
+  DwCParams* dwc_params;
   AcceleratorMemoryMap accelerator_memory_map;
-  VectorInstructionConfig *vector_instruction_config =
+  VectorInstructionConfig* vector_instruction_config =
       new VectorInstructionConfig;
 
   const auto param = operation.param;
@@ -318,11 +320,15 @@ void MapMatrixOperation(const Operation &operation,
     matrix_params = new MatrixParams;
 
     if (is_fc) {
+#if !SUPPORT_MVM
+      throw std::runtime_error(
+          "Matrix-vector multiply not supported in this build.");
+#endif
       matrix_params->is_fc = true;
 
       auto weight_shape = get_shape(weight);
-      int K = is_matmul ? weight_shape[1] : weight_shape[0];
-      int C = is_matmul ? weight_shape[0] : weight_shape[1];
+      int K = weight_shape[0];
+      int C = weight_shape[1];
       int C1 = is_mx_op ? matrix_op.kwargs().at("block_size").int_value() : 1;
       int C2 = C / C1;
 
@@ -362,7 +368,7 @@ void MapMatrixOperation(const Operation &operation,
       const auto code = matrix_op.kwargs().at("input_code").tensor();
       const auto size = get_size(code);
 
-      float *input_code = read_constant_param(code);
+      float* input_code = read_constant_param(code);
 
       int zero_idx = -1;
       for (int i = 0; i < size; i++) {
@@ -408,7 +414,7 @@ void MapMatrixOperation(const Operation &operation,
       const auto code = matrix_op.kwargs().at("weight_code").tensor();
       const auto size = get_size(code);
 
-      float *weight_code = read_constant_param(code);
+      float* weight_code = read_constant_param(code);
       for (int i = 0; i < size; i++) {
         SA_WEIGHT_TYPE value = weight_code[i];
         matrix_params->weight_code[i] = value.bits_rep();
@@ -614,10 +620,22 @@ void MapMatrixOperation(const Operation &operation,
       matrix_params->has_bias = true;
       matrix_params->bias_offset = get_address(bias);
     }
+
+    // Set weight dequantize parameters
+    if (weight.has_dequant()) {
+      matrix_params->weight_dequant = true;
+      const auto dequant = weight.dequant();
+      const auto scale = dequant.kwargs().at("scale").tensor();
+      matrix_params->dq_scale_offset = get_address(scale);
+      if (dequant.kwargs().contains("zero_point")) {
+        const auto zero_point = dequant.kwargs().at("zero_point").tensor();
+        matrix_params->dq_zero_point_offset = get_address(zero_point);
+      }
+    }
   }
 
   // vector instructions
-  VectorParams *vector_params = new VectorParams;
+  VectorParams* vector_params = new VectorParams;
 
   // Rescale tiling for vector instructions
   if (is_fc) {
@@ -742,7 +760,7 @@ void MapMatrixOperation(const Operation &operation,
     std::map<std::string, VECTOR_DATATYPE> activation_kwargs;
     if (unary_ops_with_kwargs.find(op.target()) !=
         unary_ops_with_kwargs.end()) {
-      for (const auto &[key, value] : op.kwargs()) {
+      for (const auto& [key, value] : op.kwargs()) {
         if (key != "input") {
           activation_kwargs[key] = VECTOR_DATATYPE(value.float_value());
         }
@@ -756,7 +774,7 @@ void MapMatrixOperation(const Operation &operation,
       const auto other = op.kwargs().at("scale").tensor();
       assert(get_size(other) == 1);
 
-      float *array = read_constant_param(other);
+      float* array = read_constant_param(other);
       VECTOR_DATATYPE immediate = array[0];
       inst.vector_dq_scale = immediate.bits_rep();
 
@@ -813,11 +831,11 @@ void MapMatrixOperation(const Operation &operation,
       vector_params->quantize_output_mx = true;
       vector_params->mx_scale_offset = get_address(param.outputs().tensors(0));
 
-      if (op.kwargs().contains("quant_code")) {
-        const auto code = op.kwargs().at("quant_code").tensor();
+      if (op.kwargs().contains("output_code")) {
+        const auto code = op.kwargs().at("output_code").tensor();
         const int size = get_size(code);
 
-        float *array = read_constant_param(code);
+        float* array = read_constant_param(code);
 
         for (int i = 0; i < size; i++) {
           vector_params->output_code[i] = array[i] * 2;
@@ -1102,7 +1120,7 @@ void MapMatrixOperation(const Operation &operation,
         int scalar = other.int_value();
         set_immediate(scalar, stage, opcode, inst);
       } else if (other.has_tensor() && get_size(other.tensor()) == 1) {
-        float *array = read_constant_param(other.tensor());
+        float* array = read_constant_param(other.tensor());
         set_immediate(array[0], stage, opcode, inst);
         delete[] array;
       } else {

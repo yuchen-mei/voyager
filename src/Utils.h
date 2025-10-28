@@ -183,3 +183,9 @@ Buffer dequantize_mx_op(const Psum psum, const Scale input_scale,
                         const Scale weight_scale, const Buffer prev_accum) {
   return prev_accum + (Buffer)input_scale * (Buffer)weight_scale * (Buffer)psum;
 }
+
+#pragma hls_design ccore
+template <typename Input, typename Scale, typename Output>
+Output dequantize(Input input, Scale scale, Scale zero_point) {
+  return ((Output)input - (Output)zero_point) * (Output)scale;
+}
