@@ -5,7 +5,7 @@
 #include <fstream>
 
 #include "spdlog/spdlog.h"
-#include "test/common/VerificationTypes.h"
+#include "test/common/Utils.h"
 
 using namespace std;
 using namespace google::protobuf;

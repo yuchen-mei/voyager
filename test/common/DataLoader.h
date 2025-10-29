@@ -1,15 +1,12 @@
 #pragma once
 #define NO_SYSC
 
-// clang-format off
-#include "src/datatypes/DataTypes.h"
-// clang-format on
-
 #include "src/ArchitectureParams.h"
+#include "src/datatypes/DataTypes.h"
 #include "test/common/ArrayMemory.h"
 #include "test/common/MemoryInterface.h"
 #include "test/common/Network.h"
-#include "test/common/VerificationTypes.h"
+#include "test/common/Utils.h"
 #include "test/compiler/proto/param.pb.h"
 
 class DataLoader {

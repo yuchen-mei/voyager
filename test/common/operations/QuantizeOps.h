@@ -4,7 +4,7 @@
 #include <vector>
 
 #include "src/datatypes/DataTypes.h"
-#include "test/common/VerificationTypes.h"
+#include "test/common/Utils.h"
 #include "test/compiler/proto/param.pb.h"
 
 template <typename Input, typename Scale>

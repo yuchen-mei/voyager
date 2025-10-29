@@ -4,7 +4,7 @@
 #include <set>
 
 #include "src/Params.h"
-#include "test/common/VerificationTypes.h"
+#include "test/common/Utils.h"
 #include "test/compiler/proto/param.pb.h"
 
 constexpr int MAX_LOOP_VALUE = 65535;

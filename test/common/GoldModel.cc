@@ -4,7 +4,7 @@
 
 #include "spdlog/spdlog.h"
 #include "test/common/MemoryInterface.h"
-#include "test/common/VerificationTypes.h"
+#include "test/common/Utils.h"
 #include "test/common/operations/LayerNorm.h"
 #include "test/common/operations/MatrixOps.h"
 #include "test/common/operations/Microscaling.h"

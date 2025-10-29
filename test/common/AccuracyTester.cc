@@ -8,15 +8,13 @@
 #include <vector>
 
 #define NO_SYSC
-// clang-format off
-#include "src/datatypes/DataTypes.h"
-// clang-format on
 #include "src/ArchitectureParams.h"
+#include "src/datatypes/DataTypes.h"
 #include "test/common/ArrayMemory.h"
 #include "test/common/DataLoader.h"
 #include "test/common/GoldModel.h"
 #include "test/common/Network.h"
-#include "test/common/VerificationTypes.h"
+#include "test/common/Utils.h"
 #include "test/compiler/proto/param.pb.h"
 
 /* Run inference on a single sample and return correct classification. */

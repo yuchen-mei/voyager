@@ -7,7 +7,7 @@
 #include "test/common/MemoryInterface.h"
 #include "test/common/Network.h"
 #include "test/common/Tiling.h"
-#include "test/common/VerificationTypes.h"
+#include "test/common/Utils.h"
 #include "test/compiler/proto/param.pb.h"
 #include "test/toolchain/ApproximationConstants.h"
 #include "test/toolchain/Common.h"

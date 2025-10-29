@@ -1,13 +1,10 @@
 #include "test/common/ArrayMemory.h"
 
-// clang-format off
-#include "src/datatypes/DataTypes.h"
-// clang-format on
-
 #include <fstream>
 
 #include "src/ArchitectureParams.h"
-#include "test/common/VerificationTypes.h"
+#include "src/datatypes/DataTypes.h"
+#include "test/common/Utils.h"
 
 ArrayMemory::ArrayMemory(std::vector<uint64_t> sizes) : MemoryInterface() {
   memories.reserve(sizes.size());
