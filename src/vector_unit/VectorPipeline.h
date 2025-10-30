@@ -54,7 +54,7 @@ SC_MODULE(VectorPipeline) {
   Connections::Combinational<VectorInstructions> stage2_inst;
 
 #if SUPPORT_MX && VECTOR_UNIT_WIDTH != OC_DIMENSION
-  Connections::Fifo<Pack1D<StageInput, 2>, mu_width / vu_width>
+  Connections::Fifo<Pack1D<StageInput, 2>, mu_width / vu_width + 8>
       stage3_input_fifo;
   Connections::Combinational<Pack1D<StageInput, 2>> stage3_input_fifo_in;
   Connections::Combinational<Pack1D<StageInput, 2>> stage3_input_fifo_out;
@@ -408,6 +408,9 @@ SC_MODULE(VectorPipeline) {
     stage3_input.ResetWrite();
     reducer_input.Reset();
     accumulator_input.Reset();
+#if SUPPORT_MX && VECTOR_UNIT_WIDTH != OC_DIMENSION
+    stage3_input_fifo_in.ResetWrite();
+#endif
 
     wait();
 
@@ -439,7 +442,15 @@ SC_MODULE(VectorPipeline) {
         Pack1D<StageInput, 2> stage3_data;
         stage3_data[0] = {0, 0, res2};
         stage3_data[1] = transactions[2];
+#if SUPPORT_MX && VECTOR_UNIT_WIDTH != OC_DIMENSION
+        stage3_input_fifo_in.Push(stage3_data);
+        auto op3 = transactions[2].op;
+        if (op3 == VectorInstructions::vquantize_mx) {
+          stage3_input.Push(stage3_data);
+        }
+#else
         stage3_input.Push(stage3_data);
+#endif
       } else if (vdest == VectorInstructions::to_reduce) {
         reducer_input.Push(res2);
       } else if (vdest == VectorInstructions::to_accumulate) {
@@ -450,7 +461,6 @@ SC_MODULE(VectorPipeline) {
 #if SUPPORT_MX && VECTOR_UNIT_WIDTH != OC_DIMENSION
   void compute_mx_qparams() {
     stage3_input.ResetRead();
-    stage3_input_fifo_in.ResetWrite();
     stage3_scale.ResetWrite();
 
     wait();
@@ -462,30 +472,34 @@ SC_MODULE(VectorPipeline) {
 #pragma hls_pipeline_stall_mode flush
     while (1) {
       Pack1D<StageInput, 2> transactions = stage3_input.Pop();
-      decltype(VectorInstructions::vector_op3) op3 = transactions[1].op;
-      decltype(VectorInstructions::immediate2) qparam =
-          transactions[1].immediate;
-      Pack1D<VectorType, vu_width> op3_src0 = transactions[0].payload;
+      auto op3 = transactions[1].op;
+      auto qparam = transactions[1].immediate;
+      auto op3_src0 = transactions[0].payload;
 
-      if (op3 == VectorInstructions::vquantize_mx) {
-        Pack1D<VectorType, vu_width> temp;
-#pragma hls_unroll yes
-        for (int i = 0; i < vu_width; i++) {
-          temp[i] = op3_src0[i].abs();
-        }
-        VectorType amax = tree_max(temp);
-        amax_history = count == 0 ? amax : std::max(amax, amax_history);
-        count = count + 1;
-
-        if (count == mu_width / vu_width) {
-          ScaleType scale = compute_scale<VectorType, ScaleType, vu_width>(
-              amax_history, qparam);
-          stage3_scale.Push(scale);
-          count = 0;
-        }
+#ifndef __SYNTHESIS__
+      if (op3 != VectorInstructions::vquantize_mx) {
+        throw std::runtime_error(
+            "Error: compute_mx_qparams called with "
+            "non-vquantize_mx operation.");
       }
+#endif
 
-      stage3_input_fifo_in.Push(transactions);
+      Pack1D<VectorType, vu_width> temp;
+#pragma hls_unroll yes
+      for (int i = 0; i < vu_width; i++) {
+        temp[i] = op3_src0[i].abs();
+      }
+      VectorType amax = tree_max(temp);
+      amax_history = count == 0 ? amax : std::max(amax, amax_history);
+
+      if (count == mu_width / vu_width - 1) {
+        ScaleType scale = compute_scale<VectorType, ScaleType, vu_width>(
+            amax_history, qparam);
+        stage3_scale.Push(scale);
+        count = 0;
+      } else {
+        count = count + 1;
+      }
     }
   }
 #endif
@@ -514,9 +528,8 @@ SC_MODULE(VectorPipeline) {
 #else
       Pack1D<StageInput, 2> transactions = stage3_input.Pop();
 #endif
-      decltype(VectorInstructions::vector_op3) op3 = transactions[1].op;
-      decltype(VectorInstructions::immediate2) qparam =
-          transactions[1].immediate;
+      auto op3 = transactions[1].op;
+      auto qparam = transactions[1].immediate;
       Pack1D<VectorType, vu_width> op3_src0 = transactions[0].payload;
       Pack1D<VectorType, vu_width> op3_src1 = transactions[1].payload;
       Pack1D<VectorType, vu_width> res3;
@@ -529,9 +542,10 @@ SC_MODULE(VectorPipeline) {
           mx_scale.Push(scale);
         }
 
-        count = count + 1;
-        if (count == mu_width / vu_width) {
+        if (count == mu_width / vu_width - 1) {
           count = 0;
+        } else {
+          count = count + 1;
         }
 #else
         ScaleType scale = calculate_mx_scale<VectorType, ScaleType, vu_width>(
