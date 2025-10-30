@@ -3,6 +3,7 @@ import interstellar
 import logging
 import math
 import os
+import re
 
 from google.protobuf import text_format
 
@@ -11,6 +12,13 @@ from proto import tiling_pb2
 
 
 logger = logging.getLogger(__name__)
+
+
+def get_dtype_width(dtype: str):
+    bit_search = re.search(r"[^\d](\d+)(_.*)?$", str(dtype))
+    if bit_search is None:
+        raise ValueError(f"`dtype` is not a valid dtype: {dtype}.")
+    return int(bit_search.groups()[0])
 
 
 class RuntimeCalculator:
@@ -70,6 +78,14 @@ class RuntimeCalculator:
         # currently assume that each value in the input buffer is loaded in one cycle
         input_buffer_loading_time = input_buffer_loading_size
 
+        # if self.operation.WhichOneof("op_type") == "op":
+        #     matrix_op = self.operation.op
+        # else:
+        #     matrix_op = self.operation.fused_op.op_list[0]
+        # input_dtype = matrix_op.kwargs["input"].tensor.dtype
+        # input_nbits = get_dtype_width(input_dtype)
+        # print(f"Input dtype: {input_dtype}, width: {input_nbits} bits")
+
         weight_relevant_loops = [
             interstellar.le.IC,
             interstellar.le.OC,
@@ -98,22 +114,17 @@ class RuntimeCalculator:
         vector_unit_time = output_size
         requires_high_precision = False
         if self.operation.WhichOneof("op_type") == "fused_op":
-            input_precision = (
-                self.operation.fused_op.op_list[0].kwargs["input"].tensor.dtype
-            )
             # check if any of the operands are in high precision or
-            for i in range(1, len(self.operation.fused_op.op_list)):
-                vector_op = self.operation.fused_op.op_list[i]
-                if "other" in vector_op.kwargs:
-                    if vector_op.kwargs["other"].tensor.HasField("memory"):
-                        tensor_to_load = vector_op.kwargs["other"].tensor
-                    else:
-                        tensor_to_load = vector_op.kwargs["input"].tensor
-
-                    if tensor_to_load.dtype != input_precision:
+            for vector_op in self.operation.fused_op.op_list:
+                for arg in vector_op.kwargs.values():
+                    if (
+                        arg.HasField("tensor")
+                        and arg.tensor.HasField("memory")
+                        and arg.tensor.dtype in ["float32", "float16", "bfloat16"]
+                    ):
                         requires_high_precision = True
                         break
-            if self.operation.output.dtype != input_precision:
+            if self.operation.output.dtype in ["float32", "float16", "bfloat16"]:
                 requires_high_precision = True
 
             if requires_high_precision:

@@ -96,7 +96,6 @@ void MapLayerNorm(const codegen::Operation& param,
   inst0_0.reduce_op = VectorInstructions::radd;
   inst0_0.rduplicate = 1;
   inst0_0.rdest = VectorInstructions::to_memory;
-  inst0_0.immediate0 = reduction_dim / OC_DIMENSION * packing_factor;
   vector_instruction_config->inst[0] = inst0_0;
 
   // Scale inputs by 1 / norm_size and send to the reduction engine
