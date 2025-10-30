@@ -39,7 +39,6 @@ solution file add $ROOT/src/Accelerator.h -type CHEADER
 # Add testbench files
 solution file add $ROOT/test/common/TestRunner.cc -type C++ -exclude true
 solution file add $ROOT/test/common/Harness.cc -type C++ -exclude true
-solution file add $ROOT/test/common/Utils.cc -type C++ -exclude true
 solution file add $ROOT/test/common/GoldModel.cc -type C++ -exclude true
 solution file add $ROOT/test/common/Simulation.cc -type C++ -exclude true
 solution file add $ROOT/test/common/ArrayMemory.cc -type C++ -exclude true
