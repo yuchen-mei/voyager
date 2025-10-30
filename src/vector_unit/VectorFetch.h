@@ -667,6 +667,10 @@ SC_MODULE(VectorFetchUnit) {
 
       if (params.vector_fetch_1_broadcast[2]) {
         K = k_stride;
+        // If k is the inner most loop, we can reuse the data
+        if (params.vector_fetch_1_k_loop_idx[1] == 2) {
+          loop_ends[1][2] = 0;
+        }
       }
 
 #pragma hls_pipeline_init_interval 1
@@ -677,18 +681,18 @@ SC_MODULE(VectorFetchUnit) {
             for (loop_counters[1][0] = 0;; loop_counters[1][0]++) {
               for (loop_counters[1][1] = 0;; loop_counters[1][1]++) {
                 for (loop_counters[1][2] = 0;; loop_counters[1][2]++) {
-                  ac_int<LOOP_WIDTH, false> x0 =
-                      loop_counters[1][params.vector_fetch_1_x_loop_idx[1]];
-                  ac_int<LOOP_WIDTH, false> x1 =
-                      loop_counters[0][params.vector_fetch_1_x_loop_idx[0]];
-                  ac_int<LOOP_WIDTH, false> y0 =
-                      loop_counters[1][params.vector_fetch_1_y_loop_idx[1]];
                   ac_int<LOOP_WIDTH, false> y1 =
                       loop_counters[0][params.vector_fetch_1_y_loop_idx[0]];
-                  ac_int<LOOP_WIDTH, false> k0 =
-                      loop_counters[1][params.vector_fetch_1_k_loop_idx[1]];
+                  ac_int<LOOP_WIDTH, false> x1 =
+                      loop_counters[0][params.vector_fetch_1_x_loop_idx[0]];
                   ac_int<LOOP_WIDTH, false> k1 =
                       loop_counters[0][params.vector_fetch_1_k_loop_idx[0]];
+                  ac_int<LOOP_WIDTH, false> y0 =
+                      loop_counters[1][params.vector_fetch_1_y_loop_idx[1]];
+                  ac_int<LOOP_WIDTH, false> x0 =
+                      loop_counters[1][params.vector_fetch_1_x_loop_idx[1]];
+                  ac_int<LOOP_WIDTH, false> k0 =
+                      loop_counters[1][params.vector_fetch_1_k_loop_idx[1]];
 
                   ac_int<16, false> y = y1 * Y0 + y0;
                   ac_int<16, false> x = x1 * X0 + x0;
@@ -781,32 +785,44 @@ SC_MODULE(VectorFetchUnit) {
     while (true) {
       VectorParams params = vector_fetch_1_data_params.Pop();
 
+      ac_int<16, false> innermost_loop_reuse = 0;
+      if (params.vector_fetch_1_broadcast[2] &&
+          params.vector_fetch_1_k_loop_idx[1] == 2) {
+        innermost_loop_reuse = params.vector_fetch_1_loops[1][2] - 1;
+      }
+      // std::cout << "Innermost loop reuse: " << innermost_loop_reuse << "\n";
+
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
       while (!vector_fetch_1_data_done.read()) {
         ac_int<MAX_RESPONSE_WIDTH, false> bits =
             vector_fetch_1_packed_bits.Pop();
 
-        for (ac_int<4, false> i = 0;; i++) {
-          Pack1D<VectorType, width> outputs;
-          bool found = (unpack_vector_data<InputTypes, VectorType, width,
-                                           MAX_RESPONSE_WIDTH, InputTypes...>(
-                            params.vector_fetch_1_dtype, bits, outputs, i) ||
-                        ...);
+        for (ac_int<16, false> reuse = 0;; reuse++) {
+          for (ac_int<4, false> i = 0;; i++) {
+            Pack1D<VectorType, width> outputs;
+            bool found = (unpack_vector_data<InputTypes, VectorType, width,
+                                             MAX_RESPONSE_WIDTH, InputTypes...>(
+                              params.vector_fetch_1_dtype, bits, outputs, i) ||
+                          ...);
 
 #ifndef __SYNTHESIS__
-          if (!found) {
-            std::cerr << "Error: vector fetch 1 input dtype '"
-                      << params.vector_fetch_1_dtype << "' is not valid.\n";
-          }
+            if (!found) {
+              std::cerr << "Error: vector fetch 1 input dtype '"
+                        << params.vector_fetch_1_dtype << "' is not valid.\n";
+            }
 #endif
 
-          Pack1D<VectorType, width> dequantized;
-          vdequantize<VectorType, VectorType, width>(
-              outputs, dequantized, params.vector_fetch_1_dq_scale);
-          vector_fetch_1_data.Push(dequantized);
+            Pack1D<VectorType, width> dequantized;
+            vdequantize<VectorType, VectorType, width>(
+                outputs, dequantized, params.vector_fetch_1_dq_scale);
+            vector_fetch_1_data.Push(dequantized);
 
-          if (i == params.vector_fetch_1_packing_factor - 1) {
+            if (i == params.vector_fetch_1_packing_factor - 1) {
+              break;
+            }
+          }
+          if (reuse == innermost_loop_reuse) {
             break;
           }
         }
@@ -857,6 +873,10 @@ SC_MODULE(VectorFetchUnit) {
 
       if (params.vector_fetch_2_broadcast[2]) {
         K = k_stride;
+        // If k is the inner most loop, we can reuse the data
+        if (params.vector_fetch_2_k_loop_idx[1] == 2) {
+          loop_ends[1][2] = 0;
+        }
       }
 
 #pragma hls_pipeline_init_interval 1
@@ -867,18 +887,18 @@ SC_MODULE(VectorFetchUnit) {
             for (loop_counters[1][0] = 0;; loop_counters[1][0]++) {
               for (loop_counters[1][1] = 0;; loop_counters[1][1]++) {
                 for (loop_counters[1][2] = 0;; loop_counters[1][2]++) {
-                  ac_int<LOOP_WIDTH, false> x0 =
-                      loop_counters[1][params.vector_fetch_2_x_loop_idx[1]];
-                  ac_int<LOOP_WIDTH, false> x1 =
-                      loop_counters[0][params.vector_fetch_2_x_loop_idx[0]];
-                  ac_int<LOOP_WIDTH, false> y0 =
-                      loop_counters[1][params.vector_fetch_2_y_loop_idx[1]];
                   ac_int<LOOP_WIDTH, false> y1 =
                       loop_counters[0][params.vector_fetch_2_y_loop_idx[0]];
-                  ac_int<LOOP_WIDTH, false> k0 =
-                      loop_counters[1][params.vector_fetch_2_k_loop_idx[1]];
+                  ac_int<LOOP_WIDTH, false> x1 =
+                      loop_counters[0][params.vector_fetch_2_x_loop_idx[0]];
                   ac_int<LOOP_WIDTH, false> k1 =
                       loop_counters[0][params.vector_fetch_2_k_loop_idx[0]];
+                  ac_int<LOOP_WIDTH, false> y0 =
+                      loop_counters[1][params.vector_fetch_2_y_loop_idx[1]];
+                  ac_int<LOOP_WIDTH, false> x0 =
+                      loop_counters[1][params.vector_fetch_2_x_loop_idx[1]];
+                  ac_int<LOOP_WIDTH, false> k0 =
+                      loop_counters[1][params.vector_fetch_2_k_loop_idx[1]];
 
                   ac_int<16, false> y = y1 * Y0 + y0;
                   ac_int<16, false> x = x1 * X0 + x0;
@@ -969,32 +989,43 @@ SC_MODULE(VectorFetchUnit) {
     while (true) {
       VectorParams params = vector_fetch_2_data_params.Pop();
 
+      ac_int<16, false> innermost_loop_reuse = 0;
+      if (params.vector_fetch_2_broadcast[2] &&
+          params.vector_fetch_2_k_loop_idx[1] == 2) {
+        innermost_loop_reuse = params.vector_fetch_2_loops[1][2] - 1;
+      }
+      // std::cout << "Innermost loop reuse: " << innermost_loop_reuse << "\n";
+
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
       while (!vector_fetch_2_data_done.read()) {
         ac_int<MAX_RESPONSE_WIDTH, false> bits =
             vector_fetch_2_packed_bits.Pop();
-
-        for (ac_int<4, false> i = 0;; i++) {
-          Pack1D<VectorType, width> outputs;
-          bool found = (unpack_vector_data<InputTypes, VectorType, width,
-                                           MAX_RESPONSE_WIDTH, InputTypes...>(
-                            params.vector_fetch_2_dtype, bits, outputs, i) ||
-                        ...);
+        for (ac_int<16, false> reuse = 0;; reuse++) {
+          for (ac_int<4, false> i = 0;; i++) {
+            Pack1D<VectorType, width> outputs;
+            bool found = (unpack_vector_data<InputTypes, VectorType, width,
+                                             MAX_RESPONSE_WIDTH, InputTypes...>(
+                              params.vector_fetch_2_dtype, bits, outputs, i) ||
+                          ...);
 
 #ifndef __SYNTHESIS__
-          if (!found) {
-            std::cerr << "Error: vector fetch 2 input dtype '"
-                      << params.vector_fetch_2_dtype << "' is not valid.\n";
-          }
+            if (!found) {
+              std::cerr << "Error: vector fetch 2 input dtype '"
+                        << params.vector_fetch_2_dtype << "' is not valid.\n";
+            }
 #endif
 
-          Pack1D<VectorType, width> dequantized;
-          vdequantize<VectorType, VectorType, width>(
-              outputs, dequantized, params.vector_fetch_2_dq_scale);
-          vector_fetch_2_data.Push(dequantized);
+            Pack1D<VectorType, width> dequantized;
+            vdequantize<VectorType, VectorType, width>(
+                outputs, dequantized, params.vector_fetch_2_dq_scale);
+            vector_fetch_2_data.Push(dequantized);
 
-          if (i == params.vector_fetch_2_packing_factor - 1) {
+            if (i == params.vector_fetch_2_packing_factor - 1) {
+              break;
+            }
+          }
+          if (reuse == innermost_loop_reuse) {
             break;
           }
         }
