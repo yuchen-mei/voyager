@@ -76,8 +76,20 @@ class Int {
   operator StdFloat<mantissa, exp, use_dw_impl, ieee_compliance, Q>() const {
     using std_float_t =
         StdFloat<mantissa, exp, use_dw_impl, ieee_compliance, Q>;
+    using rep = typename std_float_t::ac_float_rep;
+
     std_float_t f;
-    f.float_val = typename std_float_t::ac_float_rep(int_val);
+    // 1-bit ac_int conversion to ac_std_float will cause an error during
+    // synthesis: 'ac_int' is declared with non-positive width of '0'
+    if constexpr (W == 1) {
+      if (int_val == 0) {
+        f.float_val = rep::zero();
+      } else {
+        f.float_val = S ? -rep::one() : rep::one();
+      }
+    } else {
+      f.float_val = rep(int_val);
+    }
     return f;
   }
 
