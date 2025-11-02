@@ -108,5 +108,36 @@
             "slice_tensor(_[0-9]+)?",
             "transpose_int_(_[0-9]+)?"
         ]
+    },
+    {
+        "datatype": "MXNF4",
+        "model": [
+            "llama_decode_kivi"
+        ],
+        "sim_type": [
+            "systemc",
+            "fast-systemc",
+            "rtl"
+        ],
+        "block_size": 64,
+        "layers": [
+            "add_([0-9]+)_fused",
+            "add_scalar",
+            "cat(_[0-9]+)?",
+            "cos",
+            "embedding",
+            "expand(_[0-9]+)?",
+            "index_copy_",
+            "matmul",
+            "mul_180",
+            "mul_181",
+            "pad_default(_[0-9]+)?",
+            "sin",
+            "slice(_[0-9]+)?",
+            "slice_tensor(_[0-9]+)?",
+            "to(_[0-9]+)?",
+            "transpose(_[0-9]+)?",
+            "transpose_int_(_[0-9]+)?"
+        ]
     }
 ]

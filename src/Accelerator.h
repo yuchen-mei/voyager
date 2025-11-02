@@ -7,7 +7,7 @@
 #include "ArchitectureParams.h"
 #include "DwCUnit.h"
 #include "MatrixUnit.h"
-#include "MatrixVectorUnit2.h"
+#include "matrix_vector_unit/main.h"
 #include "mc_scverify.h"
 #include "vector_unit/main.h"
 

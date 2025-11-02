@@ -393,17 +393,25 @@ void MapMatrixOperation(const Operation& operation,
       delete[] input_code;
     }
 
-    int c_bound = tiling.resnet_replication
-                      ? 1
-                      : tiling.loops[1][tiling.reduction_loop_idx[1]];
-    int input_effective_fw;
-    int input_pf =
-        get_packing_factor<IC_DIMENSION, IC_PORT_WIDTH, INPUT_DATATYPE>(
-            matrix_params->input_dtype, c_bound, input_effective_fw);
+    int input_fetch_width;
+    int input_num_packs;
 
-    matrix_params->input_burst_size = input_effective_fw / 8;
-    matrix_params->input_num_beats = input_effective_fw / IC_PORT_WIDTH;
-    matrix_params->input_pack_factor_lg2 = std::log2(input_pf);
+    if (is_fc) {
+      input_num_packs =
+          get_packing_factor<MV_UNIT_WIDTH, OC_PORT_WIDTH, INPUT_DATATYPE>(
+              matrix_params->input_dtype, 1, input_fetch_width);
+    } else {
+      int c_bound = tiling.resnet_replication
+                        ? 1
+                        : tiling.loops[1][tiling.reduction_loop_idx[1]];
+      input_num_packs =
+          get_packing_factor<IC_DIMENSION, IC_PORT_WIDTH, INPUT_DATATYPE>(
+              matrix_params->input_dtype, c_bound, input_fetch_width);
+    }
+
+    matrix_params->input_burst_size = input_fetch_width / 8;
+    matrix_params->input_num_beats = input_fetch_width / IC_PORT_WIDTH;
+    matrix_params->input_pack_factor_lg2 = std::log2(input_num_packs);
 
     // Set weight fields
     matrix_params->weight_offset = get_address(weight);
@@ -425,17 +433,25 @@ void MapMatrixOperation(const Operation& operation,
       delete[] weight_code;
     }
 
-    int k_bound = matrix_params->weight_transpose
-                      ? 1
-                      : tiling.loops[1][tiling.weight_loop_idx[1]];
-    int weight_effective_fw;
-    int weight_pf =
-        get_packing_factor<OC_DIMENSION, OC_PORT_WIDTH, WEIGHT_DATATYPE>(
-            matrix_params->weight_dtype, k_bound, weight_effective_fw);
+    int weight_fetch_width;
+    int weight_num_packs;
 
-    matrix_params->weight_burst_size = weight_effective_fw / 8;
-    matrix_params->weight_num_beats = weight_effective_fw / OC_PORT_WIDTH;
-    matrix_params->weight_pack_factor_lg2 = std::log2(weight_pf);
+    if (is_fc) {
+      weight_num_packs =
+          get_packing_factor<MV_UNIT_WIDTH, OC_PORT_WIDTH, WEIGHT_DATATYPE>(
+              matrix_params->weight_dtype, 1, weight_fetch_width);
+    } else {
+      int k_bound = matrix_params->weight_transpose
+                        ? 1
+                        : tiling.loops[1][tiling.weight_loop_idx[1]];
+      weight_num_packs =
+          get_packing_factor<OC_DIMENSION, OC_PORT_WIDTH, WEIGHT_DATATYPE>(
+              matrix_params->weight_dtype, k_bound, weight_fetch_width);
+    }
+
+    matrix_params->weight_burst_size = weight_fetch_width / 8;
+    matrix_params->weight_num_beats = weight_fetch_width / OC_PORT_WIDTH;
+    matrix_params->weight_pack_factor_lg2 = std::log2(weight_num_packs);
 
     // Set microscaling fields
     matrix_params->is_mx_op = is_mx_op;
