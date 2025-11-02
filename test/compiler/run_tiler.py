@@ -78,10 +78,12 @@ class RuntimeCalculator:
         # currently assume that each value in the input buffer is loaded in one cycle
         input_buffer_loading_time = input_buffer_loading_size
 
-        # if self.operation.WhichOneof("op_type") == "op":
-        #     matrix_op = self.operation.op
-        # else:
-        #     matrix_op = self.operation.fused_op.op_list[0]
+        if self.operation.WhichOneof("op_type") == "op":
+            matrix_op = self.operation.op
+            name = matrix_op.name
+        else:
+            matrix_op = self.operation.fused_op.op_list[0]
+            name = self.operation.fused_op.name
         # input_dtype = matrix_op.kwargs["input"].tensor.dtype
         # input_nbits = get_dtype_width(input_dtype)
         # print(f"Input dtype: {input_dtype}, width: {input_nbits} bits")
@@ -114,8 +116,8 @@ class RuntimeCalculator:
         vector_unit_time = output_size
         requires_high_precision = False
         if self.operation.WhichOneof("op_type") == "fused_op":
-            # check if any of the operands are in high precision or
-            for vector_op in self.operation.fused_op.op_list:
+            # check if any of the operands in fused ops are in high precision
+            for vector_op in self.operation.fused_op.op_list[1:]:
                 for arg in vector_op.kwargs.values():
                     if (
                         arg.HasField("tensor")
