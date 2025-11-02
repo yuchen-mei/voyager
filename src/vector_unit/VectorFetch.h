@@ -790,7 +790,6 @@ SC_MODULE(VectorFetchUnit) {
           params.vector_fetch_1_k_loop_idx[1] == 2) {
         innermost_loop_reuse = params.vector_fetch_1_loops[1][2] - 1;
       }
-      // std::cout << "Innermost loop reuse: " << innermost_loop_reuse << "\n";
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
@@ -994,7 +993,6 @@ SC_MODULE(VectorFetchUnit) {
           params.vector_fetch_2_k_loop_idx[1] == 2) {
         innermost_loop_reuse = params.vector_fetch_2_loops[1][2] - 1;
       }
-      // std::cout << "Innermost loop reuse: " << innermost_loop_reuse << "\n";
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush

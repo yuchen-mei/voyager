@@ -60,10 +60,10 @@ template <typename... Ts>
 void send_packed_request(ac_int<DTYPE_INDEX_WIDTH, false> dtype,
                          ac_int<ADDRESS_WIDTH, false> offset,
                          ac_int<32, false> address,
-                         ac_int<32, false> fetch_width,
+                         ac_int<16, false> burst_bytes,
                          Connections::Out<MemoryRequest>& channel) {
   ac_int<6, false> width = get_type_width<Ts...>(dtype);
-  MemoryRequest request = {offset + address * width / 8, fetch_width};
+  MemoryRequest request = {offset + address * width / 8, burst_bytes};
   channel.Push(request);
 }
 
@@ -88,44 +88,6 @@ bool unpack_bits(ac_int<DTYPE_INDEX_WIDTH, false> dtype,
   }
 
   return true;
-}
-
-template <size_t N, int port_width, int buffer_width, typename... Ts>
-void process_packed_response(
-    ac_int<DTYPE_INDEX_WIDTH, false> dtype, ac_int<4, false> num_fetches,
-    ac_int<4, false> packing_factor,
-    Connections::In<ac_int<port_width, false>>& response,
-    Connections::Combinational<ac_int<buffer_width, false>>& output) {
-  constexpr int max_fetch_width =
-      std::max({dtype_fetch_config<Ts, N, port_width>::max_fetch_width...});
-  ac_int<max_fetch_width, false> bits;
-
-  for (ac_int<4, false> i = 0;; i++) {
-    bits.set_slc(i * port_width, response.Pop());
-    if (i == num_fetches - 1) {
-      break;
-    }
-  }
-
-  // Unpack bits into outputs based on dtype
-  for (ac_int<4, false> i = 0;; i++) {
-    ac_int<buffer_width, false> outputs = 0;
-    bool handled = (unpack_bits<Ts, N, buffer_width, max_fetch_width, Ts...>(
-                        dtype, bits, outputs, i) ||
-                    ...);
-
-#ifndef __SYNTHESIS__
-    if (!handled) {
-      throw std::runtime_error("Unsupported dtype for matrix input: " +
-                               std::to_string(dtype));
-    }
-#endif
-    output.Push(outputs);
-
-    if (i == packing_factor - 1) {
-      break;
-    }
-  }
 }
 
 template <typename T, int width, typename... Ts>
