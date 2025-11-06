@@ -12,7 +12,7 @@
 #include "test/common/AccessCounter.h"
 #include "test/common/DataLoader.h"
 #include "test/common/Network.h"
-#include "test/common/VerificationTypes.h"
+#include "test/common/Utils.h"
 
 #ifndef CFLOAT
 #include "Accelerator.h"

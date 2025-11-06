@@ -9,14 +9,11 @@
 #include <string>
 #include <vector>
 
-#include "test/compiler/proto/param.pb.h"
-
-// clang-format off
-#include "src/datatypes/DataTypes.h"
-// clang-format on
 #include "spdlog/spdlog.h"
 #include "src/ArchitectureParams.h"
-#include "test/common/VerificationTypes.h"
+#include "src/datatypes/DataTypes.h"
+#include "test/common/Utils.h"
+#include "test/compiler/proto/param.pb.h"
 
 // Abstract class for interfacing with memory models.
 class MemoryInterface {

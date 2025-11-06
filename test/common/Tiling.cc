@@ -1,7 +1,7 @@
 #include "test/common/Tiling.h"
 
 #include "spdlog/spdlog.h"
-#include "test/common/VerificationTypes.h"
+#include "test/common/Utils.h"
 
 std::ostream& operator<<(std::ostream& os, const Tiling& tiling) {
   os << "Loops: " << std::endl;

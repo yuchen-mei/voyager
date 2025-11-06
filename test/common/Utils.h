@@ -1,125 +1,368 @@
 #pragma once
+
 #define NO_SYSC
 
-#include <spdlog/spdlog.h>
-
+// IWYU pragma: begin_exports
 #include <any>
-#include <fstream>
 #include <iostream>
+#include <map>
+#include <string>
+#include <unordered_set>
+#include <vector>
 
-#include "test/common/Tiling.h"
+#include "spdlog/spdlog.h"
+#include "src/ArchitectureParams.h"
+#include "src/datatypes/DataTypes.h"
+#include "test/compiler/proto/param.pb.h"
+// IWYU pragma: end_exports
 
-int validateMapping(Tiling tiling);
+#define DRAM_SIZE_MB (2 * 1024 * 1024LL * 1024LL)
+#define SRAM_SIZE_MB (16 * 1024 * 1024)
+#define REFERENCE_MEMORY_SIZE (8 * 1024 * 1024)
 
-template <typename TA, typename TB>
-float compare_arrays(std::any matrixA, std::string matrixA_name,
-                     std::any matrixB, std::string matrixB_name, size_t size,
-                     std::string filename, bool doublePrecision) {
-  spdlog::info("Writing comparison between {} and {} to file: {}\n",
-               matrixA_name, matrixB_name, filename);
-  std::ofstream diffFile(filename);
-  diffFile << matrixA_name << " vs. " << matrixB_name << std::endl;
+static const std::unordered_set<std::string> GEMM_OPS = {
+    "conv2d", "linear", "matmul", "conv2d_mx", "linear_mx", "matmul_mx",
+};
 
-  // Records absolute differences
-  int abs_diff_buckets[5] = {0, 0, 0, 0, 0};
-  // Records relative differences
-  int rel_diff_buckets[5] = {0, 0, 0, 0, 0};
+static const std::unordered_set<std::string> MEMORY_OPS = {
+    "slice",
+    "permute",
+    "transpose",
+};
 
-  double always_zero = 0.0;
+enum MemorySource { SRAM, RRAM };
 
-  TA* matrixA_ptr = std::any_cast<TA*>(matrixA);
-  TB* matrixB_ptr = std::any_cast<TB*>(matrixB);
+inline std::ostream& operator<<(std::ostream& os, MemorySource& memory) {
+  os << (memory == SRAM ? "SRAM" : "RRAM");
+  return os;
+}
 
-  for (int index = 0; index < size; index++) {
-    // Calculate absolute difference
-    float a = matrixA_ptr[index];
-    float b = matrixB_ptr[index];
-    always_zero += abs(a) + abs(b);
-    float abs_diff = abs(a - b);
+// The accelerator has several interfaces for accessing memory, but
+// these interfaces aren't always standard. For example, for some layers,
+// an interface may access the residual, but for other layers, access weights.
+// This data structure maps the accelerator interface to the MemorySource.
+typedef std::map<std::string, MemorySource> AcceleratorMemoryMap;
 
-    // Write the two values + error scale indicator to file
-    diffFile << a << " vs. " << b << " ";
-    for (float i = 0.001; i < abs_diff; i *= 10.0) {
-      diffFile << "*";
+inline bool is_soc_sim() {
+  const char* env = std::getenv("SOC_SIM");
+  return env != nullptr && std::string(env) == "1";
+}
+
+inline std::vector<int> get_shape(const codegen::Tensor& tensor,
+                                  bool reshape = true, bool tiled = true) {
+  if (tensor.has_reshape() && reshape) {
+    const auto output_shape =
+        tensor.reshape().kwargs().at("output_shape").int_list().values();
+    return {output_shape.begin(), output_shape.end()};
+  }
+
+  if (is_soc_sim() && tiled && tensor.tiled_shape_size()) {
+    const auto repeated_field = tensor.tiled_shape();
+    return {repeated_field.begin(), repeated_field.end()};
+  }
+
+  const auto repeated_field = tensor.shape();
+  return {repeated_field.begin(), repeated_field.end()};
+}
+
+inline long get_size(const std::vector<int>& shape) {
+  long size = 1;
+  for (const auto& dim : shape) size *= dim;
+  return size;
+}
+
+inline long get_size(const codegen::Tensor& tensor, bool reshape = true,
+                     bool tiled = true) {
+  const auto shape = get_shape(tensor, reshape, tiled);
+  return get_size(shape);
+}
+
+inline void print_shape(const std::vector<int>& shape) {
+  spdlog::error("(");
+  for (size_t i = 0; i < shape.size(); ++i) {
+    spdlog::error("{}{}", shape[i], (i + 1 < shape.size() ? ", " : ")"));
+  }
+  spdlog::error("\n");
+}
+
+inline int pad_shape_to_ndim(std::vector<int>& shape, const int ndim) {
+  const int padding = ndim - shape.size();
+  if (padding < 0) {
+    throw std::invalid_argument("Number of dimensions exceeds the limit!");
+  }
+
+  for (int i = 0; i < padding; i++) {
+    shape.insert(shape.begin(), 1);
+  }
+  return padding;
+}
+
+inline std::vector<codegen::OpOverload> get_op_list(
+    const codegen::Operation& param) {
+  std::vector<codegen::OpOverload> ops;
+  if (param.has_op()) {
+    ops.push_back(param.op());
+  } else {
+    const auto op_list = param.fused_op().op_list();
+    ops.insert(ops.end(), op_list.begin(), op_list.end());
+  }
+  return ops;
+}
+
+inline std::string get_op_name(const codegen::Operation& param) {
+  if (param.has_op()) {
+    return param.op().name();
+  } else {
+    return param.fused_op().name();
+  }
+}
+
+inline std::vector<codegen::Tensor> get_op_outputs(
+    const codegen::Operation& param) {
+  std::vector<codegen::Tensor> outputs;
+  if (param.has_output()) {
+    outputs.push_back(param.output());
+  } else {
+    for (const auto& output : param.outputs().tensors()) {
+      outputs.push_back(output);
     }
-    diffFile << std::endl;
+  }
+  return outputs;
+}
 
-    if (abs_diff < 0.001) {
-      abs_diff_buckets[0]++;
+inline bool is_fc_layer(const codegen::OpOverload& op) {
+  const auto input = op.kwargs().at("input").tensor();
+
+  int dim = 1;
+  for (int i = 0; i < input.shape_size() - 1; i++) {
+    dim *= input.shape(i);
+  }
+
+  return dim == 1;
+}
+
+inline float* read_constant_param(const codegen::Tensor& tensor) {
+  const char* env_var = std::getenv("NETWORK");
+  std::string model_name(env_var);
+  std::string project_root = std::string(std::getenv("PROJECT_ROOT"));
+  std::string datatype = std::string(std::getenv("DATATYPE"));
+  std::string filename =
+      project_root + "/" + std::string(getenv("CODEGEN_DIR")) + "/networks/" +
+      model_name + "/" + datatype + "/tensor_files/" + tensor.node() + ".bin";
+
+  const int size = get_size(tensor, false);
+
+  float* data = new float[size];
+  std::ifstream input_stream(filename, std::ios::binary);
+  input_stream.read(reinterpret_cast<char*>(data), size * sizeof(float));
+
+  return data;
+}
+
+inline std::string getenv(std::string const& name,
+                          std::string const& default_value) {
+  const char* val = std::getenv(name.c_str());
+  return val == NULL ? default_value : std::string(val);
+}
+
+inline int getenv_int(const std::string& name, int default_value = 0) {
+  const char* val = std::getenv(name.c_str());
+  if (val == nullptr) {
+    return default_value;
+  }
+
+  try {
+    return std::stoi(val);
+  } catch (const std::invalid_argument&) {
+    // If the value isn't a valid integer, return the default
+    return default_value;
+  } catch (const std::out_of_range&) {
+    // If the value is too large or small for int, return the default
+    return default_value;
+  }
+}
+
+inline uint64_t get_address(const codegen::Tensor& tensor) {
+  if (is_soc_sim() && tensor.has_scratchpad()) {
+    std::string offset = getenv("SOC_MEM_OFFSET", "0");
+    return tensor.scratchpad().address() + std::stoi(offset);
+  } else {
+    return tensor.memory().address();
+  }
+}
+
+inline int get_partition(const codegen::Tensor& tensor) {
+  if (is_soc_sim() && tensor.has_scratchpad()) {
+    return tensor.scratchpad().partition();
+  } else {
+    return tensor.memory().partition();
+  }
+}
+
+inline std::vector<int> get_l2_tiling(codegen::Operation param) {
+  const auto op_list = get_op_list(param);
+  if (op_list.empty()) {
+    return {};
+  }
+
+  const auto& first_op = op_list.front();
+  const auto& kwargs = first_op.kwargs();
+
+  const auto it = kwargs.find("l2_tiling");
+  if (it == kwargs.end()) {
+    return {};
+  }
+
+  const auto& rep = it->second.int_list().values();
+  return {rep.begin(), rep.end()};
+}
+
+inline int get_num_tiles(std::vector<int> tiling) {
+  int size = 1;
+  for (auto d : tiling) {
+    size *= d;
+  }
+
+  const char* env = std::getenv("MAX_TILES");
+  if (env == nullptr) {
+    return size;
+  }
+
+  int max_tiles = std::stoi(env);
+  return std::min(max_tiles, size);
+}
+
+inline std::vector<int> get_tiles(std::vector<int> full_shape,
+                                  std::vector<int> tiled_shape) {
+  const int rank = full_shape.size();
+  std::vector<int> tiles(rank);
+
+  pad_shape_to_ndim(tiled_shape, rank);
+
+  for (int d = 0; d < rank; ++d) {
+    tiles[d] = full_shape[d] / tiled_shape[d];
+  }
+  return tiles;
+}
+
+inline std::vector<int> get_tile_index(std::vector<int> shape, int index) {
+  const int rank = shape.size();
+  std::vector<int> tile_index(rank, 0);
+  for (int i = 0; i < index; i++) {
+    for (int d = rank - 1; d >= 0; --d) {
+      if (++tile_index[d] < shape[d]) break;
+      tile_index[d] = 0;
     }
-    if (abs_diff < 0.01) {
-      abs_diff_buckets[1]++;
+  }
+  return tile_index;
+}
+
+inline float get_tensor_scalar_scale(const codegen::Tensor& tensor) {
+  if (!tensor.has_dequant()) {
+    return 1.0f;
+  }
+
+  const auto& dequantize_op = tensor.dequant();
+  const auto scale_tensor = dequantize_op.kwargs().at("scale").tensor();
+  float* scale_val = read_constant_param(scale_tensor);
+  return scale_val[0];
+}
+
+static void log_diff_buckets(const std::string& label, const int buckets[5],
+                             size_t size) {
+  spdlog::info("{}:\n", label);
+  spdlog::info("< 0.001: {:8d} ({:6.2f}%)\n", buckets[0],
+               static_cast<float>(buckets[0]) / size * 100.0f);
+  spdlog::info("< 0.01:  {:8d} ({:6.2f}%)\n", buckets[1],
+               static_cast<float>(buckets[1]) / size * 100.0f);
+  spdlog::info("< 0.1:   {:8d} ({:6.2f}%)\n", buckets[2],
+               static_cast<float>(buckets[2]) / size * 100.0f);
+  spdlog::info("< 1:     {:8d} ({:6.2f}%)\n", buckets[3],
+               static_cast<float>(buckets[3]) / size * 100.0f);
+  spdlog::info("> 1:     {:8d} ({:6.2f}%)\n", buckets[4],
+               static_cast<float>(buckets[4]) / size * 100.0f);
+}
+
+template <typename T1, typename T2>
+float compare_arrays(std::any matrix_a, const std::string& name_a,
+                     std::any matrix_b, const std::string& name_b, size_t size,
+                     const std::string& filename, bool double_precision) {
+  spdlog::info("Comparing {} and {} (size: {}) -> output: {}\n", name_a, name_b,
+               size, filename);
+
+  constexpr size_t max_write_size = pow(2, 26);  // 64 MB
+  bool write_to_file = size <= max_write_size;
+
+  std::ofstream diff_file;
+  if (write_to_file) {
+    diff_file.open(filename);
+    diff_file << name_a << " vs. " << name_b << '\n';
+  } else {
+    spdlog::warn("Skipping diff file output (size={} exceeds {})\n", size,
+                 max_write_size);
+  }
+
+  int abs_diff_buckets[5] = {0};
+  int rel_diff_buckets[5] = {0};
+  double sum_abs = 0.0;
+
+  T1* matrix_a_ptr = std::any_cast<T1*>(matrix_a);
+  T2* matrix_b_ptr = std::any_cast<T2*>(matrix_b);
+
+  for (size_t i = 0; i < size; ++i) {
+    float a = static_cast<float>(matrix_a_ptr[i]);
+    float b = static_cast<float>(matrix_b_ptr[i]);
+    sum_abs += std::abs(a) + std::abs(b);
+    float abs_diff = std::abs(a - b);
+
+    if (write_to_file) {
+      diff_file << a << " vs. " << b << " ";
+      for (float j = 0.001f; j < abs_diff; j *= 10.0f) {
+        diff_file << '*';
+      }
+      diff_file << '\n';
     }
-    if (abs_diff < 0.1) {
-      abs_diff_buckets[2]++;
-    }
-    if (abs_diff < 1) {
-      abs_diff_buckets[3]++;
-    } else if (!std::isinf(abs_diff) && !std::isnan(abs_diff)) {
-      abs_diff_buckets[4]++;
-    }
+
+    bool is_nan = std::isinf(abs_diff) || std::isnan(abs_diff);
+
+    // Absolute difference buckets
+    abs_diff_buckets[0] += abs_diff < 0.001f;
+    abs_diff_buckets[1] += abs_diff < 0.01f;
+    abs_diff_buckets[2] += abs_diff < 0.1f;
+    abs_diff_buckets[3] += abs_diff < 1.0f;
+    abs_diff_buckets[4] += abs_diff >= 1.0f && !is_nan;
 
     // Does not fully protect against overflow, but lets not over engineer
-    if ((a == 0 && b == 0) || std::isinf(a) || std::isinf(b)) {
+    if ((a == 0 && b == 0) || is_nan) {
       rel_diff_buckets[0]++;
       rel_diff_buckets[1]++;
       rel_diff_buckets[2]++;
       rel_diff_buckets[3]++;
-      continue;
     } else {
       // See https://en.wikipedia.org/wiki/Relative_change_and_difference
-      float rel_diff = abs_diff / ((abs(a) + abs(b)) / 2);
-      if (rel_diff < 0.001) {
-        rel_diff_buckets[0]++;
-      }
-      if (rel_diff < 0.01) {
-        rel_diff_buckets[1]++;
-      }
-      if (rel_diff < 0.1) {
-        rel_diff_buckets[2]++;
-      }
-      if (rel_diff < 1) {
-        rel_diff_buckets[3]++;
-      } else {
-        rel_diff_buckets[4]++;
-      }
+      float rel_diff = abs_diff / ((std::abs(a) + std::abs(b)) / 2.0f);
+      rel_diff_buckets[0] += rel_diff < 0.001f;
+      rel_diff_buckets[1] += rel_diff < 0.01f;
+      rel_diff_buckets[2] += rel_diff < 0.1f;
+      rel_diff_buckets[3] += rel_diff < 1.0f;
+      rel_diff_buckets[4] += rel_diff >= 1.0f;
     }
   }
 
-  spdlog::info("Difference Count:\n");
-  spdlog::info("< 0.001: {} ({}%)\n", abs_diff_buckets[0],
-               (float)abs_diff_buckets[0] / size * 100.0);
-  spdlog::info("< 0.01: {} ({}%)\n", abs_diff_buckets[1],
-               (float)abs_diff_buckets[1] / size * 100.0);
-  spdlog::info("< 0.1: {} ({}%)\n", abs_diff_buckets[2],
-               (float)abs_diff_buckets[2] / size * 100.0);
-  spdlog::info("< 1: {} ({}%)\n", abs_diff_buckets[3],
-               (float)abs_diff_buckets[3] / size * 100.0);
-  spdlog::info("> 1: {} ({}%)\n", abs_diff_buckets[4],
-               (float)abs_diff_buckets[4] / size * 100.0);
+  spdlog::info("-------------------------------\n");
+  log_diff_buckets("Absolute Difference Count", abs_diff_buckets, size);
+  spdlog::info("-------------------------------\n");
+  log_diff_buckets("Relative Difference Count", rel_diff_buckets, size);
+  spdlog::info("-------------------------------\n");
 
-  spdlog::info("Percent Difference Count:\n");
-  spdlog::info("< 0.001: {} ({}%)\n", rel_diff_buckets[0],
-               (float)rel_diff_buckets[0] / size * 100.0);
-  spdlog::info("< 0.01: {} ({}%)\n", rel_diff_buckets[1],
-               (float)rel_diff_buckets[1] / size * 100.0);
-  spdlog::info("< 0.1: {} ({}%)\n", rel_diff_buckets[2],
-               (float)rel_diff_buckets[2] / size * 100.0);
-  spdlog::info("< 1: {} ({}%)\n", rel_diff_buckets[3],
-               (float)rel_diff_buckets[3] / size * 100.0);
-  spdlog::info("> 1: {} ({}%)\n", rel_diff_buckets[4],
-               (float)rel_diff_buckets[4] / size * 100.0);
-  spdlog::info("\n");
-
-  if (always_zero == 0.0) {
-    spdlog::info("WARNING: All compared values are zero!\n");
+  if (sum_abs == 0.0) {
+    spdlog::warn("WARNING: All compared values are zero!\n");
   }
 
-  // Ideally, these buckets should be non-overlapping...
-  // TODO(fpedd): Subtract the next smaller bucket to make them non-overlapping
-  float err = (1 - (float)rel_diff_buckets[1] / size) * 0.001 +
-              (1 - (float)rel_diff_buckets[2] / size) * 0.01 +
-              (1 - (float)rel_diff_buckets[3] / size) * 0.1 +
-              (float)rel_diff_buckets[4] / size;
-  return err * 100;
+  float error = (1 - (float)rel_diff_buckets[1] / size) * 0.001f +
+                (1 - (float)rel_diff_buckets[2] / size) * 0.01f +
+                (1 - (float)rel_diff_buckets[3] / size) * 0.1f +
+                (float)rel_diff_buckets[4] / size;
+
+  return error * 100.0f;
 }

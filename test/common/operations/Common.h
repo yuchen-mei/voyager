@@ -5,12 +5,9 @@
 #include <any>
 #include <vector>
 
-// clang-format off
-#include "src/datatypes/DataTypes.h"
-// clang-format on
-
 #include "src/ArchitectureParams.h"
-#include "test/common/VerificationTypes.h"
+#include "src/datatypes/DataTypes.h"
+#include "test/common/Utils.h"
 #include "test/compiler/proto/param.pb.h"
 // IWYU pragma: end_exports
 

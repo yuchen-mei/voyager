@@ -392,95 +392,10 @@ inline Buffer* gemm(std::any input_ptr, std::any input_scale_ptr,
 
 template <typename Input, typename Weight, typename Psum, typename Output,
           typename Scale, int N>
-inline Output* gemv_simd(std::any input_ptr, std::any input_scale_ptr,
-                         std::any weight_ptr, std::any weight_scale_ptr,
-                         std::any bias_ptr, const Operation& operation) {
-  spdlog::debug("Performing SIMD matrix-vector multiply\n");
-
-  const auto op_list = get_op_list(operation.param);
-  const auto matrix_op = op_list.front();
-
-  const auto input = matrix_op.kwargs().at("input").tensor();
-  const auto output = get_op_outputs(operation.param).back();
-
-  int block_size = 1;
-  if (matrix_op.kwargs().contains("block_size")) {
-    block_size = matrix_op.kwargs().at("block_size").int_value();
-  }
-
-  int C = get_size(input);
-  int K = get_size(output);
-  int C1 = C / block_size;
-  int C0 = block_size;
-
-  Input* inputs = std::any_cast<Input*>(input_ptr);
-  Weight* weights = std::any_cast<Weight*>(weight_ptr);
-  Output* biases = std::any_cast<Output*>(bias_ptr);
-
-  Scale* input_scales = std::any_cast<Scale*>(input_scale_ptr);
-  Scale* weight_scales = std::any_cast<Scale*>(weight_scale_ptr);
-
-  Output* outputs = new Output[K];
-  for (int i = 0; i < K; i++) {
-    outputs[i] = 0.0;
-  }
-
-  for (int k = 0; k < K; k++) {
-    for (int c1 = 0; c1 < C1; c1++) {
-      Psum psum = 0;
-
-      // single microscaling block
-      for (int c0 = 0; c0 < C0; c0++) {
-        int c = c1 * C0 + c0;
-
-        Input input = inputs[c];
-        Weight weight = weights[c * K + k];
-        fused_multiply_add(input, weight, psum);
-      }
-
-      // Rescale the psums
-      if (input_scales && weight_scales) {
-        Scale input_scale = input_scales[c1];
-        Scale weight_scale = weight_scales[c1 * K + k];
-        outputs[k] += static_cast<Output>(input_scale) *
-                      static_cast<Output>(weight_scale) *
-                      static_cast<Output>(psum);
-      } else {
-        outputs[k] += static_cast<Output>(psum);
-      }
-    }
-
-    if (biases != nullptr) {
-      outputs[k] += biases[k];
-    }
-  }
-
-  delete[] inputs;
-  delete[] weights;
-
-  if (biases != nullptr) {
-    delete[] biases;
-  }
-
-  if (input_scales != nullptr) {
-    delete[] input_scales;
-  }
-
-  if (weight_scales != nullptr) {
-    delete[] weight_scales;
-  }
-
-  return outputs;
-}
-
-template <typename Input, typename Weight, typename Psum, typename Output,
-          typename Scale, int N>
 inline Output* gemv_quantized(std::any input_ptr, std::any input_scale_ptr,
                               std::any weight_ptr, std::any weight_scale_ptr,
                               std::any bias_ptr, const Operation& operation) {
   spdlog::debug("Performing matrix-vector multiply\n");
-
-  const int FEEDBACK_DELAY = 4;
 
   const auto op_list = get_op_list(operation.param);
   const auto matrix_op = op_list.front();
@@ -506,15 +421,10 @@ inline Output* gemv_quantized(std::any input_ptr, std::any input_scale_ptr,
 
   Output* outputs = new Output[K];
   for (int i = 0; i < K; i++) {
-    outputs[i] = 0.0;
+    outputs[i] = biases != nullptr ? biases[i] : Output::zero();
   }
 
   for (int k = 0; k < K; k++) {
-    Output psums[FEEDBACK_DELAY];
-    for (int i = 0; i < FEEDBACK_DELAY; i++) {
-      psums[i] = Output::zero();
-    }
-
     for (int c = 0; c < num_tiles; c++) {
       Psum product[N];
       for (int i = 0; i < N; i++) {
@@ -534,7 +444,7 @@ inline Output* gemv_quantized(std::any input_ptr, std::any input_scale_ptr,
           buffer[j] = product[i * block_size + j];
         }
 
-        Psum reduced_val = tree_reduce(buffer, block_size);
+        Psum psum = tree_reduce(buffer, block_size);
 
         if (input_scales && weight_scales) {
           Scale input_scale = input_scales[c * num_blocks + i];
@@ -542,21 +452,14 @@ inline Output* gemv_quantized(std::any input_ptr, std::any input_scale_ptr,
               weight_scales[k * C / block_size + c * num_blocks + i];
           output_block[i] = static_cast<Output>(input_scale) *
                             static_cast<Output>(weight_scale) *
-                            static_cast<Output>(reduced_val);
+                            static_cast<Output>(psum);
         } else {
           output_block[i] = static_cast<Output>(product[0]);
         }
       }
 
       // tree reduce over output blocks
-      psums[c % FEEDBACK_DELAY] += tree_reduce(output_block, num_blocks);
-    }
-
-    // tree reduce psums
-    outputs[k] = tree_reduce(psums, FEEDBACK_DELAY);
-
-    if (biases != nullptr) {
-      outputs[k] += biases[k];
+      outputs[k] += tree_reduce(output_block, num_blocks);
     }
   }
 
@@ -715,14 +618,13 @@ inline Buffer* DwC(std::any input_ptr, std::any input_scale_ptr,
               int y_start = y * stride_y;
 
               int output_addr = (y * ox + x) * oc + ic_g;
-              // outputs[output_addr] = biases[ic_g];
 
               // Apply 3x3 kernel directly on input (pad=0 behavior)
               for (int ky = 0; ky < kernel_size; ky++) {
                 for (int kx = 0; kx < kernel_size; kx++) {
                   int input_x = x_start + kx - x_pad;
                   int input_y = y_start + ky - y_pad;
-                  // Psum psum(0.0);
+
                   // Check bounds to prevent core dump
                   if (input_x >= 0 && input_x < ix && input_y >= 0 &&
                       input_y < iy) {

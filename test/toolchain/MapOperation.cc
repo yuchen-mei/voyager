@@ -1,7 +1,7 @@
 #include "spdlog/spdlog.h"
 #include "src/AccelTypes.h"
 #include "src/Params.h"
-#include "test/common/VerificationTypes.h"
+#include "test/common/Utils.h"
 #include "test/compiler/proto/param.pb.h"
 #include "test/toolchain/LayerNorm.h"
 #include "test/toolchain/MatrixOps.h"

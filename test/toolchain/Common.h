@@ -4,7 +4,7 @@
 #include <set>
 
 #include "src/Params.h"
-#include "test/common/VerificationTypes.h"
+#include "test/common/Utils.h"
 #include "test/compiler/proto/param.pb.h"
 
 constexpr int MAX_LOOP_VALUE = 65535;
@@ -265,6 +265,19 @@ void update_tensor_shape(codegen::Tensor& tensor,
     for (int dim : new_shape) {
       tensor.add_shape(dim);
     }
+  }
+}
+
+void set_dequantize_scale(const codegen::Tensor& tensor,
+                          VectorParams* vector_params) {
+  if (tensor.has_dequant()) {
+    const auto& dequant_op = tensor.dequant();
+    const auto scale = dequant_op.kwargs().at("scale").tensor();
+    assert(get_size(scale) == 1);
+
+    float* array = read_constant_param(scale);
+    VECTOR_DATATYPE immediate = array[0];
+    vector_params->vector_fetch_0_dq_scale = immediate.bits_rep();
   }
 }
 

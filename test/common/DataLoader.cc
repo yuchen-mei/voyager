@@ -4,7 +4,7 @@
 #include <iostream>
 
 #include "spdlog/spdlog.h"
-#include "test/common/VerificationTypes.h"
+#include "test/common/Utils.h"
 #include "xtensor/xadapt.hpp"
 
 DataLoader::DataLoader(MemoryInterface* memory_interface, bool is_dut)

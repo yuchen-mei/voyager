@@ -3,14 +3,22 @@ import interstellar
 import logging
 import math
 import os
-
+import re
+from deepdiff import DeepDiff
 from google.protobuf import text_format
-
+from google.protobuf.json_format import MessageToDict
 from quantized_training.codegen import param_pb2
 from proto import tiling_pb2
 
 
 logger = logging.getLogger(__name__)
+
+
+def get_dtype_width(dtype: str):
+    bit_search = re.search(r"[^\d](\d+)(_.*)?$", str(dtype))
+    if bit_search is None:
+        raise ValueError(f"`dtype` is not a valid dtype: {dtype}.")
+    return int(bit_search.groups()[0])
 
 
 class RuntimeCalculator:
@@ -70,6 +78,19 @@ class RuntimeCalculator:
         # currently assume that each value in the input buffer is loaded in one cycle
         input_buffer_loading_time = input_buffer_loading_size
 
+        if self.operation.WhichOneof("op_type") == "op":
+            matrix_op = self.operation.op
+        else:
+            matrix_op = self.operation.fused_op.op_list[0]
+        input_dtype = matrix_op.kwargs["input"].tensor.dtype
+        input_dtype_width = get_dtype_width(input_dtype)
+
+        if self.operation.HasField("output"):
+            output_dtype = self.operation.output.dtype
+        else:
+            output_dtype = self.operation.outputs.tensors[1].dtype
+        output_dtype_width = get_dtype_width(output_dtype)
+
         weight_relevant_loops = [
             interstellar.le.IC,
             interstellar.le.OC,
@@ -96,28 +117,24 @@ class RuntimeCalculator:
         for loop in output_relevant_loops:
             output_size *= mapping.loop_blockings[loop][1]
         vector_unit_time = output_size
-        requires_high_precision = False
-        if self.operation.WhichOneof("op_type") == "fused_op":
-            input_precision = (
-                self.operation.fused_op.op_list[0].kwargs["input"].tensor.dtype
-            )
-            # check if any of the operands are in high precision or
-            for i in range(1, len(self.operation.fused_op.op_list)):
-                vector_op = self.operation.fused_op.op_list[i]
-                if "other" in vector_op.kwargs:
-                    if vector_op.kwargs["other"].tensor.HasField("memory"):
-                        tensor_to_load = vector_op.kwargs["other"].tensor
-                    else:
-                        tensor_to_load = vector_op.kwargs["input"].tensor
 
-                    if tensor_to_load.dtype != input_precision:
+        requires_high_precision = False
+        if output_dtype_width > input_dtype_width:
+            requires_high_precision = True
+        elif self.operation.WhichOneof("op_type") == "fused_op":
+            # check if any of the operands in fused ops are in high precision
+            for vector_op in self.operation.fused_op.op_list[1:]:
+                for arg in vector_op.kwargs.values():
+                    if not arg.HasField("tensor") or not arg.tensor.HasField("memory"):
+                        continue
+
+                    dtype_width = get_dtype_width(arg.tensor.dtype)
+                    if dtype_width > input_dtype_width:
                         requires_high_precision = True
                         break
-            if self.operation.output.dtype != input_precision:
-                requires_high_precision = True
 
-            if requires_high_precision:
-                vector_unit_time *= 2
+        if requires_high_precision:
+            vector_unit_time *= 2
 
         using_double_buffer_accum_buffer = (
             self.double_buffered_accum_buffer and requires_high_precision
@@ -169,6 +186,18 @@ class RuntimeCalculator:
             )
 
         return total_time
+
+
+def delete_nested_keys(data, key):
+    if isinstance(data, dict):
+        for k in list(data.keys()):
+            if k == key:
+                del data[k]
+            else:
+                delete_nested_keys(data[k], key)
+    elif isinstance(data, list):
+        for item in data:
+            delete_nested_keys(item, key)
 
 
 def main():
@@ -259,6 +288,8 @@ def main():
         contents = f.read()
     params = param_pb2.Model()
     text_format.Parse(contents, params)
+
+    unique_layers = {}
 
     # generate tilings for all matrix operations
     tilings = tiling_pb2.ModelTiling()
@@ -371,24 +402,29 @@ def main():
 
         print(f"Finding tiling for {param_name}")
 
+        # remove the name, memory, and node fields from the op
+        params_dict = MessageToDict(param, preserving_proto_field_name=True)
+        delete_nested_keys(params_dict, "name")
+        delete_nested_keys(params_dict, "memory")
+        delete_nested_keys(params_dict, "scratchpad")
+        delete_nested_keys(params_dict, "node")
+
+        matched_param = None
+        for op_name, op_val in unique_layers.items():
+            if not DeepDiff(params_dict, op_val, ignore_order=True):
+                matched_param = op_name
+                break
+
         # check if the layer is already in the cache
-        layer_key = (
-            layer.nifm,
-            layer.nofm,
-            layer.wofm,
-            layer.hofm,
-            layer.wfil,
-            layer.hfil,
-            layer.wstd,
-            layer.hstd,
-        )
-        if layer_key in cache:
-            print("Layer already in cache")
+        if matched_param is not None:
+            print(f"Layer {param_name} is identical to cached layer {matched_param}")
             cost, runtime, mapping, perf, total_cost, total_access_cost, access_list = (
-                cache[layer_key]
+                cache[matched_param]
             )
         else:
-            print("Layer not in cache, calling Interstellar optimizer")
+            print(f"Layer {param_name} not in cache, calling Interstellar optimizer")
+            unique_layers[param_name] = params_dict
+
             runtime_calculator = RuntimeCalculator(
                 param, args.double_buffered_accum_buffer
             )
@@ -405,7 +441,7 @@ def main():
                 interstellar.cost_model.get_cost(architecture, mapping, layer)
             )
 
-            cache[layer_key] = (
+            cache[param_name] = (
                 cost,
                 runtime,
                 mapping,

@@ -23,6 +23,7 @@
 
 namespace DataTypes {
 typedef Int<2, false> uint2;
+typedef Int<1, true> int1;
 typedef Int<2, true> int2;
 typedef Int<4, true> int4;
 typedef Int<6, true> int6;
@@ -55,6 +56,11 @@ struct TypeName {
 template <>
 struct TypeName<uint2> {
   static std::string name() { return "uint2"; }
+};
+
+template <>
+struct TypeName<int1> {
+  static std::string name() { return "int1"; }
 };
 
 template <>
@@ -142,6 +148,7 @@ struct TypeName<posit8> {
 // clang-format off
 #define SUPPORTED_TYPES          \
   DataTypes::uint2,              \
+  DataTypes::int1,               \
   DataTypes::int2,               \
   DataTypes::int4,               \
   DataTypes::int6,               \
@@ -208,13 +215,13 @@ int get_index_from_type_name(const std::string& dtype) {
 template <typename T, size_t N, int port_width>
 struct dtype_fetch_config {
   static constexpr int total_data_bits = T::width * N;
-  static constexpr int fetch_count =
-      (total_data_bits + port_width - 1) / port_width;
-  static constexpr int fetch_width = fetch_count * port_width;
+  static constexpr int fetch_width =
+      ((total_data_bits + port_width - 1) / port_width) * port_width;
 
-  static constexpr int packed_fetches =
-      total_data_bits / std::gcd(total_data_bits, port_width);
-  static constexpr int packed_fetch_width = packed_fetches * port_width;
+  // Pack multiple blocks into a single fetch if possible. The fetch width is
+  // the LCM of the data width and port width.
+  static constexpr int packed_fetch_width =
+      total_data_bits * port_width / std::gcd(total_data_bits, port_width);
   static constexpr int packing_factor = packed_fetch_width / total_data_bits;
 
   static constexpr int max_fetch_width =
