@@ -59,14 +59,16 @@ Simulation::Simulation() {
   network = new Network(model);
   operations = network->get_operations(tests);
 
-  spdlog::info("Starting new simulation with config:");
-  spdlog::info("\n> Model: {}", model);
-  spdlog::info("\n> Tests: ");
+  spdlog::info("Starting new simulation with config:\n");
+  spdlog::info("> Model: {}\n", model);
+  spdlog::info("> Tests: ");
   for (const std::string& t : tests) spdlog::info("{} ", t);
-  spdlog::info("\n> Sims: ");
+  spdlog::info("\n");
+  spdlog::info("> Sims: ");
   for (const std::string& s : sims) spdlog::info("{} ", s);
-  spdlog::info("\n> Tolerance: {}", tolerance);
-  spdlog::info("\n> Output dir: {}", out_dir);
+  spdlog::info("\n");
+  spdlog::info("> Tolerance: {}\n", tolerance);
+  spdlog::info("> Output dir: {}\n", out_dir);
 }
 
 Simulation::~Simulation() {
@@ -85,22 +87,22 @@ void Simulation::load_data() {
   uint64_t sram_size = 16 * 1024 * 1024;
   uint64_t output_size = network->get_max_output_size();
 
-  spdlog::info("Computed memory requirements:\n");
-  spdlog::info("  Max DRAM address: {} bytes ({} MB)\n", dram_size,
+  spdlog::info("Model memory requirements:\n");
+  spdlog::info("> Max DRAM address: {} bytes ({} MB)\n", dram_size,
                dram_size / (1024 * 1024));
-  spdlog::info("  Max output size: {} bytes ({} MB)\n", output_size,
+  spdlog::info("> Max output size: {} bytes ({} MB)\n", output_size,
                output_size / (1024 * 1024));
 
   // Add some padding to ensure we don't run out of memory (10% extra)
   dram_size = static_cast<uint64_t>(dram_size * 1.1);
   output_size = static_cast<uint64_t>(output_size * 1.1);
 
-  spdlog::info("Memory sizes with 10%% padding:\n");
-  spdlog::info("  DRAM: {} bytes ({} MB)\n", dram_size,
+  spdlog::info("Memory sizes with 10% margin:\n");
+  spdlog::info("> DRAM: {} bytes ({} MB)\n", dram_size,
                dram_size / (1024 * 1024));
-  spdlog::info("  SRAM: {} bytes ({} MB)\n", sram_size,
+  spdlog::info("> SRAM: {} bytes ({} MB)\n", sram_size,
                sram_size / (1024 * 1024));
-  spdlog::info("  Reference: {} bytes ({} MB)\n", output_size,
+  spdlog::info("> Reference: {} bytes ({} MB)\n", output_size,
                output_size / (1024 * 1024));
 
   std::vector<uint64_t> memory_sizes{dram_size, sram_size, output_size};
