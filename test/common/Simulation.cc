@@ -194,7 +194,7 @@ void Simulation::print_ideal_runtime(const Operation operation) {
       }
     } else if (first_op.target() == "adaptive_avg_pool2d") {
       const auto input_shape = get_shape(kwargs.at("input").tensor());
-      const auto output_shape = get_shape(kwargs.at("output").tensor());
+      const auto output_shape = get_shape(output);
       int kernel_y = input_shape[1] / output_shape[1];
       int kernel_x = input_shape[2] / output_shape[2];
       cycles *= (kernel_y * kernel_x);
