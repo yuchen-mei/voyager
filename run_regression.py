@@ -150,8 +150,10 @@ def print_test_results(test_results, layers, output_folder):
             print(f"Utilization: {utilization_all:.3f}")
             print(f"Matrix Utilization: {utilization_matrix:.3f}")
 
-    # concatentate all sorted model DataFrames into a single DataFrame and save to pickle
-    pd.concat(sorted_df).to_pickle(f"{output_folder}/test_results.pkl")
+    # concatentate all DataFrames into a single DataFrame and save to pickle and excel
+    combined_df = pd.concat(sorted_df)
+    combined_df.to_pickle(f"{output_folder}/test_results.pkl")
+    combined_df.to_excel(f"{output_folder}/test_results.xlsx", index=False)
 
     # return True if all tests passed
     return len(df[df["Status"] == False]) == 0
@@ -323,13 +325,16 @@ def run_rtl_test(model, layer, layer_count, num_tiles, output_folder, scale_down
     if scale_down_operation:
         env_vars["SCALE_DOWN_OPERATION"] = "1"
 
-    # Workaround: vcs/catapult don't support GLIBCXX_3.4.30 in their libstdc++, and the tools hardcode the linker libraries in such an
-    # order that their libs are used over the user specified ones. We need the newer version in order to run dependencies installed from conda.
+    # Workaround: vcs/catapult don't support GLIBCXX_3.4.30 in their libstdc++,
+    # and the tools hardcode the linker libraries in such an order that their
+    # libs are used over the user specified ones. We need the newer version in
+    # order to run dependencies installed from conda.
     env_vars["LD_PRELOAD"] = env_vars["CONDA_PREFIX"] + "/lib/libstdc++.so.6"
     set_default_env_vars(env_vars)
     build_folder = get_build_folder(env_vars)
 
-    # we occasionally see the test fail due to filesystem issues ("no rule to make target", but the target exists), so we retry up to 3 times
+    # we occasionally see the test fail due to filesystem issues ("no rule to
+    # make target", but the target exists), so we retry up to 3 times
     for attempt in range(3):
         with open(f"{output_folder}/{model}_{layer}.log", "w") as stdout_file:
             try:
