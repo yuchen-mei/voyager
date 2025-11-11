@@ -214,16 +214,12 @@ int get_index_from_type_name(const std::string& dtype) {
 
 template <typename T, size_t N, int port_width>
 struct dtype_fetch_config {
-  static constexpr int total_data_bits = T::width * N;
-  static constexpr int fetch_width =
-      ((total_data_bits + port_width - 1) / port_width) * port_width;
-
+  static constexpr int fetch_width = T::width * N;
   // Pack multiple blocks into a single fetch if possible. The fetch width is
   // the LCM of the data width and port width.
   static constexpr int packed_fetch_width =
-      total_data_bits * port_width / std::gcd(total_data_bits, port_width);
-  static constexpr int packing_factor = packed_fetch_width / total_data_bits;
-
+      fetch_width * port_width / std::gcd(fetch_width, port_width);
+  static constexpr int packing_factor = packed_fetch_width / fetch_width;
   static constexpr int max_fetch_width =
       packed_fetch_width > fetch_width ? packed_fetch_width : fetch_width;
 };

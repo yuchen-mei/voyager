@@ -410,7 +410,8 @@ void MapMatrixOperation(const Operation& operation,
     }
 
     matrix_params->input_burst_size = input_fetch_width / 8;
-    matrix_params->input_num_beats = input_fetch_width / IC_PORT_WIDTH;
+    matrix_params->input_num_beats =
+        (input_fetch_width + IC_PORT_WIDTH - 1) / IC_PORT_WIDTH;
     matrix_params->input_pack_factor_lg2 = std::log2(input_num_packs);
 
     // Set weight fields
@@ -450,7 +451,8 @@ void MapMatrixOperation(const Operation& operation,
     }
 
     matrix_params->weight_burst_size = weight_fetch_width / 8;
-    matrix_params->weight_num_beats = weight_fetch_width / OC_PORT_WIDTH;
+    matrix_params->weight_num_beats =
+        (weight_fetch_width + OC_PORT_WIDTH - 1) / OC_PORT_WIDTH;
     matrix_params->weight_pack_factor_lg2 = std::log2(weight_num_packs);
 
     // Set microscaling fields
