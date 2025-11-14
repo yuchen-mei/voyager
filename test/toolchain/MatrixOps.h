@@ -201,12 +201,10 @@ static bool should_use_direct_path(const VectorParams* vector_params) {
   return should_use_direct_path;
 }
 
-void MapMatrixOperation(const Operation& operation,
-                        std::deque<BaseParams*>& mapped_params,
-                        std::deque<AcceleratorMemoryMap>& memory_maps) {
+void map_matrix_operation(const Operation& operation,
+                          std::deque<BaseParams*>& mapped_params) {
   MatrixParams* matrix_params;
   DwCParams* dwc_params;
-  AcceleratorMemoryMap accelerator_memory_map;
   VectorInstructionConfig* vector_instruction_config =
       new VectorInstructionConfig;
 
@@ -410,7 +408,8 @@ void MapMatrixOperation(const Operation& operation,
     }
 
     matrix_params->input_burst_size = input_fetch_width / 8;
-    matrix_params->input_num_beats = input_fetch_width / IC_PORT_WIDTH;
+    matrix_params->input_num_beats =
+        (input_fetch_width + IC_PORT_WIDTH - 1) / IC_PORT_WIDTH;
     matrix_params->input_pack_factor_lg2 = std::log2(input_num_packs);
 
     // Set weight fields
@@ -450,7 +449,8 @@ void MapMatrixOperation(const Operation& operation,
     }
 
     matrix_params->weight_burst_size = weight_fetch_width / 8;
-    matrix_params->weight_num_beats = weight_fetch_width / OC_PORT_WIDTH;
+    matrix_params->weight_num_beats =
+        (weight_fetch_width + OC_PORT_WIDTH - 1) / OC_PORT_WIDTH;
     matrix_params->weight_pack_factor_lg2 = std::log2(weight_num_packs);
 
     // Set microscaling fields
@@ -1185,5 +1185,4 @@ void MapMatrixOperation(const Operation& operation,
 
   mapped_params.push_back(vector_params);
   mapped_params.push_back(vector_instruction_config);
-  memory_maps.push_back(accelerator_memory_map);
 }
