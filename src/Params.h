@@ -89,6 +89,10 @@ struct MatrixParams : BaseParams {
     weight_transpose = false;
     write_output_to_accum_buffer = false;
     weight_dequant = false;
+
+    is_manual_padded = false;
+    padded_input_x = 0;
+    padded_input_y = 0;
   }
 #endif
 
@@ -158,11 +162,15 @@ struct MatrixParams : BaseParams {
   ac_int<ADDRESS_WIDTH, false> dq_scale_offset;
   ac_int<ADDRESS_WIDTH, false> dq_zero_point_offset;
 
+  bool is_manual_padded;
+  ac_int<10, false> padded_input_x;
+  ac_int<10, false> padded_input_y;
+
   static const unsigned int base_width =
       7 * 64 /* OFFSETS */ + (12 + 10) * LOOP_WIDTH /* Loops */ +
       21 * 3 /* Loop indices */ + 5 /* stride */ + 2 /* padding */ +
       8 /* Head Size */ + 2 /* num_channels */ + 3 /*fx_unrolling_lg2*/ +
-      12 * 1 /* Bools */;
+      13 * 1 /* Bools */ + 20 /* manual padding */;
 
   static const unsigned int extra_width =
       2 * DTYPE_INDEX_WIDTH + 36 +
@@ -263,6 +271,10 @@ struct MatrixParams : BaseParams {
 
     m & dq_scale_offset;
     m & dq_zero_point_offset;
+
+    m & is_manual_padded;
+    m & padded_input_x;
+    m & padded_input_y;
   }
 
   inline friend void sc_trace(sc_trace_file* tf, const MatrixParams& params,
@@ -373,6 +385,9 @@ struct MatrixParams : BaseParams {
     os << "weight_dequant: " << params.weight_dequant << std::endl;
     os << "dq_scale_offset: " << params.dq_scale_offset << std::endl;
     os << "dq_zero_point_offset: " << params.dq_zero_point_offset << std::endl;
+    os << "is_manual_padded: " << params.is_manual_padded << std::endl;
+    os << "padded_input_x: " << params.padded_input_x << std::endl;
+    os << "padded_input_y: " << params.padded_input_y << std::endl;
     return os;
   }
 
@@ -457,6 +472,10 @@ struct MatrixParams : BaseParams {
 
     if (lhs.dq_scale_offset != rhs.dq_scale_offset) return false;
     if (lhs.dq_zero_point_offset != rhs.dq_zero_point_offset) return false;
+
+    if (lhs.is_manual_padded != rhs.is_manual_padded) return false;
+    if (lhs.padded_input_x != rhs.padded_input_x) return false;
+    if (lhs.padded_input_y != rhs.padded_input_y) return false;
 
     // If all members are equal, return true
     return true;

@@ -31,6 +31,9 @@ std::ostream& operator<<(std::ostream& os, const Tiling& tiling) {
   os << "Generic Replication: " << tiling.generic_replication << std::endl;
   os << "Num Channels: " << tiling.num_channels << std::endl;
   os << "FX Unrolling: " << tiling.fx_unrolling << std::endl;
+  os << "Manual Padding: " << tiling.manual_padding << std::endl;
+  os << "Padded Input X: " << tiling.padded_input_x << std ::endl;
+  os << "Padded Input Y: " << tiling.padded_input_y << std::endl;
   return os;
 }
 
@@ -66,6 +69,30 @@ Tiling get_tiling(const Operation& operation) {
       tiling.padding = padding[0];
     } else {
       tiling.padding = 0;
+    }
+  }
+
+  tiling.manual_padding = false;
+  tiling.padded_input_y = 0;
+  tiling.padded_input_x = 0;
+
+  std::cerr << "target: " << first_op.target() << std::endl;
+  std::cerr << "operation.has_valid_tiling: " << operation.has_valid_tiling
+            << std::endl;
+
+  // handle the case of manual padding for conv2d
+  if (first_op.target() == "conv2d" || first_op.target() == "conv2d_mx") {
+    const auto output = get_op_outputs(param).back();
+    const auto input = first_op.kwargs().at("input").tensor();
+    const auto output_shape = get_shape(output);
+    const auto input_shape = get_shape(input);
+
+    // dimension order B, H, W, C
+    if (input_shape[1] != output_shape[1] * tiling.stride ||
+        input_shape[2] != output_shape[2] * tiling.stride) {
+      tiling.manual_padding = true;
+      tiling.padded_input_y = input_shape[1];
+      tiling.padded_input_x = input_shape[2];
     }
   }
 
@@ -326,10 +353,8 @@ Tiling get_conv2d_tiling(const codegen::OpOverload param) {
     return tiling;
   }
   // conv1
-  else if (input_shape[3] == 3 && input_shape[1] == 224 &&
-           input_shape[2] == 224 &&
-           (weight_shape[3] == 64 || weight_shape[3] == 32) &&
-           weight_shape[0] == 7 && weight_shape[1] == 7) {
+  else if (input_shape[3] == 3 && weight_shape[0] == 7 &&
+           weight_shape[1] == 7) {
     int fx;
     if (IC_DIMENSION == 4) {
       fx = 7;
@@ -345,8 +370,10 @@ Tiling get_conv2d_tiling(const codegen::OpOverload param) {
     }
 
     int K1 = weight_shape[3] / 32;
+    int Y1 = output_shape[0] / 16;
+    int X1 = output_shape[1] / 16;
     Tiling tiling = {
-        .loops = {{7, 7, K1, 1, 1, 1}, {1, 2, 7, fx, 16, 16}},
+        .loops = {{X1, Y1, K1, 1, 1, 1}, {1, 2, 7, fx, 16, 16}},
         .x_loop_idx = {0, 5},
         .y_loop_idx = {1, 4},
         .reduction_loop_idx = {3, 0},

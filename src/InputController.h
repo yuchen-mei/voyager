@@ -132,36 +132,40 @@ struct InputController<std::tuple<InputTypes...>, rows, port_width,
         FX = 7;
       }
 
-      ac_int<4, false> x_padding = params.padding;
-      ac_int<4, false> y_padding = params.padding;
-
       ac_int<16, false> IX0 = X0 * STRIDE;
       ac_int<16, false> IY0 = Y0 * STRIDE;
+      ac_int<16, false> Y = Y1 * IY0;
+      ac_int<16, false> X = X1 * IX0;
 
       ac_int<16, false> x_bound = FX == 1 ? X0 : IX0;
       ac_int<16, false> y_bound = FY0 == 1 ? Y0 : IY0;
 
-      if (params.is_resnet_replication) {
-        x_bound /= packing_factor;
+      ac_int<4, false> y_padding = params.padding * 2;
+      ac_int<4, false> x_padding = params.padding * 2;
+
+      if (params.is_manual_padded) {
+        y_padding = params.padded_input_y - Y;
+        x_padding = params.padded_input_x - X;
+        Y = params.padded_input_y;
+        X = params.padded_input_x;
       }
 
-      loop_bounds[1][params.x_loop_idx[1]] = x_bound;
       if (params.is_resnet_replication) {
-        loop_bounds[1][params.x_loop_idx[1]] += 2 * boundary_words;
+        loop_bounds[1][params.x_loop_idx[1]] =
+            x_bound / packing_factor + 2 * boundary_words;
       } else if (params.is_generic_replication) {
-        loop_bounds[1][params.x_loop_idx[1]] >>= params.fx_unrolling_lg2;
+        loop_bounds[1][params.x_loop_idx[1]] =
+            x_bound >> params.fx_unrolling_lg2;
       } else {
-        loop_bounds[1][params.x_loop_idx[1]] += 2 * params.padding;
+        loop_bounds[1][params.x_loop_idx[1]] = x_bound + x_padding;
       }
 
-      loop_bounds[1][params.y_loop_idx[1]] = y_bound + 2 * params.padding;
+      loop_bounds[1][params.y_loop_idx[1]] = y_bound + y_padding;
 
       // reduce the number of iterations by packing factor
       C1 = C1 >> params.input_pack_factor_lg2;
       loop_bounds[1][params.reduction_loop_idx[1]] = C1;
 
-      ac_int<16, false> Y = Y1 * IY0;
-      ac_int<16, false> X = X1 * IX0;
       ac_int<16, false> c_stride = rows << params.input_pack_factor_lg2;
       ac_int<16, false> C = C2 * C1 * c_stride;
 
@@ -213,11 +217,11 @@ struct InputController<std::tuple<InputTypes...>, rows, port_width,
                               x0 = x0 << params.fx_unrolling_lg2;
                             }
 
-                            ac_int<16, true> y = y1 * IY0 + y0 - y_padding;
-                            ac_int<16, true> x = x1 * IX0 + x0 - x_padding;
+                            ac_int<16, true> y = y1 * IY0 + y0 - params.padding;
+                            ac_int<16, true> x = x1 * IX0 + x0 - params.padding;
                             ac_int<16, false> c = (c2 * C1 + c1) * c_stride;
 
-                            if ((x >= 0) && (y >= 0) && (x < X) && (y < Y)) {
+                            if (x >= 0 && y >= 0 && x < X && y < Y) {
                               ac_int<32, false> address = y * X * C + x * C + c;
 
                               if (params.is_resnet_replication) {
@@ -344,9 +348,6 @@ struct InputController<std::tuple<InputTypes...>, rows, port_width,
         FX = 7;
       }
 
-      ac_int<4, false> x_padding = params.padding;
-      ac_int<4, false> y_padding = params.padding;
-
       ac_int<16, false> IX0 = X0;
       ac_int<16, false> IY0 = Y0;
 
@@ -358,30 +359,39 @@ struct InputController<std::tuple<InputTypes...>, rows, port_width,
         IY0 = Y0 * STRIDE;
       }
 
-      ac_int<16, false> x_bound = IX0;
+      ac_int<16, false> Y = Y1 * IY0;
+      ac_int<16, false> X = X1 * IX0;
 
-      if (params.is_resnet_replication) {
-        x_bound /= packing_factor;
+      ac_int<16, false> x_bound = IX0;
+      ac_int<16, false> y_bound = IY0;
+
+      ac_int<4, false> y_padding = params.padding * 2;
+      ac_int<4, false> x_padding = params.padding * 2;
+
+      if (params.is_manual_padded) {
+        y_padding = params.padded_input_y - Y;
+        x_padding = params.padded_input_x - X;
+        Y = params.padded_input_y;
+        X = params.padded_input_x;
       }
 
-      ac_int<4, false> x_boundary = params.is_resnet_replication
-                                        ? ac_int<4, false>(2 * boundary_words)
-                                        : ac_int<4, false>(params.padding * 2);
-      if (params.is_generic_replication) {
+      if (params.is_resnet_replication) {
+        loop_bounds[1][params.x_loop_idx[1]] =
+            x_bound / packing_factor + 2 * boundary_words;
+      } else if (params.is_generic_replication) {
         loop_bounds[1][params.x_loop_idx[1]] =
             x_bound >> params.fx_unrolling_lg2;
       } else {
-        loop_bounds[1][params.x_loop_idx[1]] = x_bound + x_boundary;
+        loop_bounds[1][params.x_loop_idx[1]] = x_bound + x_padding;
       }
-      loop_bounds[1][params.y_loop_idx[1]] = IY0 + params.padding * 2;
+
+      loop_bounds[1][params.y_loop_idx[1]] = y_bound + y_padding;
 
       // reduce the number of iterations by packing factor
       C1 = C1 >> params.input_pack_factor_lg2;
       loop_bounds[1][params.reduction_loop_idx[1]] = C1;
       ac_int<4, false> num_packs = (1 << params.input_pack_factor_lg2) - 1;
 
-      ac_int<16, false> X = X1 * IX0;
-      ac_int<16, false> Y = Y1 * IY0;
       ac_int<16, false> y_stride = loop_bounds[1][params.x_loop_idx[1]] * C1;
 
 #pragma hls_pipeline_init_interval 1
@@ -416,12 +426,13 @@ struct InputController<std::tuple<InputTypes...>, rows, port_width,
                                      x_padding;
                               }
 
-                              ac_int<16, true> x = x1 * IX0 + x0 - x_padding;
-                              ac_int<16, true> y = y1 * IY0 + y0 - y_padding;
+                              ac_int<16, true> x =
+                                  x1 * IX0 + x0 - params.padding;
+                              ac_int<16, true> y =
+                                  y1 * IY0 + y0 - params.padding;
 
                               ac_int<buffer_width, false> data;
-
-                              if ((x < 0) || (y < 0) || (x >= X) || (y >= Y)) {
+                              if (x < 0 || y < 0 || x >= X || y >= Y) {
                                 set_zero<rows, buffer_width, InputTypes...>(
                                     params.input_dtype, data,
                                     params.use_input_codebook,

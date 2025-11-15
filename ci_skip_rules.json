@@ -139,5 +139,22 @@
             "transpose(_[0-9]+)?",
             "transpose_int_(_[0-9]+)?"
         ]
+    },
+    {
+        "datatype": "MXNF4",
+        "model": [
+            "resnet18"
+        ],
+        "sim_type": [
+            "systemc",
+            "fast-systemc",
+            "rtl"
+        ],
+        "block_size": 64,
+        "layers": [
+            "cat(_[0-9]+)?",
+            "pad(_[0-9]+)?",
+            "slice(_[0-9]+)?"
+        ]
     }
 ]
