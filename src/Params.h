@@ -81,6 +81,9 @@ struct MatrixParams : BaseParams {
     num_channels = 0;
     fx_unrolling_lg2 = 0;
 
+    padded_input_y = 0;
+    padded_input_x = 0;
+
     has_bias = false;
     is_mx_op = false;
     is_fc = false;
@@ -89,10 +92,6 @@ struct MatrixParams : BaseParams {
     weight_transpose = false;
     write_output_to_accum_buffer = false;
     weight_dequant = false;
-
-    is_manual_padded = false;
-    padded_input_x = 0;
-    padded_input_y = 0;
   }
 #endif
 
@@ -113,8 +112,8 @@ struct MatrixParams : BaseParams {
   ac_int<3, false> fy_loop_idx[2];
   ac_int<3, false> fx_loop_idx;
   ac_int<3, false> weight_reuse_idx[2];
-  ac_int<5, false> stride;
-  ac_int<2, false> padding;
+  ac_int<8, false> stride;
+  ac_int<8, false> padding;
 
   // weight address generator loop
   ac_int<LOOP_WIDTH, false> weight_addr_loops[2][5];
@@ -150,6 +149,9 @@ struct MatrixParams : BaseParams {
   ac_int<2, false> num_channels;
   ac_int<3, false> fx_unrolling_lg2;
 
+  ac_int<16, false> padded_input_y;
+  ac_int<16, false> padded_input_x;
+
   bool has_bias;
   bool is_mx_op;
   bool is_fc;
@@ -157,20 +159,16 @@ struct MatrixParams : BaseParams {
   bool input_transpose;
   bool weight_transpose;
   bool write_output_to_accum_buffer;
-  bool weight_dequant;
 
+  bool weight_dequant;
   ac_int<ADDRESS_WIDTH, false> dq_scale_offset;
   ac_int<ADDRESS_WIDTH, false> dq_zero_point_offset;
 
-  bool is_manual_padded;
-  ac_int<10, false> padded_input_x;
-  ac_int<10, false> padded_input_y;
-
   static const unsigned int base_width =
-      7 * 64 /* OFFSETS */ + (12 + 10) * LOOP_WIDTH /* Loops */ +
-      21 * 3 /* Loop indices */ + 5 /* stride */ + 2 /* padding */ +
-      8 /* Head Size */ + 2 /* num_channels */ + 3 /*fx_unrolling_lg2*/ +
-      13 * 1 /* Bools */ + 20 /* manual padding */;
+      7 * 64 /* addresses */ + (12 + 10) * LOOP_WIDTH /* loops */ +
+      21 * 3 /* loop indices */ + 8 /* stride */ + 8 /* padding */ +
+      8 /* Head Size */ + 2 /* num_channels */ + 3 /* fx_unrolling_lg2 */ +
+      12 * 1 /* Bools */ + 32 /* input shapes */;
 
   static const unsigned int extra_width =
       2 * DTYPE_INDEX_WIDTH + 36 +
@@ -260,6 +258,9 @@ struct MatrixParams : BaseParams {
     m & num_channels;
     m & fx_unrolling_lg2;
 
+    m & padded_input_y;
+    m & padded_input_x;
+
     m & has_bias;
     m & is_mx_op;
     m & is_fc;
@@ -271,10 +272,6 @@ struct MatrixParams : BaseParams {
 
     m & dq_scale_offset;
     m & dq_zero_point_offset;
-
-    m & is_manual_padded;
-    m & padded_input_x;
-    m & padded_input_y;
   }
 
   inline friend void sc_trace(sc_trace_file* tf, const MatrixParams& params,
@@ -374,6 +371,9 @@ struct MatrixParams : BaseParams {
     os << "num_channels: " << params.num_channels << std::endl;
     os << "fx_unrolling_lg2: " << params.fx_unrolling_lg2 << std::endl;
 
+    os << "padded_input_y: " << params.padded_input_y << std::endl;
+    os << "padded_input_x: " << params.padded_input_x << std::endl;
+
     os << "has_bias: " << params.has_bias << std::endl;
     os << "is_mx_op: " << params.is_mx_op << std::endl;
     os << "is_fc: " << params.is_fc << std::endl;
@@ -385,9 +385,6 @@ struct MatrixParams : BaseParams {
     os << "weight_dequant: " << params.weight_dequant << std::endl;
     os << "dq_scale_offset: " << params.dq_scale_offset << std::endl;
     os << "dq_zero_point_offset: " << params.dq_zero_point_offset << std::endl;
-    os << "is_manual_padded: " << params.is_manual_padded << std::endl;
-    os << "padded_input_x: " << params.padded_input_x << std::endl;
-    os << "padded_input_y: " << params.padded_input_y << std::endl;
     return os;
   }
 
@@ -459,6 +456,9 @@ struct MatrixParams : BaseParams {
     if (lhs.num_channels != rhs.num_channels) return false;
     if (lhs.fx_unrolling_lg2 != rhs.fx_unrolling_lg2) return false;
 
+    if (lhs.padded_input_y != rhs.padded_input_y) return false;
+    if (lhs.padded_input_x != rhs.padded_input_x) return false;
+
     if (lhs.has_bias != rhs.has_bias || lhs.bias_offset != rhs.bias_offset)
       return false;
     if (lhs.is_mx_op != rhs.is_mx_op) return false;
@@ -472,10 +472,6 @@ struct MatrixParams : BaseParams {
 
     if (lhs.dq_scale_offset != rhs.dq_scale_offset) return false;
     if (lhs.dq_zero_point_offset != rhs.dq_zero_point_offset) return false;
-
-    if (lhs.is_manual_padded != rhs.is_manual_padded) return false;
-    if (lhs.padded_input_x != rhs.padded_input_x) return false;
-    if (lhs.padded_input_y != rhs.padded_input_y) return false;
 
     // If all members are equal, return true
     return true;

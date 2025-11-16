@@ -589,7 +589,6 @@ void map_matrix_operation(const Operation& operation,
     matrix_params->num_channels = tiling.num_channels;
     matrix_params->fx_unrolling_lg2 = std::log2(tiling.fx_unrolling);
 
-    matrix_params->is_manual_padded = tiling.manual_padding;
     matrix_params->padded_input_x = tiling.padded_input_x;
     matrix_params->padded_input_y = tiling.padded_input_y;
 

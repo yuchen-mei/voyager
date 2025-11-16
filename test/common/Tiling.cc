@@ -31,7 +31,6 @@ std::ostream& operator<<(std::ostream& os, const Tiling& tiling) {
   os << "Generic Replication: " << tiling.generic_replication << std::endl;
   os << "Num Channels: " << tiling.num_channels << std::endl;
   os << "FX Unrolling: " << tiling.fx_unrolling << std::endl;
-  os << "Manual Padding: " << tiling.manual_padding << std::endl;
   os << "Padded Input X: " << tiling.padded_input_x << std ::endl;
   os << "Padded Input Y: " << tiling.padded_input_y << std::endl;
   return os;
@@ -72,28 +71,15 @@ Tiling get_tiling(const Operation& operation) {
     }
   }
 
-  tiling.manual_padding = false;
-  tiling.padded_input_y = 0;
-  tiling.padded_input_x = 0;
+  const auto input = first_op.kwargs().at("input").tensor();
+  const auto input_shape = get_shape(input);
 
-  std::cerr << "target: " << first_op.target() << std::endl;
-  std::cerr << "operation.has_valid_tiling: " << operation.has_valid_tiling
-            << std::endl;
-
-  // handle the case of manual padding for conv2d
   if (first_op.target() == "conv2d" || first_op.target() == "conv2d_mx") {
-    const auto output = get_op_outputs(param).back();
-    const auto input = first_op.kwargs().at("input").tensor();
-    const auto output_shape = get_shape(output);
-    const auto input_shape = get_shape(input);
-
-    // dimension order B, H, W, C
-    if (input_shape[1] != output_shape[1] * tiling.stride ||
-        input_shape[2] != output_shape[2] * tiling.stride) {
-      tiling.manual_padding = true;
-      tiling.padded_input_y = input_shape[1];
-      tiling.padded_input_x = input_shape[2];
-    }
+    tiling.padded_input_y = input_shape[1];
+    tiling.padded_input_x = input_shape[2];
+  } else {
+    tiling.padded_input_y = 1;
+    tiling.padded_input_x = get_size(input_shape) / input_shape.back();
   }
 
   return tiling;

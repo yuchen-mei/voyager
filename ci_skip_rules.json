@@ -143,7 +143,9 @@
     {
         "datatype": "MXNF4",
         "model": [
-            "resnet18"
+            "resnet18",
+            "resnet50",
+            "vit"
         ],
         "sim_type": [
             "systemc",

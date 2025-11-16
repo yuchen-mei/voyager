@@ -21,7 +21,6 @@ struct Tiling {
   bool generic_replication;
   int num_channels;
   int fx_unrolling;
-  bool manual_padding;
   int padded_input_x;
   int padded_input_y;
 };

@@ -819,6 +819,9 @@ def matches(value, rule_value):
 
 
 def get_skip_layers(skip_rules, model, datatype, sim_type, block_size):
+    best_rule = None
+    best_specificity = -1
+
     for rule in skip_rules:
         if (
             matches(model, rule["model"])
@@ -826,8 +829,19 @@ def get_skip_layers(skip_rules, model, datatype, sim_type, block_size):
             and matches(sim_type, rule["sim_type"])
             and matches(block_size, rule["block_size"])
         ):
-            return set(rule["layers"])
-    return set()
+            # Calculate specificity score (higher is more specific)
+            # Exact match = 2, list match = 1, wildcard = 0
+            specificity = 0
+            specificity += 2 if rule["datatype"] != "*" else 0
+            specificity += 1 if isinstance(rule["model"], list) else (2 if rule["model"] != "*" else 0)
+            specificity += 1 if isinstance(rule["sim_type"], list) else (2 if rule["sim_type"] != "*" else 0)
+            specificity += 2 if rule["block_size"] != "*" else 0
+
+            if specificity > best_specificity:
+                best_specificity = specificity
+                best_rule = rule
+
+    return set(best_rule["layers"]) if best_rule else set()
 
 
 def main():

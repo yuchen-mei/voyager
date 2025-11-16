@@ -41,8 +41,8 @@ inline Buffer* gemm(std::any input_ptr, std::any input_scale_ptr,
   int FY = tiling.loops[0][tiling.fy_loop_idx[0]] *
            tiling.loops[1][tiling.fy_loop_idx[1]];
   int STRIDE = tiling.stride;
-  int IY = tiling.manual_padding ? tiling.padded_input_y : Y * STRIDE;
-  int IX = tiling.manual_padding ? tiling.padded_input_x : X * STRIDE;
+  int IY = tiling.padded_input_y;
+  int IX = tiling.padded_input_x;
 
   int X0 = tiling.loops[1][tiling.x_loop_idx[1]];
   int Y0 = tiling.loops[1][tiling.y_loop_idx[1]];
@@ -159,7 +159,8 @@ inline Buffer* gemm(std::any input_ptr, std::any input_scale_ptr,
                           int k = (k1 * K0 + k0) * OC_DIMENSION + oc0;
                           int output_addr = y * X * K + x * K + k;
 
-                          Psum psum = Psum(0.0);
+                          // Accumulation is only used in the replication cases
+                          Psum psum = accumulations[output_addr];
 
                           for (int ic0 = 0; ic0 < IC_UNROLL; ic0++) {
                             int c = c2 * C1 * IC_UNROLL + c1 * IC_UNROLL + ic0;
@@ -213,7 +214,7 @@ inline Buffer* gemm(std::any input_ptr, std::any input_scale_ptr,
                                   (x * STRIDE + fx) * num_blocks + c;
                               assert(input_scale_addr >= 0);
 
-                              int weight_scale_addr = weight_scale_addr =
+                              int weight_scale_addr =
                                   (fy + tiling.padding) * FX * num_blocks * K +
                                   (fx + tiling.padding) * num_blocks * K +
                                   c * K + k;
@@ -230,51 +231,49 @@ inline Buffer* gemm(std::any input_ptr, std::any input_scale_ptr,
                             }
                           } else
 #endif
-                          {
-                            if (tiling.resnet_replication) {
-                              accumulations[output_addr] += psum;
-                              if (IC_DIMENSION == 4) {
-                                outputs[output_addr] += static_cast<Buffer>(
-                                    accumulations[output_addr]);
-                                accumulations[output_addr] = Psum(0.0);
-                              } else if (IC_DIMENSION == 8) {
-                                if (counters[1][tiling.fx_loop_idx] == 1 ||
-                                    counters[1][tiling.fx_loop_idx] == 3 ||
-                                    counters[1][tiling.fx_loop_idx] == 5 ||
-                                    counters[1][tiling.fx_loop_idx] == 6) {
-                                  outputs[output_addr] += static_cast<Buffer>(
-                                      accumulations[output_addr]);
-                                  accumulations[output_addr] = Psum(0.0);
-                                }
-                              } else if (IC_DIMENSION == 16) {
-                                if (counters[1][tiling.fx_loop_idx] == 3 ||
-                                    counters[1][tiling.fx_loop_idx] == 6) {
-                                  outputs[output_addr] += static_cast<Buffer>(
-                                      accumulations[output_addr]);
-                                  accumulations[output_addr] = Psum(0.0);
-                                }
-                              } else if (IC_DIMENSION == 32 ||
-                                         IC_DIMENSION == 64) {
-                                if (counters[1][tiling.fx_loop_idx] == 6) {
-                                  outputs[output_addr] += static_cast<Buffer>(
-                                      accumulations[output_addr]);
-                                  accumulations[output_addr] = Psum(0.0);
-                                }
-                              }
-                            } else if (tiling.generic_replication) {
-                              accumulations[output_addr] += psum;
-                              if (tiling.fx_unrolling == 1 ||
-                                  ((counters[1][tiling.fx_loop_idx] > 0) &&
-                                   (counters[1][tiling.fx_loop_idx] %
-                                        tiling.fx_unrolling ==
-                                    tiling.fx_unrolling - 1))) {
+                              if (tiling.resnet_replication) {
+                            accumulations[output_addr] = psum;
+                            if (IC_DIMENSION == 4) {
+                              outputs[output_addr] += static_cast<Buffer>(
+                                  accumulations[output_addr]);
+                              accumulations[output_addr] = Psum(0.0);
+                            } else if (IC_DIMENSION == 8) {
+                              if (counters[1][tiling.fx_loop_idx] == 1 ||
+                                  counters[1][tiling.fx_loop_idx] == 3 ||
+                                  counters[1][tiling.fx_loop_idx] == 5 ||
+                                  counters[1][tiling.fx_loop_idx] == 6) {
                                 outputs[output_addr] += static_cast<Buffer>(
                                     accumulations[output_addr]);
                                 accumulations[output_addr] = Psum(0.0);
                               }
-                            } else {
-                              outputs[output_addr] += static_cast<Buffer>(psum);
+                            } else if (IC_DIMENSION == 16) {
+                              if (counters[1][tiling.fx_loop_idx] == 3 ||
+                                  counters[1][tiling.fx_loop_idx] == 6) {
+                                outputs[output_addr] += static_cast<Buffer>(
+                                    accumulations[output_addr]);
+                                accumulations[output_addr] = Psum(0.0);
+                              }
+                            } else if (IC_DIMENSION == 32 ||
+                                       IC_DIMENSION == 64) {
+                              if (counters[1][tiling.fx_loop_idx] == 6) {
+                                outputs[output_addr] += static_cast<Buffer>(
+                                    accumulations[output_addr]);
+                                accumulations[output_addr] = Psum(0.0);
+                              }
                             }
+                          } else if (tiling.generic_replication) {
+                            accumulations[output_addr] = psum;
+                            if (tiling.fx_unrolling == 1 ||
+                                ((counters[1][tiling.fx_loop_idx] > 0) &&
+                                 (counters[1][tiling.fx_loop_idx] %
+                                      tiling.fx_unrolling ==
+                                  tiling.fx_unrolling - 1))) {
+                              outputs[output_addr] += static_cast<Buffer>(
+                                  accumulations[output_addr]);
+                              accumulations[output_addr] = Psum(0.0);
+                            }
+                          } else {
+                            outputs[output_addr] += static_cast<Buffer>(psum);
                           }
                         }
                       }
