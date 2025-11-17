@@ -99,11 +99,8 @@ SC_MODULE(InputScaleController) {
       ac_int<16, false> IX0 = X0 * STRIDE;
       ac_int<16, false> IY0 = Y0 * STRIDE;
 
-      ac_int<16, false> y_bound = FY0 == 1 ? Y0 : IY0;
-      ac_int<16, false> x_bound = FX == 1 ? X0 : IX0;
-
-      loop_bounds[1][params.y_loop_idx[1]] = y_bound + FY0 - 1;
-      loop_bounds[1][params.x_loop_idx[1]] = x_bound + FX - 1;
+      loop_bounds[1][params.y_loop_idx[1]] = (FY0 == 1 ? Y0 : IY0) + FY0 - 1;
+      loop_bounds[1][params.x_loop_idx[1]] = (FX == 1 ? X0 : IX0) + FX - 1;
 
       ac_int<16, false> Y = params.input_y;
       ac_int<16, false> X = params.input_x;

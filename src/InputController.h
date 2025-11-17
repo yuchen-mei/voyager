@@ -135,8 +135,7 @@ struct InputController<std::tuple<InputTypes...>, rows, port_width,
       ac_int<16, false> IY0 = Y0 * STRIDE;
       ac_int<16, false> IX0 = X0 * STRIDE;
 
-      ac_int<16, false> y_bound = FY0 == 1 ? Y0 : IY0;
-      loop_bounds[1][params.y_loop_idx[1]] = y_bound + FY0 - 1;
+      loop_bounds[1][params.y_loop_idx[1]] = (FY0 == 1 ? Y0 : IY0) + FY0 - 1;
 
       if (params.is_resnet_replication) {
         loop_bounds[1][params.x_loop_idx[1]] =
@@ -144,8 +143,7 @@ struct InputController<std::tuple<InputTypes...>, rows, port_width,
       } else if (params.is_generic_replication) {
         loop_bounds[1][params.x_loop_idx[1]] = IX0 >> params.fx_unrolling_lg2;
       } else {
-        ac_int<16, false> x_bound = FX == 1 ? X0 : IX0;
-        loop_bounds[1][params.x_loop_idx[1]] = x_bound + FX - 1;
+        loop_bounds[1][params.x_loop_idx[1]] = (FX == 1 ? X0 : IX0) + FX - 1;
       }
 
       // reduce the number of iterations by packing factor
@@ -156,6 +154,11 @@ struct InputController<std::tuple<InputTypes...>, rows, port_width,
       ac_int<16, false> X = params.input_x;
       ac_int<16, false> c_stride = rows << params.input_pack_factor_lg2;
       ac_int<16, false> C = C2 * C1 * c_stride;
+
+      if (params.is_generic_replication) {
+        Y = Y1 * IY0;
+        X = X1 * IX0;
+      }
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
@@ -366,6 +369,11 @@ struct InputController<std::tuple<InputTypes...>, rows, port_width,
       ac_int<16, false> Y = params.input_y;
       ac_int<16, false> X = params.input_x;
       ac_int<16, false> y_stride = loop_bounds[1][params.x_loop_idx[1]] * C1;
+
+      if (params.is_generic_replication) {
+        Y = Y1 * IY0;
+        X = X1 * IX0;
+      }
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush

@@ -57,6 +57,8 @@ inline Buffer* gemm(std::any input_ptr, std::any input_scale_ptr,
     FX_UNROLL = tiling.fx_unrolling;
     FX = FX * FX_UNROLL;
     tiling.loops[1][tiling.fx_loop_idx] = FX;
+    IY = Y * STRIDE;
+    IX = X * STRIDE;
   }
 
   if (C < IC_DIMENSION) {
