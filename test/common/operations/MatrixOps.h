@@ -146,30 +146,27 @@ inline Buffer* gemm(std::any input_ptr, std::any input_scale_ptr,
                         int y0 = counters[1][tiling.y_loop_idx[1]];
                         int c1 = counters[1][tiling.reduction_loop_idx[1]];
                         int k0 = counters[1][tiling.weight_loop_idx[1]];
+                        int fx = counters[1][tiling.fx_loop_idx];
                         int fy0 = counters[1][tiling.fy_loop_idx[1]];
-
-                        int fx =
-                            counters[1][tiling.fx_loop_idx] - tiling.padding;
-                        int fy = fy1 * FY0 + fy0 - tiling.padding;
+                        int fy = fy1 * FY0 + fy0;
 
                         int x = x1 * X0 + x0;
                         int y = y1 * Y0 + y0;
-                        int ix = x * STRIDE + fx;
-                        int iy = y * STRIDE + fy;
+                        int ix = x * STRIDE + fx - tiling.padding;
+                        int iy = y * STRIDE + fy - tiling.padding;
 
                         for (int oc0 = 0; oc0 < OC_DIMENSION; oc0++) {
                           int k = (k1 * K0 + k0) * OC_DIMENSION + oc0;
                           int output_addr = y * X * K + x * K + k;
 
-                          // Accumulation is only used in the replication cases
+                          // accumulation is only updated during replication
                           Psum psum = accumulations[output_addr];
 
                           for (int ic0 = 0; ic0 < IC_UNROLL; ic0++) {
                             int c = c2 * C1 * IC_UNROLL + c1 * IC_UNROLL + ic0;
                             int input_addr = iy * IX * C + ix * C + c;
                             int weight_addr =
-                                (fy + tiling.padding) * FX * C * K +
-                                (fx + tiling.padding) * C * K + c * K + k;
+                                fy * FX * C * K + fx * C * K + c * K + k;
                             if (ix >= 0 && ix < IX && iy >= 0 && iy < IY) {
                               Input input = inputs[input_addr];
                               Input weight = weights[weight_addr];
@@ -212,14 +209,12 @@ inline Buffer* gemm(std::any input_ptr, std::any input_scale_ptr,
                               int c = c2 * C1 + c1;
                               int num_blocks = C / block_size;
                               int input_scale_addr =
-                                  (y * STRIDE + fy) * IX * num_blocks +
-                                  (x * STRIDE + fx) * num_blocks + c;
+                                  iy * IX * num_blocks + ix * num_blocks + c;
                               assert(input_scale_addr >= 0);
 
-                              int weight_scale_addr =
-                                  (fy + tiling.padding) * FX * num_blocks * K +
-                                  (fx + tiling.padding) * num_blocks * K +
-                                  c * K + k;
+                              int weight_scale_addr = fy * FX * num_blocks * K +
+                                                      fx * num_blocks * K +
+                                                      c * K + k;
                               assert(weight_scale_addr >= 0);
 
                               Scale input_scale =
