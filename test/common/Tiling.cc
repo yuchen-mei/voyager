@@ -293,8 +293,9 @@ Tiling get_conv2d_tiling(const codegen::OpOverload param) {
                                std::to_string(IC_DIMENSION));
     }
 
+    int k1 = weight_shape[3] / 32;
     Tiling tiling = {
-        .loops = {{7, 1, 24, 1, fy, 1}, {1, 2, 1, fx / fx_unrolling, 2, 14}},
+        .loops = {{7, 1, k1, 1, fy, 1}, {1, 2, 1, fx / fx_unrolling, 2, 14}},
         .x_loop_idx = {1, 5},
         .y_loop_idx = {0, 4},
         .reduction_loop_idx = {3, 0},
@@ -319,12 +320,14 @@ Tiling get_conv2d_tiling(const codegen::OpOverload param) {
       tiling.loops[0][tiling.weight_loop_idx[0]] *= (16 / OC_DIMENSION);
     } else if (OC_DIMENSION > 16) {
       int div_factor = OC_DIMENSION / 16;
-      while (tiling.loops[0][tiling.weight_loop_idx[0]] > 1 && div_factor > 1) {
-        tiling.loops[0][tiling.weight_loop_idx[0]] /= 2;
+      int& k1 = tiling.loops[0][tiling.weight_loop_idx[0]];
+      while (k1 > 1 && k1 % 2 == 0 && div_factor > 1) {
+        k1 /= 2;
         div_factor /= 2;
       }
-      while (tiling.loops[1][tiling.weight_loop_idx[1]] > 1 && div_factor > 1) {
-        tiling.loops[1][tiling.weight_loop_idx[1]] /= 2;
+      int& k0 = tiling.loops[1][tiling.weight_loop_idx[1]];
+      while (k0 > 1 && k0 % 2 == 0 && div_factor > 1) {
+        k0 /= 2;
         div_factor /= 2;
       }
 
@@ -381,12 +384,14 @@ Tiling get_conv2d_tiling(const codegen::OpOverload param) {
       tiling.loops[0][tiling.weight_loop_idx[0]] *= (16 / OC_DIMENSION);
     } else if (OC_DIMENSION > 16) {
       int div_factor = OC_DIMENSION / 16;
-      while (tiling.loops[0][tiling.weight_loop_idx[0]] > 1 && div_factor > 1) {
-        tiling.loops[0][tiling.weight_loop_idx[0]] /= 2;
+      int& k1 = tiling.loops[0][tiling.weight_loop_idx[0]];
+      while (k1 > 1 && k1 % 2 == 0 && div_factor > 1) {
+        k1 /= 2;
         div_factor /= 2;
       }
-      while (tiling.loops[1][tiling.weight_loop_idx[1]] > 1 && div_factor > 1) {
-        tiling.loops[1][tiling.weight_loop_idx[1]] /= 2;
+      int& k0 = tiling.loops[1][tiling.weight_loop_idx[1]];
+      while (k0 > 1 && k0 % 2 == 0 && div_factor > 1) {
+        k0 /= 2;
         div_factor /= 2;
       }
 
