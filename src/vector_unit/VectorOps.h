@@ -388,3 +388,44 @@ bool send_output_address(
 
   return true;
 }
+
+#pragma hls_design ccore
+template <typename T>
+ac_int<4, false> quantize16_iter(T x, const T B[16]) {
+  ac_int<4, false> low = 0;
+  ac_int<5, false> high = 16;
+
+  // Stage 1
+  ac_int<4, false> mid1 = 8;
+  if (x <= B[mid1]) {
+    high = mid1;
+  } else {
+    low = mid1;
+  }
+
+  // Stage 2
+  ac_int<4, false> mid2 = (low + high) >> 1;
+  if (x <= B[mid2]) {
+    high = mid2;
+  } else {
+    low = mid2;
+  }
+
+  // Stage 3
+  ac_int<4, false> mid3 = (low + high) >> 1;
+  if (x <= B[mid3]) {
+    high = mid3;
+  } else {
+    low = mid3;
+  }
+
+  // Stage 4
+  ac_int<4, false> mid4 = (low + high) >> 1;
+  if (x <= B[mid4]) {
+    high = mid4;
+  } else {
+    low = mid4;
+  }
+
+  return low;  // 0..15
+}

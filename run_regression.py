@@ -18,37 +18,37 @@ from quantized_training.codegen import param_pb2
 
 ACCURACY_RESULTS = {
     "resnet18": {
-        "E4M3": 69.4,
+        "E4M3": 69.6,
         "CFLOAT": 70.8,
-        "INT8": 69.5,
-        "MXINT8": 70.2,
+        "INT8": 69.8,
+        "MXINT8": 70.0,
         "P8_1": 69.5,
     },
     "resnet50": {
-        "E4M3": 79.6,
+        "E4M3": 79.8,
         "CFLOAT": 81.2,
-        "INT8": 79.2,
+        "INT8": 78.7,
         "MXINT8": 81.1,
-        "P8_1": 80.1,
+        "P8_1": 79.7,
     },
     "mobilebert": {
-        "E4M3": 90.6,
+        "E4M3": 90.94,
         "CFLOAT": 90.83,
-        "INT8": 90.37,
-        "MXINT8": 91.17,
+        "INT8": 90.6,
+        "MXINT8": 91.28,
         "P8_1": 90.02,
     },
     "bert": {
-        "E4M3": 93.35,
+        "E4M3": 93.0,
         "CFLOAT": 92.89,
-        "INT8": 91.74,
-        "MXINT8": 92.78,
+        "INT8": 92.32,
+        "MXINT8": 93.0,
         "P8_1": 92.78,
     },
     "vit": {
         "E4M3": 82.8,
-        "CFLOAT": 83.2,
-        "INT8": 76.7,
+        "CFLOAT": 84.7,
+        "INT8": 78.2,
         "MXINT8": 83.3,
         "P8_1": 84.1,
     },
@@ -56,7 +56,7 @@ ACCURACY_RESULTS = {
         "E4M3":  62.5,
         "CFLOAT": 70.0,
         "INT8": 66.0,
-        "MXINT8": 72.0,
+        "MXINT8": 72.3,
         "P8_1": 63.8,
     },
 }
@@ -237,15 +237,12 @@ def run_gold_model_tests(layers, num_processes, results_folder):
     return print_test_results(test_results, layers, results_folder)
 
 
-def run_systemc_unit_test(model, layer, output_folder, fast, scale_down_operation):
+def run_systemc_unit_test(model, layer, output_folder, fast):
     env_vars = os.environ.copy()
     env_vars["NETWORK"] = model
     env_vars["TESTS"] = layer
     env_vars["CLOCK_PERIOD"] = "1"
     env_vars["SIMS"] = "gold,accelerator"
-
-    if scale_down_operation:
-        env_vars["SCALE_DOWN_OPERATION"] = "1"
 
     with open(f"{output_folder}/{model}_{layer}.log", "w") as stdout_file:
         try:
@@ -270,7 +267,7 @@ def run_systemc_unit_test(model, layer, output_folder, fast, scale_down_operatio
     return (model, layer, p.returncode == 0)
 
 
-def run_systemc_tests(layers, condensed_models, num_processes, results_folder, fast):
+def run_systemc_tests(layers, num_processes, results_folder, fast):
     check_environment_vars(["DATATYPE", "IC_DIMENSION", "OC_DIMENSION"])
 
     # Build TestRunner binary
@@ -301,13 +298,7 @@ def run_systemc_tests(layers, condensed_models, num_processes, results_folder, f
         for test in tests:
             pool.apply_async(
                 run_systemc_unit_test,
-                args=(
-                    model,
-                    test,
-                    results_folder,
-                    fast,
-                    model in condensed_models if condensed_models else False,
-                ),
+                args=(model, test, results_folder, fast),
                 callback=test_results.append,
             )
 
@@ -317,14 +308,14 @@ def run_systemc_tests(layers, condensed_models, num_processes, results_folder, f
     return print_test_results(test_results, layers, results_folder)
 
 
-def run_rtl_test(model, layer, layer_count, num_tiles, output_folder, scale_down_operation):
+def run_rtl_test(model, layer, layer_count, num_tiles, output_folder, debug):
     env_vars = os.environ.copy()
     env_vars["NETWORK"] = model
     env_vars["TESTS"] = layer
     env_vars["SIMS"] = "gold,accelerator"
 
-    if scale_down_operation:
-        env_vars["SCALE_DOWN_OPERATION"] = "1"
+    if debug:
+        env_vars["SIM_DUMP_FSDB"] = "1"
 
     # Workaround: vcs/catapult don't support GLIBCXX_3.4.30 in their libstdc++,
     # and the tools hardcode the linker libraries in such an order that their
@@ -411,11 +402,11 @@ def run_rtl_tests(
     layers,
     layer_counts,
     tile_counts,
-    condensed_models,
     num_processes,
     results_folder,
     keep_build=False,
     scverify_test=None,
+    debug=False
 ):
     check_environment_vars(
         ["DATATYPE", "IC_DIMENSION", "OC_DIMENSION", "TECHNOLOGY", "CLOCK_PERIOD"]
@@ -480,7 +471,7 @@ def run_rtl_tests(
                     layer_counts[model][test],
                     tile_counts[model][test],
                     results_folder,
-                    model in condensed_models if condensed_models else False,
+                    debug,
                 ),
                 callback=test_results.append,
             )
@@ -850,11 +841,6 @@ def main():
         help="Model(s) to test for regression (resnet18, mobilebert)",
     )
     parser.add_argument(
-        "--condensed_models",
-        required=False,
-        help="Model(s) to test for regression, but are first condensed by shrinking larger layers",
-    )
-    parser.add_argument(
         "--uniquify_layers",
         action="store_true",
         help="Whether to remove duplicated layers in the model",
@@ -928,8 +914,6 @@ def main():
         all_models = []
         if args.models is not None:
             all_models.extend(args.models)
-        if args.condensed_models is not None:
-            all_models.extend(args.condensed_models)
 
         for network in all_models:
             env_vars = os.environ.copy()
@@ -962,7 +946,6 @@ def main():
     if args.sims == "systemc" or args.sims == "fast-systemc":
         success = run_systemc_tests(
             layers,
-            args.condensed_models,
             args.num_processes,
             results_folder,
             args.sims == "fast-systemc",
@@ -972,11 +955,11 @@ def main():
             layers,
             layer_counts,
             tile_counts,
-            args.condensed_models,
             args.num_processes,
             results_folder,
             args.keep_build,
             args.scverify_test,
+            args.debug
         )
     elif args.sims == "gold_model":
         success = run_gold_model_tests(layers, args.num_processes, results_folder)

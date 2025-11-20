@@ -21,7 +21,6 @@ struct MatrixVectorUnit<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
                         Input, Weight, Psum, Output, Scale, port_width, width,
                         bs, vu_width> : public sc_module {
   static constexpr int LOOP_WIDTH = 16;
-  static constexpr int BUFFER_DEPTH = 32768 / width;
 
   sc_in<bool> CCS_INIT_S1(clk);
   sc_in<bool> CCS_INIT_S1(rstn);
@@ -93,9 +92,6 @@ struct MatrixVectorUnit<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
 
   Connections::SyncOut CCS_INIT_S1(start_signal);
   Connections::SyncOut CCS_INIT_S1(done_signal);
-
-  ac_int<Input::width * width, false> input_buffer[BUFFER_DEPTH];
-  ac_int<Scale::width * width / bs, false> input_scale_buffer[BUFFER_DEPTH];
 
   using loop_t = ac_int<LOOP_WIDTH, false>;
 
@@ -180,24 +176,31 @@ struct MatrixVectorUnit<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
     while (true) {
       const MatrixParams params = fetch_input_param.Pop();
 
+      loop_t K2 = params.loops[0][params.weight_loop_idx[0]];
+      loop_t K1 = params.loops[1][params.weight_loop_idx[1]];
+      loop_t k_bound = (K2 * K1 + bs - 1) / bs - 1;
+
       loop_t C2 = params.loops[0][params.reduction_loop_idx[0]];
       loop_t C1 = params.loops[1][params.reduction_loop_idx[1]];
       loop_t c_bound = (C2 * C1 + width - 1) / width - 1;
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
-      for (loop_t c = 0;; c++) {
-        ac_int<32, false> address = c * width;
-        (fetch_matrix_input<InputTypes, width, InputTypes...>(
-             params.input_dtype, params.input_offset, address, input_req),
-         ...);
+      for (loop_t k1 = 0;; k1++) {
+        for (loop_t c = 0;; c++) {
+          ac_int<32, false> address = c * width;
+          (fetch_matrix_input<InputTypes, width, InputTypes...>(
+               params.input_dtype, params.input_offset, address, input_req),
+           ...);
 #if SUPPORT_MX
-        if (params.is_mx_op) {
-          send_input_request<Scale, width / bs>(params.input_scale_offset,
-                                                address / bs, input_scale_req);
-        }
+          if (params.is_mx_op) {
+            send_input_request<Scale, width / bs>(
+                params.input_scale_offset, address / bs, input_scale_req);
+          }
 #endif
-        if (c == c_bound) break;
+          if (c == c_bound) break;
+        }
+        if (k1 == k_bound) break;
       }
     }
   }
@@ -214,28 +217,24 @@ struct MatrixVectorUnit<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
 
       loop_t K2 = params.loops[0][params.weight_loop_idx[0]];
       loop_t K1 = params.loops[1][params.weight_loop_idx[1]];
+      loop_t k_bound = (K2 * K1 + bs - 1) / bs - 1;
+
       loop_t C2 = params.loops[0][params.reduction_loop_idx[0]];
       loop_t C1 = params.loops[1][params.reduction_loop_idx[1]];
       ac_int<32, false> C = C2 * C1;
       loop_t c_bound = (C + width - 1) / width - 1;
-      loop_t k_bound = (K2 * K1 + bs - 1) / bs - 1;
 
       constexpr int buffer_width = Input::width * width;
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
-      for (loop_t k = 0;; k++) {
+      for (loop_t k1 = 0;; k1++) {
         for (loop_t c = 0;; c++) {
           ac_int<buffer_width, false> bits = 0;
-          if (k == 0) {
-            bool success = (process_matrix_input<InputTypes, width, port_width,
-                                                 buffer_width, InputTypes...>(
-                                params.input_dtype, input_resp, bits) ||
-                            ...);
-            input_buffer[c] = bits;
-          } else {
-            bits = input_buffer[c];
-          }
+          bool success = (process_matrix_input<InputTypes, width, port_width,
+                                               buffer_width, InputTypes...>(
+                              params.input_dtype, input_resp, bits) ||
+                          ...);
 
           Pack1D<Input, width> inputs;
           ac_int<32, false> address = c * width;
@@ -243,27 +242,10 @@ struct MatrixVectorUnit<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
 #pragma hls_unroll yes
           for (int i = 0; i < width; i++) {
             auto data = bits.template slc<Input::width>(i * Input::width);
-
-#if SUPPORT_CODEBOOK_QUANT
-            if (params.use_input_codebook) {
-              auto value = params.input_code[data];
-              inputs[i].set_bits(value);
-            } else
-#endif
-            {
-              Input value = Input::zero();
-              bool success =
-                  (decode_type<InputTypes, Input, Input::width, InputTypes...>(
-                       params.input_dtype, data, value) ||
-                   ...);
-              inputs[i] = value;
-#ifndef __SYNTHESIS__
-              if (!success) {
-                std::cerr << "Error: matrix input dtype '" << params.input_dtype
-                          << "' is not valid" << std::endl;
-              }
-#endif
-            }
+            inputs[i] =
+                decode_input<Input, NUM_CODEBOOK_ENTRIES, InputTypes...>(
+                    data, params.input_dtype, params.use_input_codebook,
+                    params.input_code);
 
             // Set any out-of-bounds inputs to zero
             if (address + i >= C) {
@@ -275,7 +257,7 @@ struct MatrixVectorUnit<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
 
           if (c == c_bound) break;
         }
-        if (k == k_bound) break;
+        if (k1 == k_bound) break;
       }
     }
   }
@@ -293,25 +275,21 @@ struct MatrixVectorUnit<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
 
       loop_t K2 = params.loops[0][params.weight_loop_idx[0]];
       loop_t K1 = params.loops[1][params.weight_loop_idx[1]];
+      loop_t k_bound = (K2 * K1 + bs - 1) / bs - 1;
+
       loop_t C2 = params.loops[0][params.reduction_loop_idx[0]];
       loop_t C1 = params.loops[1][params.reduction_loop_idx[1]];
-      loop_t k_bound = (K2 * K1 + bs - 1) / bs - 1;
       loop_t c_bound = (C2 * C1 + width - 1) / width - 1;
 
       constexpr int buffer_width = Scale::width * width / bs;
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
-      for (loop_t k = 0;; k++) {
+      for (loop_t k1 = 0;; k1++) {
         for (loop_t c = 0;; c++) {
           ac_int<buffer_width, false> bits;
-          if (k == 0) {
-            process_matrix_input<Scale, width / bs, buffer_width, buffer_width>(
-                input_scale_resp, bits);
-            input_scale_buffer[c] = bits;
-          } else {
-            bits = input_scale_buffer[c];
-          }
+          process_matrix_input<Scale, width / bs, buffer_width, buffer_width>(
+              input_scale_resp, bits);
 
           Pack1D<Scale, width / bs> scales;
 #pragma hls_unroll yes
@@ -323,7 +301,7 @@ struct MatrixVectorUnit<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
 
           if (c == c_bound) break;
         }
-        if (k == k_bound) break;
+        if (k1 == k_bound) break;
       }
     }
   }
@@ -347,11 +325,12 @@ struct MatrixVectorUnit<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
 
       loop_t K1 = params.loops[0][params.weight_loop_idx[0]];
       loop_t K0 = params.loops[1][params.weight_loop_idx[1]];
+      loop_t k_bound = (K1 * K0 + bs - 1) / bs - 1;
+
       loop_t C2 = params.loops[0][params.reduction_loop_idx[0]];
       loop_t C1 = params.loops[1][params.reduction_loop_idx[1]];
       ac_int<32, false> C = C2 * C1;
       loop_t c_bound = (C + width - 1) / width - 1;
-      loop_t k_bound = (K1 * K0 + bs - 1) / bs - 1;
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
@@ -560,36 +539,12 @@ struct MatrixVectorUnit<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
 #pragma hls_unroll yes
             for (int i = 0; i < width; i++) {
               auto data = bits.template slc<Weight::width>(i * Weight::width);
-
-#if SUPPORT_CODEBOOK_QUANT
-              if (params.use_weight_codebook) {
-                auto value = params.weight_code[data];
-                weights[i].set_bits(value);
-              } else
-#endif
-              {
-                Weight value = Weight::zero();
-                bool success = (decode_type<WeightTypes, Weight, Weight::width,
-                                            WeightTypes...>(params.weight_dtype,
-                                                            data, value) ||
-                                ...);
-                weights[i] = value;
-#ifndef __SYNTHESIS__
-                if (!success) {
-                  std::cerr << "Error: matrix weight dtype '"
-                            << params.weight_dtype << "' is not valid"
-                            << std::endl;
-                }
-#endif
-              }
-            }
-
-            if (params.weight_dequant) {
-#pragma hls_unroll yes
-              for (int i = 0; i < width; i++) {
-                weights[i] = fused_dequantize_quantize<Weight, Scale, Output>(
-                    weights[i], dq_scales[i], dq_zero_points[i]);
-              }
+              weights[i] =
+                  decode_and_dequantize<Weight, Scale, Output,
+                                        NUM_CODEBOOK_ENTRIES, WeightTypes...>(
+                      data, params.weight_dtype, params.use_weight_codebook,
+                      params.weight_code, params.weight_dequant, dq_scales[i],
+                      dq_zero_points[i]);
             }
 
             weight_data.Push(weights);

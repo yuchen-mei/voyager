@@ -147,8 +147,48 @@ Buffer dequantize_mx_op(const Psum psum, const Scale input_scale,
 }
 
 #pragma hls_design ccore
-template <typename Input, typename Scale, typename Output>
-Input fused_dequantize_quantize(const Input input, const Scale scale,
-                                const Scale zero_point) {
-  return ((Output)input - (Output)zero_point) * (Output)scale;
+template <typename T, int num_entries, typename... Ts>
+T decode_input(const ac_int<T::width, false> bits, const ac_int<8, false> dtype,
+               const bool use_codebook,
+               const ac_int<T::width, false> code[num_entries]) {
+  T output;
+  if (use_codebook) {
+    output.set_bits(code[bits]);
+  } else {
+    bool success =
+        (decode_type<Ts, T, T::width, Ts...>(dtype, bits, output) || ...);
+#ifndef __SYNTHESIS__
+    if (!success) {
+      std::cerr << "Error: dtype '" << dtype << "' is not valid" << std::endl;
+    }
+#endif
+  }
+  return output;
+}
+
+#pragma hls_design ccore
+template <typename T, typename Scale, typename Vector, int num_entries,
+          typename... Ts>
+T decode_and_dequantize(const ac_int<T::width, false> bits,
+                        const ac_int<8, false> dtype, const bool use_codebook,
+                        const ac_int<T::width, false> code[num_entries],
+                        const bool dequant, const Scale scale,
+                        const Scale zero_point) {
+  T output;
+  if (use_codebook) {
+    output.set_bits(code[bits]);
+  } else {
+    bool success =
+        (decode_type<Ts, T, T::width, Ts...>(dtype, bits, output) || ...);
+#ifndef __SYNTHESIS__
+    if (!success) {
+      std::cerr << "Error: dtype '" << dtype << "' is not valid" << std::endl;
+    }
+#endif
+  }
+
+  if (dequant) {
+    output = ((Vector)output - (Vector)zero_point) * (Vector)scale;
+  }
+  return output;
 }
