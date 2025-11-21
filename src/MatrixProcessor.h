@@ -554,8 +554,10 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
                              loop_counters[1][bias_reuse_indices[3]] == 0;
 
             if (read_bias) {
-              previous_accumulation = bias_channel.Pop();
+              bias = bias_channel.Pop();
             }
+
+            previous_accumulation = bias;
           }
         } else {
           ac_int<16, false> address =
