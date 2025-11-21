@@ -234,24 +234,24 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
       while (step++ < total_loops) {
         for (ac_int<10, false> weight_count = 0;; weight_count++) {
           Pack1D<PEWeight<Weight>, cols> weights;
-          auto bits = weight_channel.Pop();
+          auto data = weight_channel.Pop();
 
           constexpr int weight_width = WEIGHT_BUFFER_WIDTH / cols;
 
 #pragma hls_unroll yes
           for (int i = 0; i < cols; i++) {
-            auto data = bits.template slc<weight_width>(i * weight_width);
-
+            Weight decoded_weight = Weight::zero();
+            auto bits = data.template slc<weight_width>(i * weight_width);
 #if SUPPORT_CODEBOOK_QUANT
             if (params.use_weight_codebook) {
-              auto value = params.weight_code[data];
-              weights[i].data.set_bits(value);
+              auto value = params.weight_code[bits];
+              decoded_weight.set_bits(value);
             } else
 #endif
             {
               bool success = (decode_type<WeightTypes, Weight, weight_width,
                                           WeightTypes...>(
-                                  params.weight_dtype, data, weights[i].data) ||
+                                  params.weight_dtype, bits, decoded_weight) ||
                               ...);
 #ifndef __SYNTHESIS__
               if (!success) {
@@ -261,6 +261,7 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
               }
 #endif
             }
+            weights[i].data = decoded_weight;
             weights[i].tag = weight_count;
           }
 
@@ -347,6 +348,7 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
 #endif
 
         Pack1D<PEInput<Input>, rows> inputs;
+        auto data = input_channel.Pop();
 
         bool swap_weights_inner =
             loop_counters[1][params.weight_reuse_idx[0]] == 0 &&
@@ -357,28 +359,22 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
             step == 0 ||
             (swap_weights_inner && (!reuse_weights || swap_weights_outer));
 
-#pragma hls_unroll yes
-        for (int i = 0; i < rows; i++) {
-          inputs[i].swap_weights = swap_weights;
-        }
-
-        auto bits = input_channel.Pop();
-
         constexpr int input_width = INPUT_BUFFER_WIDTH / rows;
 
 #pragma hls_unroll yes
         for (int i = 0; i < rows; i++) {
-          auto data = bits.template slc<input_width>(i * input_width);
+          Input decoded_input = Input::zero();
+          auto bits = data.template slc<input_width>(i * input_width);
 #if SUPPORT_CODEBOOK_QUANT
           if (params.use_input_codebook) {
-            auto value = params.input_code[data];
-            inputs[i].data.set_bits(value);
+            auto value = params.input_code[bits];
+            decoded_input.set_bits(value);
           } else
 #endif
           {
             bool success =
                 (decode_type<InputTypes, Input, input_width, InputTypes...>(
-                     params.input_dtype, data, inputs[i].data) ||
+                     params.input_dtype, bits, decoded_input) ||
                  ...);
 #ifndef __SYNTHESIS__
             if (!success) {
@@ -387,6 +383,8 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
             }
 #endif
           }
+          inputs[i].data = decoded_input;
+          inputs[i].swap_weights = swap_weights;
         }
 
         input_skewer_din.Push(inputs);
@@ -505,8 +503,8 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
       }
 
       // loop indices that are used to determine when to read in a new bias
-      int bias_reuse_indices[4] = {5, 5, 5, 5};
-      for (int i = 5; i > params.weight_loop_idx[1]; i--) {
+      ac_int<3, false> bias_reuse_indices[4] = {5, 5, 5, 5};
+      for (ac_int<3, false> i = 5; i > params.weight_loop_idx[1]; i--) {
         bias_reuse_indices[5 - i] = i;
       }
 
@@ -558,10 +556,8 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
                              loop_counters[1][bias_reuse_indices[3]] == 0;
 
             if (read_bias) {
-              bias = bias_channel.Pop();
+              previous_accumulation = bias_channel.Pop();
             }
-
-            previous_accumulation = bias;
           }
         } else {
           ac_int<16, false> address =
