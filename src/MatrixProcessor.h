@@ -232,7 +232,7 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
       while (step++ < total_loops) {
-        for (ac_int<10, false> weight_count = 0;; weight_count++) {
+        for (ac_int<10, false> row = 0; row < rows; row++) {
           Pack1D<PEWeight<Weight>, cols> weights;
           auto data = weight_channel.Pop();
 
@@ -262,12 +262,10 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
 #endif
             }
             weights[i].data = decoded_weight;
-            weights[i].tag = weight_count;
+            weights[i].tag = row;
           }
 
           weight_skewer_din.Push(weights);
-
-          if (weight_count == rows - 1) break;
         }
       }
     }
