@@ -188,7 +188,7 @@ SC_MODULE(VectorFetchUnit) {
 
       ac_int<LOOP_WIDTH, false> loop_ends_flat[6];
 #pragma hls_unroll yes
-      for (ac_int<3, false> dim = 0; dim < 6; dim++) {
+      for (int dim = 0; dim < 6; dim++) {
         if (params.has_permute) {
           loop_ends_flat[dim] =
               loop_bounds[params.vector_fetch_0_permute_dims[dim]];
@@ -439,7 +439,7 @@ SC_MODULE(VectorFetchUnit) {
       TRANSPOSE_OUTER:
         while (counter++ < total_values) {
         TRANSPOSE_READ:
-          for (ac_int<10, false> col = 0; col < mu_width; col++) {
+          for (int col = 0; col < mu_width; col++) {
             auto bits = vector_fetch_0_packed_bits.Pop();
 
             Pack1D<VectorType, BUFSIZE> outputs;
@@ -466,7 +466,7 @@ SC_MODULE(VectorFetchUnit) {
           }
 
         TRANSPOSE_WRITE:
-          for (ac_int<10, false> row = 0; row < BUFSIZE; row++) {
+          for (int row = 0; row < BUFSIZE; row++) {
             Pack1D<VectorType, mu_width> transposed;
 #pragma hls_unroll yes
             for (int col = 0; col < mu_width; col++) {
@@ -476,7 +476,7 @@ SC_MODULE(VectorFetchUnit) {
             if constexpr (mu_width == width) {
               vector_fetch_0_data.Push(transposed);
             } else {
-              for (ac_int<4, false> pack = 0; pack < mu_width / width; pack++) {
+              for (int pack = 0; pack < mu_width / width; pack++) {
                 Pack1D<VectorType, width> unpacked;
 #pragma hls_unroll yes
                 for (int i = 0; i < width; i++) {

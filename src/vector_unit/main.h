@@ -291,12 +291,12 @@ SC_MODULE(VectorUnit) {
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
     while (true) {
-      Pack1D<BufferType, mu_width> full_response = matrix_unit_output.Pop();
+      auto full_response = matrix_unit_output.Pop();
 
       if constexpr (mu_width == width) {
         matrix_unit_output_unpacked.Push(full_response);
       } else {
-        for (ac_int<4, false> i = 0; i < mu_width / width; i++) {
+        for (int i = 0; i < mu_width / width; i++) {
           Pack1D<BufferType, width> unpacked_data;
 #pragma hls_unroll yes
           for (int j = 0; j < width; j++) {
@@ -329,7 +329,7 @@ SC_MODULE(VectorUnit) {
 
       ac_int<2, false> op_type = 0;
 #pragma hls_unroll yes
-      for (ac_int<4, false> i = 0; i < 8; i++) {
+      for (int i = 0; i < 8; i++) {
         VectorInstructions inst = instruction_config.inst[i];
         if (inst.vdest == VectorInstructions::to_output ||
             inst.rdest == VectorInstructions::to_memory) {
@@ -342,7 +342,7 @@ SC_MODULE(VectorUnit) {
       for (ac_int<32, false> count = 0;; count++) {
         Pack1D<VectorType, mu_width> packed_outputs;
 
-        for (ac_int<4, false> pack = 0; pack < mu_width / width; pack++) {
+        for (int pack = 0; pack < mu_width / width; pack++) {
           Pack1D<VectorType, width> outputs;
           // Initialize with 0 to avoid inferring latches
 #pragma hls_unroll yes

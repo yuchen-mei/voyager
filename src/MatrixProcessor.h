@@ -232,7 +232,7 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
       while (step++ < total_loops) {
-        for (ac_int<10, false> row = 0; row < rows; row++) {
+        for (int row = 0; row < rows; row++) {
           Pack1D<PEWeight<Weight>, cols> weights;
           auto data = weight_channel.Pop();
 
@@ -501,8 +501,8 @@ struct MatrixProcessor<std::tuple<InputTypes...>, std::tuple<WeightTypes...>,
       }
 
       // loop indices that are used to determine when to read in a new bias
-      ac_int<3, false> bias_reuse_indices[4] = {5, 5, 5, 5};
-      for (ac_int<3, false> i = 5; i > params.weight_loop_idx[1]; i--) {
+      int bias_reuse_indices[4] = {5, 5, 5, 5};
+      for (int i = 5; i > params.weight_loop_idx[1]; i--) {
         bias_reuse_indices[5 - i] = i;
       }
 
