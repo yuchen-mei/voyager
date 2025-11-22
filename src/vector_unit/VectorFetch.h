@@ -188,7 +188,7 @@ SC_MODULE(VectorFetchUnit) {
 
       ac_int<LOOP_WIDTH, false> loop_ends_flat[6];
 #pragma hls_unroll yes
-      for (ac_int<3, false> dim = 0; dim < 6; dim++) {
+      for (int dim = 0; dim < 6; dim++) {
         if (params.has_permute) {
           loop_ends_flat[dim] =
               loop_bounds[params.vector_fetch_0_permute_dims[dim]];
@@ -330,29 +330,17 @@ SC_MODULE(VectorFetchUnit) {
                       vector_fetch_0_data_done.write(in_bound);
                     }
                   }
-                  if (loop_counters[1][2] == loop_ends[1][2]) {
-                    break;
-                  }
+                  if (loop_counters[1][2] == loop_ends[1][2]) break;
                 }
-                if (loop_counters[1][1] == loop_ends[1][1]) {
-                  break;
-                }
+                if (loop_counters[1][1] == loop_ends[1][1]) break;
               }
-              if (loop_counters[1][0] == loop_ends[1][0]) {
-                break;
-              }
+              if (loop_counters[1][0] == loop_ends[1][0]) break;
             }
-            if (loop_counters[0][2] == loop_ends[0][2]) {
-              break;
-            }
+            if (loop_counters[0][2] == loop_ends[0][2]) break;
           }
-          if (loop_counters[0][1] == loop_ends[0][1]) {
-            break;
-          }
+          if (loop_counters[0][1] == loop_ends[0][1]) break;
         }
-        if (loop_counters[0][0] == loop_ends[0][0]) {
-          break;
-        }
+        if (loop_counters[0][0] == loop_ends[0][0]) break;
       }
 
       if (params.vector_fetch_0_mode == 1 || params.vector_fetch_0_mode == 2) {
@@ -383,9 +371,7 @@ SC_MODULE(VectorFetchUnit) {
 
         for (ac_int<4, false> i = 0;; i++) {
           packed_bits.set_slc(i * OC_PORT_WIDTH, vector_fetch_0_resp.Pop());
-          if (i == params.vector_fetch_0_num_beats - 1) {
-            break;
-          }
+          if (i == params.vector_fetch_0_num_beats - 1) break;
         }
 
         vector_fetch_0_packed_bits.Push(packed_bits);
@@ -453,7 +439,7 @@ SC_MODULE(VectorFetchUnit) {
       TRANSPOSE_OUTER:
         while (counter++ < total_values) {
         TRANSPOSE_READ:
-          for (ac_int<10, false> col = 0;; col++) {
+          for (int col = 0; col < mu_width; col++) {
             auto bits = vector_fetch_0_packed_bits.Pop();
 
             Pack1D<VectorType, BUFSIZE> outputs;
@@ -477,14 +463,10 @@ SC_MODULE(VectorFetchUnit) {
             for (int row = 0; row < BUFSIZE; row++) {
               buffer[row][col] = dequantized[row];
             }
-
-            if (col == mu_width - 1) {
-              break;
-            }
           }
 
         TRANSPOSE_WRITE:
-          for (ac_int<10, false> row = 0;; row++) {
+          for (int row = 0; row < BUFSIZE; row++) {
             Pack1D<VectorType, mu_width> transposed;
 #pragma hls_unroll yes
             for (int col = 0; col < mu_width; col++) {
@@ -494,22 +476,14 @@ SC_MODULE(VectorFetchUnit) {
             if constexpr (mu_width == width) {
               vector_fetch_0_data.Push(transposed);
             } else {
-              for (ac_int<4, false> pack = 0;; pack++) {
+              for (int pack = 0; pack < mu_width / width; pack++) {
                 Pack1D<VectorType, width> unpacked;
 #pragma hls_unroll yes
                 for (int i = 0; i < width; i++) {
                   unpacked[i] = transposed[pack * width + i];
                 }
                 vector_fetch_0_data.Push(unpacked);
-
-                if (pack == mu_width / width - 1) {
-                  break;
-                }
               }
-            }
-
-            if (row == BUFSIZE - 1) {
-              break;
             }
           }
         }
@@ -547,29 +521,17 @@ SC_MODULE(VectorFetchUnit) {
                       accumulation_buffer_bank = !accumulation_buffer_bank;
                     }
 
-                    if (loop_counters[1][2] == loop_ends[1][2]) {
-                      break;
-                    }
+                    if (loop_counters[1][2] == loop_ends[1][2]) break;
                   }
-                  if (loop_counters[1][1] == loop_ends[1][1]) {
-                    break;
-                  }
+                  if (loop_counters[1][1] == loop_ends[1][1]) break;
                 }
-                if (loop_counters[1][0] == loop_ends[1][0]) {
-                  break;
-                }
+                if (loop_counters[1][0] == loop_ends[1][0]) break;
               }
-              if (loop_counters[0][2] == loop_ends[0][2]) {
-                break;
-              }
+              if (loop_counters[0][2] == loop_ends[0][2]) break;
             }
-            if (loop_counters[0][1] == loop_ends[0][1]) {
-              break;
-            }
+            if (loop_counters[0][1] == loop_ends[0][1]) break;
           }
-          if (loop_counters[0][0] == loop_ends[0][0]) {
-            break;
-          }
+          if (loop_counters[0][0] == loop_ends[0][0]) break;
         }
       }
 #endif
@@ -578,16 +540,14 @@ SC_MODULE(VectorFetchUnit) {
 #pragma hls_pipeline_stall_mode flush
         while (true) {
           ac_int<2, false> in_bound = vector_fetch_0_data_done.read();
-          if (in_bound[1]) {
-            break;
-          }
+          if (in_bound[1]) break;
 
           ac_int<MAX_RESPONSE_WIDTH, false> bits;
           if (in_bound[0]) {
             bits = vector_fetch_0_packed_bits.Pop();
           }
 
-          for (ac_int<4, false> i = 0;; i++) {
+          for (ac_int<4, false> pack = 0;; pack++) {
             Pack1D<VectorType, width> outputs;
 #pragma hls_unroll yes
             for (int i = 0; i < width; i++) {
@@ -599,7 +559,7 @@ SC_MODULE(VectorFetchUnit) {
               bool found =
                   (unpack_vector_data<InputTypes, VectorType, width,
                                       MAX_RESPONSE_WIDTH, InputTypes...>(
-                       params.vector_fetch_0_dtype, bits, outputs, i) ||
+                       params.vector_fetch_0_dtype, bits, outputs, pack) ||
                    ...);
 
 #ifndef __SYNTHESIS__
@@ -615,9 +575,7 @@ SC_MODULE(VectorFetchUnit) {
                 outputs, dequantized, params.vector_fetch_0_dq_scale);
             vector_fetch_0_data.Push(dequantized);
 
-            if (i == params.vector_fetch_0_packing_factor - 1) {
-              break;
-            }
+            if (pack == params.vector_fetch_0_packing_factor - 1) break;
           }
         }
       }
@@ -719,29 +677,17 @@ SC_MODULE(VectorFetchUnit) {
                   vector_fetch_1_packer_done.write(false);
                   vector_fetch_1_data_done.write(false);
 
-                  if (loop_counters[1][2] == loop_ends[1][2]) {
-                    break;
-                  }
+                  if (loop_counters[1][2] == loop_ends[1][2]) break;
                 }
-                if (loop_counters[1][1] == loop_ends[1][1]) {
-                  break;
-                }
+                if (loop_counters[1][1] == loop_ends[1][1]) break;
               }
-              if (loop_counters[1][0] == loop_ends[1][0]) {
-                break;
-              }
+              if (loop_counters[1][0] == loop_ends[1][0]) break;
             }
-            if (loop_counters[0][2] == loop_ends[0][2]) {
-              break;
-            }
+            if (loop_counters[0][2] == loop_ends[0][2]) break;
           }
-          if (loop_counters[0][1] == loop_ends[0][1]) {
-            break;
-          }
+          if (loop_counters[0][1] == loop_ends[0][1]) break;
         }
-        if (loop_counters[0][0] == loop_ends[0][0]) {
-          break;
-        }
+        if (loop_counters[0][0] == loop_ends[0][0]) break;
       }
       vector_fetch_1_packer_done.write(true);
       vector_fetch_1_data_done.write(true);
@@ -765,9 +711,7 @@ SC_MODULE(VectorFetchUnit) {
 
         for (ac_int<4, false> i = 0;; i++) {
           packed_bits.set_slc(i * OC_PORT_WIDTH, vector_fetch_1_resp.Pop());
-          if (i == params.vector_fetch_1_num_beats - 1) {
-            break;
-          }
+          if (i == params.vector_fetch_1_num_beats - 1) break;
         }
 
         vector_fetch_1_packed_bits.Push(packed_bits);
@@ -817,13 +761,9 @@ SC_MODULE(VectorFetchUnit) {
                 outputs, dequantized, params.vector_fetch_1_dq_scale);
             vector_fetch_1_data.Push(dequantized);
 
-            if (i == params.vector_fetch_1_packing_factor - 1) {
-              break;
-            }
+            if (i == params.vector_fetch_1_packing_factor - 1) break;
           }
-          if (reuse == innermost_loop_reuse) {
-            break;
-          }
+          if (reuse == innermost_loop_reuse) break;
         }
       }
     }
@@ -924,29 +864,17 @@ SC_MODULE(VectorFetchUnit) {
                   vector_fetch_2_packer_done.write(false);
                   vector_fetch_2_data_done.write(false);
 
-                  if (loop_counters[1][2] == loop_ends[1][2]) {
-                    break;
-                  }
+                  if (loop_counters[1][2] == loop_ends[1][2]) break;
                 }
-                if (loop_counters[1][1] == loop_ends[1][1]) {
-                  break;
-                }
+                if (loop_counters[1][1] == loop_ends[1][1]) break;
               }
-              if (loop_counters[1][0] == loop_ends[1][0]) {
-                break;
-              }
+              if (loop_counters[1][0] == loop_ends[1][0]) break;
             }
-            if (loop_counters[0][2] == loop_ends[0][2]) {
-              break;
-            }
+            if (loop_counters[0][2] == loop_ends[0][2]) break;
           }
-          if (loop_counters[0][1] == loop_ends[0][1]) {
-            break;
-          }
+          if (loop_counters[0][1] == loop_ends[0][1]) break;
         }
-        if (loop_counters[0][0] == loop_ends[0][0]) {
-          break;
-        }
+        if (loop_counters[0][0] == loop_ends[0][0]) break;
       }
       vector_fetch_2_packer_done.write(true);
       vector_fetch_2_data_done.write(true);
@@ -969,9 +897,7 @@ SC_MODULE(VectorFetchUnit) {
         ac_int<MAX_RESPONSE_WIDTH, false> packed_bits;
         for (ac_int<4, false> i = 0;; i++) {
           packed_bits.set_slc(i * OC_PORT_WIDTH, vector_fetch_2_resp.Pop());
-          if (i == params.vector_fetch_2_num_beats - 1) {
-            break;
-          }
+          if (i == params.vector_fetch_2_num_beats - 1) break;
         }
         vector_fetch_2_packed_bits.Push(packed_bits);
       }
@@ -1019,13 +945,9 @@ SC_MODULE(VectorFetchUnit) {
                 outputs, dequantized, params.vector_fetch_2_dq_scale);
             vector_fetch_2_data.Push(dequantized);
 
-            if (i == params.vector_fetch_2_packing_factor - 1) {
-              break;
-            }
+            if (i == params.vector_fetch_2_packing_factor - 1) break;
           }
-          if (reuse == innermost_loop_reuse) {
-            break;
-          }
+          if (reuse == innermost_loop_reuse) break;
         }
       }
     }

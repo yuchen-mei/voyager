@@ -76,7 +76,7 @@ SC_MODULE(OutputController) {
     while (true) {
       VectorParams params = quantize_codebook_params.Pop();
 
-      ac_int<32, false> num_outputs =
+      ac_int<32, false> loop_bound =
           params.output_loops[0][0] * params.output_loops[0][1] *
               params.output_loops[0][2] * params.output_loops[1][0] *
               params.output_loops[1][1] * params.output_loops[1][2] -
@@ -84,47 +84,26 @@ SC_MODULE(OutputController) {
 
 #if SUPPORT_CODEBOOK_QUANT
       if (params.use_output_codebook) {
-        using ac_float_t = typename StdFloat<7, 5>::ac_float_rep;
-
-        ac_float_t midpoints[NUM_CODEBOOK_ENTRIES - 1];
-
+        VectorType midpoints[NUM_CODEBOOK_ENTRIES];
 #pragma hls_unroll yes
-        for (int i = 0; i < NUM_CODEBOOK_ENTRIES - 1; i++) {
-          StdFloat<7, 5> value = ac_float_t(params.output_code[i]);
-          value.adjust_exponent(-1);
-          midpoints[i] = value.float_val;
+        for (int i = 1; i < NUM_CODEBOOK_ENTRIES; i++) {
+          midpoints[i] =
+              typename VectorType::ac_float_rep(params.output_code[i - 1]);
+          midpoints[i].adjust_exponent(-1);
         }
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
         for (ac_int<32, false> i = 0;; i++) {
-          Pack1D<VectorType, width> outputs = vector_in.Pop();
-
-          Pack1D<ac_float_t, width> ac_float_outputs;
-          Pack1D<ac_int<4, false>, width> indices;
-
+          auto outputs = vector_in.Pop();
+          Pack1D<VectorType, width> indices;
 #pragma hls_unroll yes
-          for (int i = 0; i < width; i++) {
-            ac_float_outputs[i] = ac_float_t(outputs[i].float_val);
-            indices[i] = 0;
+          for (int j = 0; j < width; j++) {
+            auto index = quantize16_iter(outputs[j], midpoints);
+            indices[j].set_bits(index);
           }
-
-#pragma hls_unroll 4
-          for (int j = 0; j < NUM_CODEBOOK_ENTRIES - 1; j++) {
-#pragma hls_unroll yes
-            for (int i = 0; i < width; i++) {
-              indices[i] += ac_float_outputs[i] > midpoints[j];
-            }
-          }
-
-          Pack1D<VectorType, width> quantized_outputs;
-#pragma hls_unroll yes
-          for (int i = 0; i < width; i++) {
-            quantized_outputs[i].set_bits(indices[i]);
-          }
-          quantize_output.Push(quantized_outputs);
-
-          if (i == num_outputs) break;
+          quantize_output.Push(indices);
+          if (i == loop_bound) break;
         }
       } else
 #endif
@@ -133,9 +112,8 @@ SC_MODULE(OutputController) {
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
         for (ac_int<32, false> i = 0;; i++) {
-          auto outputs = vector_in.Pop();
-          quantize_output.Push(outputs);
-          if (i == num_outputs) break;
+          quantize_output.Push(vector_in.Pop());
+          if (i == loop_bound) break;
         }
       }
     }
@@ -158,14 +136,14 @@ SC_MODULE(OutputController) {
       quantize_codebook_params.Push(params);
       write_address_params.Push(params);
 
-      ac_int<32, false> num_outputs =
+      ac_int<32, false> loop_bound =
           params.output_loops[0][0] * params.output_loops[0][1] *
               params.output_loops[0][2] * params.output_loops[1][0] *
               params.output_loops[1][1] * params.output_loops[1][2] -
           1;
 
       if (params.quantize_output_mx) {
-        write_scale_params.Push(num_outputs);
+        write_scale_params.Push(loop_bound);
         write_scale_address_params.Push(params);
       }
 
@@ -185,7 +163,7 @@ SC_MODULE(OutputController) {
                     << "' is not valid.\n";
         }
 #endif
-        if (i == num_outputs) break;
+        if (i == loop_bound) break;
       }
 
       done.SyncPush();
@@ -352,14 +330,14 @@ SC_MODULE(OutputController) {
     wait();
 
     while (true) {
-      ac_int<32, false> num_outputs = write_scale_params.Pop();
+      ac_int<32, false> loop_bound = write_scale_params.Pop();
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
       for (ac_int<32, false> i = 0;; i++) {
         ScaleType scale = scale_in.Pop();
         scale_out.Push(scale.bits_rep());
-        if (i == num_outputs) break;
+        if (i == loop_bound) break;
       }
     }
   }

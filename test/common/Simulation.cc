@@ -159,12 +159,13 @@ void Simulation::print_ideal_runtime(const Operation operation) {
     long num_macs = get_size(output) * get_size(weight) * num_tiles;
 
     if (is_fc_layer(first_op)) {
+      auto input = first_op.kwargs().at("input").tensor();
       int K = weight_shape[0];
-#if SUPPORT_MVM
-      cycles = num_macs / K / MV_UNIT_WIDTH;
-#else
-      cycles = num_macs / K / VECTOR_UNIT_WIDTH;
-#endif
+      if (input.dtype() == "bfloat16") {
+        cycles = num_macs / K / VECTOR_UNIT_WIDTH;
+      } else {
+        cycles = num_macs / K / MV_UNIT_WIDTH;
+      }
     } else {
       int K = weight_shape[weight_shape.size() - 1];
       cycles = num_macs / K / (IC_DIMENSION * OC_DIMENSION);

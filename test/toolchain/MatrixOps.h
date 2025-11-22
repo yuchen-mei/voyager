@@ -589,6 +589,9 @@ void map_matrix_operation(const Operation& operation,
     matrix_params->num_channels = tiling.num_channels;
     matrix_params->fx_unrolling_lg2 = std::log2(tiling.fx_unrolling);
 
+    matrix_params->input_x = tiling.input_x;
+    matrix_params->input_y = tiling.input_y;
+
     // Set input transpose
     if (input.has_reshape()) {
       const auto reshape_op = input.reshape();

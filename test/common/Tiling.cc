@@ -31,6 +31,8 @@ std::ostream& operator<<(std::ostream& os, const Tiling& tiling) {
   os << "Generic Replication: " << tiling.generic_replication << std::endl;
   os << "Num Channels: " << tiling.num_channels << std::endl;
   os << "FX Unrolling: " << tiling.fx_unrolling << std::endl;
+  os << "Padded Input X: " << tiling.input_x << std ::endl;
+  os << "Padded Input Y: " << tiling.input_y << std::endl;
   return os;
 }
 
@@ -67,6 +69,17 @@ Tiling get_tiling(const Operation& operation) {
     } else {
       tiling.padding = 0;
     }
+  }
+
+  const auto input = first_op.kwargs().at("input").tensor();
+  const auto input_shape = get_shape(input);
+
+  if (first_op.target() == "conv2d" || first_op.target() == "conv2d_mx") {
+    tiling.input_y = input_shape[1];
+    tiling.input_x = input_shape[2];
+  } else {
+    tiling.input_y = 1;
+    tiling.input_x = get_size(input_shape) / input_shape.back();
   }
 
   return tiling;
@@ -265,9 +278,7 @@ Tiling get_conv2d_tiling(const codegen::OpOverload param) {
   int padding = paddings[0];
 
   // conv2d (vit)
-  if (input_shape[3] == 3 && input_shape[1] == 224 && input_shape[2] == 224 &&
-      weight_shape[3] == 768 && weight_shape[0] == 16 &&
-      weight_shape[1] == 16) {
+  if (input_shape[3] == 3 && weight_shape[0] == 16 && weight_shape[1] == 16) {
     int fx_unrolling;
     if (IC_DIMENSION == 4) {
       fx_unrolling = 1;
@@ -282,8 +293,9 @@ Tiling get_conv2d_tiling(const codegen::OpOverload param) {
                                std::to_string(IC_DIMENSION));
     }
 
+    int k1 = weight_shape[3] / 32;
     Tiling tiling = {
-        .loops = {{7, 1, 24, 1, fy, 1}, {1, 2, 1, fx / fx_unrolling, 2, 14}},
+        .loops = {{7, 1, k1, 1, fy, 1}, {1, 2, 1, fx / fx_unrolling, 2, 14}},
         .x_loop_idx = {1, 5},
         .y_loop_idx = {0, 4},
         .reduction_loop_idx = {3, 0},
@@ -308,12 +320,14 @@ Tiling get_conv2d_tiling(const codegen::OpOverload param) {
       tiling.loops[0][tiling.weight_loop_idx[0]] *= (16 / OC_DIMENSION);
     } else if (OC_DIMENSION > 16) {
       int div_factor = OC_DIMENSION / 16;
-      while (tiling.loops[0][tiling.weight_loop_idx[0]] > 1 && div_factor > 1) {
-        tiling.loops[0][tiling.weight_loop_idx[0]] /= 2;
+      int& k1 = tiling.loops[0][tiling.weight_loop_idx[0]];
+      while (k1 > 1 && k1 % 2 == 0 && div_factor > 1) {
+        k1 /= 2;
         div_factor /= 2;
       }
-      while (tiling.loops[1][tiling.weight_loop_idx[1]] > 1 && div_factor > 1) {
-        tiling.loops[1][tiling.weight_loop_idx[1]] /= 2;
+      int& k0 = tiling.loops[1][tiling.weight_loop_idx[1]];
+      while (k0 > 1 && k0 % 2 == 0 && div_factor > 1) {
+        k0 /= 2;
         div_factor /= 2;
       }
 
@@ -326,10 +340,8 @@ Tiling get_conv2d_tiling(const codegen::OpOverload param) {
     return tiling;
   }
   // conv1
-  else if (input_shape[3] == 3 && input_shape[1] == 224 &&
-           input_shape[2] == 224 &&
-           (weight_shape[3] == 64 || weight_shape[3] == 32) &&
-           weight_shape[0] == 7 && weight_shape[1] == 7) {
+  else if (input_shape[3] == 3 && weight_shape[0] == 7 &&
+           weight_shape[1] == 7) {
     int fx;
     if (IC_DIMENSION == 4) {
       fx = 7;
@@ -345,8 +357,10 @@ Tiling get_conv2d_tiling(const codegen::OpOverload param) {
     }
 
     int K1 = weight_shape[3] / 32;
+    int Y1 = output_shape[0] / 16;
+    int X1 = output_shape[1] / 16;
     Tiling tiling = {
-        .loops = {{7, 7, K1, 1, 1, 1}, {1, 2, 7, fx, 16, 16}},
+        .loops = {{X1, Y1, K1, 1, 1, 1}, {1, 2, 7, fx, 16, 16}},
         .x_loop_idx = {0, 5},
         .y_loop_idx = {1, 4},
         .reduction_loop_idx = {3, 0},
@@ -370,12 +384,14 @@ Tiling get_conv2d_tiling(const codegen::OpOverload param) {
       tiling.loops[0][tiling.weight_loop_idx[0]] *= (16 / OC_DIMENSION);
     } else if (OC_DIMENSION > 16) {
       int div_factor = OC_DIMENSION / 16;
-      while (tiling.loops[0][tiling.weight_loop_idx[0]] > 1 && div_factor > 1) {
-        tiling.loops[0][tiling.weight_loop_idx[0]] /= 2;
+      int& k1 = tiling.loops[0][tiling.weight_loop_idx[0]];
+      while (k1 > 1 && k1 % 2 == 0 && div_factor > 1) {
+        k1 /= 2;
         div_factor /= 2;
       }
-      while (tiling.loops[1][tiling.weight_loop_idx[1]] > 1 && div_factor > 1) {
-        tiling.loops[1][tiling.weight_loop_idx[1]] /= 2;
+      int& k0 = tiling.loops[1][tiling.weight_loop_idx[1]];
+      while (k0 > 1 && k0 % 2 == 0 && div_factor > 1) {
+        k0 /= 2;
         div_factor /= 2;
       }
 

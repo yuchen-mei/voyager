@@ -41,6 +41,8 @@ inline Buffer* gemm(std::any input_ptr, std::any input_scale_ptr,
   int FY = tiling.loops[0][tiling.fy_loop_idx[0]] *
            tiling.loops[1][tiling.fy_loop_idx[1]];
   int STRIDE = tiling.stride;
+  int IY = tiling.input_y;
+  int IX = tiling.input_x;
 
   int X0 = tiling.loops[1][tiling.x_loop_idx[1]];
   int Y0 = tiling.loops[1][tiling.y_loop_idx[1]];
@@ -55,6 +57,8 @@ inline Buffer* gemm(std::any input_ptr, std::any input_scale_ptr,
     FX_UNROLL = tiling.fx_unrolling;
     FX = FX * FX_UNROLL;
     tiling.loops[1][tiling.fx_loop_idx] = FX;
+    IY = Y * STRIDE;
+    IX = X * STRIDE;
   }
 
   if (C < IC_DIMENSION) {
@@ -142,37 +146,28 @@ inline Buffer* gemm(std::any input_ptr, std::any input_scale_ptr,
                         int y0 = counters[1][tiling.y_loop_idx[1]];
                         int c1 = counters[1][tiling.reduction_loop_idx[1]];
                         int k0 = counters[1][tiling.weight_loop_idx[1]];
+                        int fx = counters[1][tiling.fx_loop_idx];
                         int fy0 = counters[1][tiling.fy_loop_idx[1]];
-
-                        int fx =
-                            counters[1][tiling.fx_loop_idx] - tiling.padding;
-                        int fy = fy1 * FY0 + fy0 - tiling.padding;
+                        int fy = fy1 * FY0 + fy0;
 
                         int x = x1 * X0 + x0;
                         int y = y1 * Y0 + y0;
+                        int ix = x * STRIDE + fx - tiling.padding;
+                        int iy = y * STRIDE + fy - tiling.padding;
 
                         for (int oc0 = 0; oc0 < OC_DIMENSION; oc0++) {
                           int k = (k1 * K0 + k0) * OC_DIMENSION + oc0;
                           int output_addr = y * X * K + x * K + k;
 
-#if SUPPORT_MX
-                          Psum psum = Psum(0.0);
-#else
+                          // accumulation is only updated during replication
                           Psum psum = accumulations[output_addr];
-#endif
 
                           for (int ic0 = 0; ic0 < IC_UNROLL; ic0++) {
                             int c = c2 * C1 * IC_UNROLL + c1 * IC_UNROLL + ic0;
-                            int input_addr =
-                                (STRIDE * y + fy) * STRIDE * X * C +
-                                (STRIDE * x + fx) * C + c;
+                            int input_addr = iy * IX * C + ix * C + c;
                             int weight_addr =
-                                (fy + tiling.padding) * FX * C * K +
-                                (fx + tiling.padding) * C * K + c * K + k;
-                            if (STRIDE * x + fx >= 0 &&
-                                STRIDE * x + fx < STRIDE * X &&
-                                STRIDE * y + fy >= 0 &&
-                                STRIDE * y + fy < STRIDE * Y) {
+                                fy * FX * C * K + fx * C * K + c * K + k;
+                            if (ix >= 0 && ix < IX && iy >= 0 && iy < IY) {
                               Input input = inputs[input_addr];
                               Input weight = weights[weight_addr];
 #ifdef CHECK_PE
@@ -210,20 +205,16 @@ inline Buffer* gemm(std::any input_ptr, std::any input_scale_ptr,
 #if SUPPORT_MX
                           if (input_scales && weight_scales) {
                             // only perform scaling if within bounds
-                            if (STRIDE * x + fx >= 0 &&
-                                STRIDE * x + fx < STRIDE * X &&
-                                STRIDE * y + fy >= 0 &&
-                                STRIDE * y + fy < STRIDE * Y) {
+                            if (ix >= 0 && ix < IX && iy >= 0 && iy < IY) {
                               int c = c2 * C1 + c1;
                               int num_blocks = C / block_size;
                               int input_scale_addr =
-                                  (y * STRIDE + fy) * X * STRIDE * num_blocks +
-                                  (x * STRIDE + fx) * num_blocks + c;
+                                  iy * IX * num_blocks + ix * num_blocks + c;
                               assert(input_scale_addr >= 0);
-                              int weight_scale_addr =
-                                  (fy + (FY - 1) / 2) * FX * num_blocks * K +
-                                  (fx + (FX - 1) / 2) * num_blocks * K + c * K +
-                                  k;
+
+                              int weight_scale_addr = fy * FX * num_blocks * K +
+                                                      fx * num_blocks * K +
+                                                      c * K + k;
                               assert(weight_scale_addr >= 0);
 
                               Scale input_scale =
@@ -235,62 +226,9 @@ inline Buffer* gemm(std::any input_ptr, std::any input_scale_ptr,
                               outputs[output_addr] +=
                                   static_cast<Buffer>(psum) * scale;
                             }
-                          } else {
-                            if (tiling.resnet_replication) {
-                              accumulations[output_addr] += psum;
-                              if (IC_DIMENSION == 4) {
-                                Buffer scaled_psum = static_cast<Buffer>(
-                                    accumulations[output_addr]);
-                                outputs[output_addr] += scaled_psum;
-                                accumulations[output_addr] = Psum(0.0);
-                              } else if (IC_DIMENSION == 8) {
-                                if (counters[1][tiling.fx_loop_idx] == 1 ||
-                                    counters[1][tiling.fx_loop_idx] == 3 ||
-                                    counters[1][tiling.fx_loop_idx] == 5 ||
-                                    counters[1][tiling.fx_loop_idx] == 6) {
-                                  Buffer scaled_psum = static_cast<Buffer>(
-                                      accumulations[output_addr]);
-                                  outputs[output_addr] += scaled_psum;
-                                  accumulations[output_addr] = Psum(0.0);
-                                }
-                              } else if (IC_DIMENSION == 16) {
-                                if (counters[1][tiling.fx_loop_idx] == 3 ||
-                                    counters[1][tiling.fx_loop_idx] == 6) {
-                                  Buffer scaled_psum = static_cast<Buffer>(
-                                      accumulations[output_addr]);
-                                  outputs[output_addr] += scaled_psum;
-                                  accumulations[output_addr] = Psum(0.0);
-                                }
-                              } else if (IC_DIMENSION == 32 ||
-                                         IC_DIMENSION == 64) {
-                                if (counters[1][tiling.fx_loop_idx] == 6) {
-                                  Buffer scaled_psum = static_cast<Buffer>(
-                                      accumulations[output_addr]);
-                                  outputs[output_addr] += scaled_psum;
-                                  accumulations[output_addr] = Psum(0.0);
-                                }
-                              }
-                            } else if (tiling.generic_replication) {
-                              accumulations[output_addr] += psum;
-                              if (tiling.fx_unrolling == 1 ||
-                                  ((counters[1][tiling.fx_loop_idx] > 0) &&
-                                   (counters[1][tiling.fx_loop_idx] %
-                                        tiling.fx_unrolling ==
-                                    tiling.fx_unrolling - 1))) {
-                                Buffer scaled_psum = static_cast<Buffer>(
-                                    accumulations[output_addr]);
-                                outputs[output_addr] += scaled_psum;
-                                accumulations[output_addr] = Psum(0.0);
-                              }
-                            } else {
-                              // use a scale factor of 1 to directly convert the
-                              // int value into a float
-                              Buffer scaled_psum = static_cast<Buffer>(psum);
-                              outputs[output_addr] += scaled_psum;
-                            }
-                          }
-#else
-                          if (tiling.resnet_replication) {
+                          } else
+#endif
+                              if (tiling.resnet_replication) {
                             accumulations[output_addr] = psum;
                             if (IC_DIMENSION == 4) {
                               outputs[output_addr] += static_cast<Buffer>(
@@ -334,7 +272,6 @@ inline Buffer* gemm(std::any input_ptr, std::any input_scale_ptr,
                           } else {
                             outputs[output_addr] += static_cast<Buffer>(psum);
                           }
-#endif
                         }
                       }
                     }

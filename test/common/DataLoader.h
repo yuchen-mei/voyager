@@ -25,7 +25,8 @@ class DataLoader {
                  const std::vector<int>& tiled_shape,
                  const std::vector<int>& tile_index, int src_partition,
                  uint64_t src_address, bool src_contiguous, int dst_partition,
-                 uint64_t dst_address, bool dst_contiguous);
+                 uint64_t dst_address, bool dst_contiguous,
+                 bool replication = false);
   void load_scratchpad(const codegen::Operation& param, const int tile_index,
                        const int offset = 0);
   void store_scratchpad(const codegen::Operation& param, const int tile_index,

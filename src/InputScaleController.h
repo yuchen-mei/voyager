@@ -94,38 +94,16 @@ SC_MODULE(InputScaleController) {
       ac_int<16, false> X0 = params.loops[1][params.x_loop_idx[1]];
       ac_int<4, false> FX = params.loops[1][params.fx_loop_idx];
       ac_int<4, false> FY0 = params.loops[1][params.fy_loop_idx[1]];
-      ac_int<5, false> STRIDE = params.stride;
-
-      if (params.is_resnet_replication) {
-        FX = 7;
-      }
-
-      bool is_downsample = FX == 1 && FY0 == 1;
-
-      ac_int<4, false> x_padding = params.padding;
-      ac_int<4, false> y_padding = params.padding;
+      ac_int<8, false> STRIDE = params.stride;
 
       ac_int<16, false> IX0 = X0 * STRIDE;
       ac_int<16, false> IY0 = Y0 * STRIDE;
 
-      ac_int<16, false> x_bound = is_downsample ? X0 : IX0;
-      ac_int<16, false> y_bound = is_downsample ? Y0 : IY0;
+      loop_bounds[1][params.y_loop_idx[1]] = (FY0 == 1 ? Y0 : IY0) + FY0 - 1;
+      loop_bounds[1][params.x_loop_idx[1]] = (FX == 1 ? X0 : IX0) + FX - 1;
 
-      if (params.is_resnet_replication) {
-        x_bound /= packing_factor;
-      }
-
-      loop_bounds[1][params.x_loop_idx[1]] = x_bound;
-      if (params.is_resnet_replication) {
-        loop_bounds[1][params.x_loop_idx[1]] += 2 * boundary_words;
-      } else {
-        loop_bounds[1][params.x_loop_idx[1]] += 2 * params.padding;
-      }
-
-      loop_bounds[1][params.y_loop_idx[1]] = y_bound + 2 * params.padding;
-
-      ac_int<16, false> Y = Y1 * IY0;
-      ac_int<16, false> X = X1 * IX0;
+      ac_int<16, false> Y = params.input_y;
+      ac_int<16, false> X = params.input_x;
       ac_int<16, false> C = C2 * C1;
 
 #pragma hls_pipeline_init_interval 1
@@ -163,36 +141,20 @@ SC_MODULE(InputScaleController) {
                               y0 = y0 * STRIDE;
                             }
 
-                            if (params.is_resnet_replication) {
-                              if (x0 != 0 && x1 != 0) {
-                                x0 = (x0 - boundary_words) * packing_factor +
-                                     x_padding;
-                              } else {
-                                x0 = x0 * packing_factor;
-                              }
-                            } else if (params.is_generic_replication) {
-                              x0 = x0 << params.fx_unrolling_lg2;
-                            }
-
-                            ac_int<16, false> y = y1 * IY0 + y0 - y_padding;
-                            ac_int<16, false> x = x1 * IX0 + x0 - x_padding;
+                            ac_int<16, false> y =
+                                y1 * IY0 + y0 - params.padding;
+                            ac_int<16, false> x =
+                                x1 * IX0 + x0 - params.padding;
                             ac_int<16, false> c = c2 * C1 + c1;
 
-                            if ((x >= 0) && (y >= 0) && (x < X) && (y < Y)) {
+                            if (x >= 0 && y >= 0 && x < X && y < Y) {
                               ac_int<32, false> address = y * X * C + x * C + c;
 
-                              if (params.is_resnet_replication) {
-                                address = y * (X / packing_factor) * rows +
-                                          (x / packing_factor) * rows + c;
-                              } else if (params.is_generic_replication) {
-                                address =
-                                    y * (X >> params.fx_unrolling_lg2) * rows +
-                                    (x >> params.fx_unrolling_lg2) * rows + c;
-                              } else if (params.merge_heads) {
+                              if (params.merge_heads) {
                                 ac_int<16, false> mask =
                                     (1 << params.head_size_lg2) - 1;
-                                address = ((c >> params.head_size_lg2) *
-                                           (X << params.head_size_lg2)) +
+                                address = (c >> params.head_size_lg2) *
+                                              (X << params.head_size_lg2) +
                                           (x << params.head_size_lg2) +
                                           (c & mask);
                               } else if (params.input_transpose) {
@@ -205,47 +167,47 @@ SC_MODULE(InputScaleController) {
                                   scale_req);
                             }
 
-                            if (loop_counters[1][5] >= loop_bounds[1][5] - 1) {
+                            if (loop_counters[1][5] == loop_bounds[1][5] - 1) {
                               break;
                             }
                           }
-                          if (loop_counters[1][4] >= loop_bounds[1][4] - 1) {
+                          if (loop_counters[1][4] == loop_bounds[1][4] - 1) {
                             break;
                           }
                         }
-                        if (loop_counters[1][3] >= loop_bounds[1][3] - 1) {
+                        if (loop_counters[1][3] == loop_bounds[1][3] - 1) {
                           break;
                         }
                       }
-                      if (loop_counters[1][2] >= loop_bounds[1][2] - 1) {
+                      if (loop_counters[1][2] == loop_bounds[1][2] - 1) {
                         break;
                       }
                     }
-                    if (loop_counters[1][1] >= loop_bounds[1][1] - 1) {
+                    if (loop_counters[1][1] == loop_bounds[1][1] - 1) {
                       break;
                     }
                   }
-                  if (loop_counters[1][0] >= loop_bounds[1][0] - 1) {
+                  if (loop_counters[1][0] == loop_bounds[1][0] - 1) {
                     break;
                   }
                 }
-                if (loop_counters[0][4] >= loop_bounds[0][4] - 1) {
+                if (loop_counters[0][4] == loop_bounds[0][4] - 1) {
                   break;
                 }
               }
-              if (loop_counters[0][3] >= loop_bounds[0][3] - 1) {
+              if (loop_counters[0][3] == loop_bounds[0][3] - 1) {
                 break;
               }
             }
-            if (loop_counters[0][2] >= loop_bounds[0][2] - 1) {
+            if (loop_counters[0][2] == loop_bounds[0][2] - 1) {
               break;
             }
           }
-          if (loop_counters[0][1] >= loop_bounds[0][1] - 1) {
+          if (loop_counters[0][1] == loop_bounds[0][1] - 1) {
             break;
           }
         }
-        if (loop_counters[0][0] >= loop_bounds[0][0] - 1) {
+        if (loop_counters[0][0] == loop_bounds[0][0] - 1) {
           break;
         }
       }
@@ -290,38 +252,24 @@ SC_MODULE(InputScaleController) {
       ac_int<16, false> X0 = params.loops[1][params.x_loop_idx[1]];
       ac_int<4, false> FX = params.loops[1][params.fx_loop_idx];
       ac_int<4, false> FY0 = params.loops[1][params.fy_loop_idx[1]];
-      ac_int<5, false> STRIDE = params.stride;
+      ac_int<8, false> STRIDE = params.stride;
 
-      if (params.is_resnet_replication) {
-        FX = 7;
+      ac_int<16, false> IX0 = X0;
+      ac_int<16, false> IY0 = Y0;
+
+      if (FX != 1) {
+        IX0 = X0 * STRIDE;
       }
 
-      ac_int<4, false> x_padding = params.padding;
-      ac_int<4, false> y_padding = params.padding;
-
-      bool is_downsample = FX == 1 && FY0 == 1;
-
-      if (is_downsample) {
-        STRIDE = 1;
+      if (FY0 != 1) {
+        IY0 = Y0 * STRIDE;
       }
 
-      ac_int<16, false> IX0 = X0 * STRIDE;
-      ac_int<16, false> IY0 = Y0 * STRIDE;
+      loop_bounds[1][params.y_loop_idx[1]] = IY0 + FY0 - 1;
+      loop_bounds[1][params.x_loop_idx[1]] = IX0 + FX - 1;
 
-      ac_int<16, false> x_bound = IX0;
-
-      if (params.is_resnet_replication) {
-        x_bound /= packing_factor;
-      }
-
-      ac_int<4, false> x_boundary = params.is_resnet_replication
-                                        ? ac_int<4, false>(2 * boundary_words)
-                                        : ac_int<4, false>(params.padding * 2);
-      loop_bounds[1][params.x_loop_idx[1]] = x_bound + x_boundary;
-      loop_bounds[1][params.y_loop_idx[1]] = IY0 + 2 * params.padding;
-
-      ac_int<16, false> IX = X1 * IX0;
-      ac_int<16, false> IY = Y1 * IY0;
+      ac_int<16, false> Y = params.input_y;
+      ac_int<16, false> X = params.input_x;
       ac_int<16, false> y_stride = loop_bounds[1][params.x_loop_idx[1]] * C1;
 
 #pragma hls_pipeline_init_interval 1
@@ -349,17 +297,11 @@ SC_MODULE(InputScaleController) {
                             ac_int<LOOP_WIDTH, true> c1 =
                                 loop_counters[1][params.reduction_loop_idx[1]];
 
-                            if (params.is_resnet_replication && x0 != 0) {
-                              x0 = (x0 - boundary_words) * packing_factor +
-                                   x_padding;
-                            }
-
-                            ac_int<16, true> x = x1 * IX0 + x0 - x_padding;
-                            ac_int<16, true> y = y1 * IY0 + y0 - y_padding;
+                            ac_int<16, true> x = x1 * IX0 + x0 - params.padding;
+                            ac_int<16, true> y = y1 * IY0 + y0 - params.padding;
 
                             ac_int<Scale::width, false> scale;
-
-                            if ((x < 0) || (y < 0) || (x >= IX) || (y >= IY)) {
+                            if (x < 0 || y < 0 || x >= X || y >= Y) {
                               scale = Scale::one().bits_rep();
                             } else {
                               scale = scale_resp.Pop();
@@ -385,48 +327,48 @@ SC_MODULE(InputScaleController) {
                             scale_req.last = is_last;
                             write_request[bank_sel].Push(scale_req);
 
-                            if (loop_counters[1][5] >= loop_bounds[1][5] - 1) {
+                            if (loop_counters[1][5] == loop_bounds[1][5] - 1) {
                               break;
                             }
                           }
-                          if (loop_counters[1][4] >= loop_bounds[1][4] - 1) {
+                          if (loop_counters[1][4] == loop_bounds[1][4] - 1) {
                             break;
                           }
                         }
-                        if (loop_counters[1][3] >= loop_bounds[1][3] - 1) {
+                        if (loop_counters[1][3] == loop_bounds[1][3] - 1) {
                           break;
                         }
                       }
-                      if (loop_counters[1][2] >= loop_bounds[1][2] - 1) {
+                      if (loop_counters[1][2] == loop_bounds[1][2] - 1) {
                         break;
                       }
                     }
-                    if (loop_counters[1][1] >= loop_bounds[1][1] - 1) {
+                    if (loop_counters[1][1] == loop_bounds[1][1] - 1) {
                       break;
                     }
                   }
-                  if (loop_counters[1][0] >= loop_bounds[1][0] - 1) {
+                  if (loop_counters[1][0] == loop_bounds[1][0] - 1) {
                     break;
                   }
                 }
                 bank_sel = !bank_sel;
-                if (loop_counters[0][4] >= loop_bounds[0][4] - 1) {
+                if (loop_counters[0][4] == loop_bounds[0][4] - 1) {
                   break;
                 }
               }
-              if (loop_counters[0][3] >= loop_bounds[0][3] - 1) {
+              if (loop_counters[0][3] == loop_bounds[0][3] - 1) {
                 break;
               }
             }
-            if (loop_counters[0][2] >= loop_bounds[0][2] - 1) {
+            if (loop_counters[0][2] == loop_bounds[0][2] - 1) {
               break;
             }
           }
-          if (loop_counters[0][1] >= loop_bounds[0][1] - 1) {
+          if (loop_counters[0][1] == loop_bounds[0][1] - 1) {
             break;
           }
         }
-        if (loop_counters[0][0] >= loop_bounds[0][0] - 1) {
+        if (loop_counters[0][0] == loop_bounds[0][0] - 1) {
           break;
         }
       }
@@ -457,25 +399,13 @@ SC_MODULE(InputScaleController) {
         }
       }
 
-      if (params.is_resnet_replication && rows >= 16) {
-        loop_bounds[1][params.x_loop_idx[1]] =
-            (loop_bounds[1][params.x_loop_idx[1]] * params.stride /
-             packing_factor) +
-            2;
-      } else if (params.is_resnet_replication && rows == 8) {
-        loop_bounds[1][params.x_loop_idx[1]] =
-            (loop_bounds[1][params.x_loop_idx[1]] * params.stride /
-             packing_factor) +
-            1;
-      }
-
       ac_int<LOOP_WIDTH, false> X0 = params.loops[1][params.x_loop_idx[1]];
       ac_int<LOOP_WIDTH, false> Y0 = params.loops[1][params.y_loop_idx[1]];
       ac_int<LOOP_WIDTH, false> C1 =
           params.loops[1][params.reduction_loop_idx[1]];
       ac_int<4, false> FX = params.loops[1][params.fx_loop_idx];
       ac_int<4, false> FY0 = params.loops[1][params.fy_loop_idx[1]];
-      ac_int<5, false> STRIDE = params.stride;
+      ac_int<8, false> STRIDE = params.stride;
 
       bool is_downsample = FX == 1 && FY0 == 1;
 
@@ -484,12 +414,7 @@ SC_MODULE(InputScaleController) {
       }
 
       ac_int<16, false> IX0 = X0 * STRIDE;
-      ac_int<16, false> y_stride = C1;
-      if (params.is_resnet_replication) {
-        y_stride *= IX0 / packing_factor + 2 * boundary_words;
-      } else {
-        y_stride *= IX0 + FX - 1;
-      }
+      ac_int<16, false> y_stride = C1 * (IX0 + FX - 1);
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
@@ -519,9 +444,7 @@ SC_MODULE(InputScaleController) {
                             ac_int<16, false> x = STRIDE * x0 + fx;
                             ac_int<16, false> y = STRIDE * y0 + fy;
                             ac_int<16, false> address;
-                            if (params.is_resnet_replication && rows >= 8) {
-                              address = y * y_stride + (x0 + fx) * C1 + c1;
-                            } else if (is_downsample) {
+                            if (is_downsample) {
                               address = y0 * X0 * C1 + x0 * C1 + c1;
                             } else {
                               address = y * y_stride + x * C1 + c1;
@@ -541,48 +464,48 @@ SC_MODULE(InputScaleController) {
                             };
                             read_request[bank_sel].Push(req);
 
-                            if (loop_counters[1][5] >= loop_bounds[1][5] - 1) {
+                            if (loop_counters[1][5] == loop_bounds[1][5] - 1) {
                               break;
                             }
                           }
-                          if (loop_counters[1][4] >= loop_bounds[1][4] - 1) {
+                          if (loop_counters[1][4] == loop_bounds[1][4] - 1) {
                             break;
                           }
                         }
-                        if (loop_counters[1][3] >= loop_bounds[1][3] - 1) {
+                        if (loop_counters[1][3] == loop_bounds[1][3] - 1) {
                           break;
                         }
                       }
-                      if (loop_counters[1][2] >= loop_bounds[1][2] - 1) {
+                      if (loop_counters[1][2] == loop_bounds[1][2] - 1) {
                         break;
                       }
                     }
-                    if (loop_counters[1][1] >= loop_bounds[1][1] - 1) {
+                    if (loop_counters[1][1] == loop_bounds[1][1] - 1) {
                       break;
                     }
                   }
-                  if (loop_counters[1][0] >= loop_bounds[1][0] - 1) {
+                  if (loop_counters[1][0] == loop_bounds[1][0] - 1) {
                     break;
                   }
                 }
                 bank_sel = !bank_sel;
-                if (loop_counters[0][4] >= loop_bounds[0][4] - 1) {
+                if (loop_counters[0][4] == loop_bounds[0][4] - 1) {
                   break;
                 }
               }
-              if (loop_counters[0][3] >= loop_bounds[0][3] - 1) {
+              if (loop_counters[0][3] == loop_bounds[0][3] - 1) {
                 break;
               }
             }
-            if (loop_counters[0][2] >= loop_bounds[0][2] - 1) {
+            if (loop_counters[0][2] == loop_bounds[0][2] - 1) {
               break;
             }
           }
-          if (loop_counters[0][1] >= loop_bounds[0][1] - 1) {
+          if (loop_counters[0][1] == loop_bounds[0][1] - 1) {
             break;
           }
         }
-        if (loop_counters[0][0] >= loop_bounds[0][0] - 1) {
+        if (loop_counters[0][0] == loop_bounds[0][0] - 1) {
           break;
         }
       }

@@ -81,6 +81,9 @@ struct MatrixParams : BaseParams {
     num_channels = 0;
     fx_unrolling_lg2 = 0;
 
+    input_y = 0;
+    input_x = 0;
+
     has_bias = false;
     is_mx_op = false;
     is_fc = false;
@@ -109,8 +112,8 @@ struct MatrixParams : BaseParams {
   ac_int<3, false> fy_loop_idx[2];
   ac_int<3, false> fx_loop_idx;
   ac_int<3, false> weight_reuse_idx[2];
-  ac_int<5, false> stride;
-  ac_int<2, false> padding;
+  ac_int<8, false> stride;
+  ac_int<8, false> padding;
 
   // weight address generator loop
   ac_int<LOOP_WIDTH, false> weight_addr_loops[2][5];
@@ -146,6 +149,9 @@ struct MatrixParams : BaseParams {
   ac_int<2, false> num_channels;
   ac_int<3, false> fx_unrolling_lg2;
 
+  ac_int<16, false> input_y;
+  ac_int<16, false> input_x;
+
   bool has_bias;
   bool is_mx_op;
   bool is_fc;
@@ -153,16 +159,16 @@ struct MatrixParams : BaseParams {
   bool input_transpose;
   bool weight_transpose;
   bool write_output_to_accum_buffer;
-  bool weight_dequant;
 
+  bool weight_dequant;
   ac_int<ADDRESS_WIDTH, false> dq_scale_offset;
   ac_int<ADDRESS_WIDTH, false> dq_zero_point_offset;
 
   static const unsigned int base_width =
-      7 * 64 /* OFFSETS */ + (12 + 10) * LOOP_WIDTH /* Loops */ +
-      21 * 3 /* Loop indices */ + 5 /* stride */ + 2 /* padding */ +
-      8 /* Head Size */ + 2 /* num_channels */ + 3 /*fx_unrolling_lg2*/ +
-      12 * 1 /* Bools */;
+      7 * 64 /* addresses */ + (12 + 10) * LOOP_WIDTH /* loops */ +
+      21 * 3 /* loop indices */ + 8 /* stride */ + 8 /* padding */ +
+      8 /* Head Size */ + 2 /* num_channels */ + 3 /* fx_unrolling_lg2 */ +
+      12 * 1 /* Bools */ + 32 /* input shapes */;
 
   static const unsigned int extra_width =
       2 * DTYPE_INDEX_WIDTH + 36 +
@@ -251,6 +257,9 @@ struct MatrixParams : BaseParams {
     m & is_generic_replication;
     m & num_channels;
     m & fx_unrolling_lg2;
+
+    m & input_y;
+    m & input_x;
 
     m & has_bias;
     m & is_mx_op;
@@ -362,6 +371,9 @@ struct MatrixParams : BaseParams {
     os << "num_channels: " << params.num_channels << std::endl;
     os << "fx_unrolling_lg2: " << params.fx_unrolling_lg2 << std::endl;
 
+    os << "input_y: " << params.input_y << std::endl;
+    os << "input_x: " << params.input_x << std::endl;
+
     os << "has_bias: " << params.has_bias << std::endl;
     os << "is_mx_op: " << params.is_mx_op << std::endl;
     os << "is_fc: " << params.is_fc << std::endl;
@@ -443,6 +455,9 @@ struct MatrixParams : BaseParams {
     if (lhs.is_generic_replication != rhs.is_generic_replication) return false;
     if (lhs.num_channels != rhs.num_channels) return false;
     if (lhs.fx_unrolling_lg2 != rhs.fx_unrolling_lg2) return false;
+
+    if (lhs.input_y != rhs.input_y) return false;
+    if (lhs.input_x != rhs.input_x) return false;
 
     if (lhs.has_bias != rhs.has_bias || lhs.bias_offset != rhs.bias_offset)
       return false;
@@ -1413,12 +1428,12 @@ struct VectorInstructionConfig : BaseParams {
 #endif
 
   VectorInstructions inst[8];
-  ac_int<3, false> num_inst;
+  ac_int<4, false> num_inst;
   ac_int<16, false> repeat_count;
   ApproxUnitConfig approx;
 
   static const unsigned int width =
-      VectorInstructions::width * 8 + 3 + 16 + ApproxUnitConfig::width;
+      VectorInstructions::width * 8 + 4 + 16 + ApproxUnitConfig::width;
 
 #ifndef NO_SYSC
   template <unsigned int Size>

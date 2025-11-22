@@ -168,10 +168,19 @@ float* DataLoader::read_tensor_from_file(const std::string& filename,
   return value_ptr;
 }
 
-static inline std::vector<int> rm_strides(const std::vector<int>& shape) {
+static inline std::vector<int> rm_strides(const std::vector<int>& shape,
+                                          bool replication = false) {
   const int r = (int)shape.size();
   std::vector<int> s(r, 1);
-  for (int i = r - 2; i >= 0; --i) s[i] = s[i + 1] * shape[i + 1];
+  for (int i = r - 2; i >= 0; --i) {
+    s[i] = s[i + 1] * shape[i + 1];
+  }
+  if (replication) {
+    s[r - 2] = IC_DIMENSION;
+    for (int i = r - 3; i >= 0; --i) {
+      s[i] = s[i + 1] * shape[i + 1];
+    }
+  }
   return s;
 }
 
@@ -181,7 +190,8 @@ void DataLoader::copy_tile(const std::string& dtype,
                            const std::vector<int>& tile_index,
                            int src_partition, uint64_t src_address,
                            bool src_contiguous, int dst_partition,
-                           uint64_t dst_address, bool dst_contiguous) {
+                           uint64_t dst_address, bool dst_contiguous,
+                           bool replication) {
   const int rank = full_shape.size();
 
   std::vector<int> start(rank);
@@ -189,18 +199,38 @@ void DataLoader::copy_tile(const std::string& dtype,
     start[d] = tile_index[d] * tiled_shape[d];
   }
 
+  const int effective_ic_dimension = IC_DIMENSION == 64 ? 32 : IC_DIMENSION;
+  const int packing_factor = effective_ic_dimension / 4 * 3;
+
+  std::vector<int> tiled_shape_copy = tiled_shape;
+  std::vector<int> full_shape_copy = full_shape;
+  if (replication) {
+    tiled_shape_copy[rank - 1] = packing_factor;
+    tiled_shape_copy[rank - 2] =
+        tiled_shape[rank - 2] / (packing_factor / tiled_shape[rank - 1]);
+    full_shape_copy[rank - 1] = packing_factor;
+    full_shape_copy[rank - 2] =
+        full_shape[rank - 2] / (packing_factor / full_shape[rank - 1]);
+  }
+
   const int size = get_size(tiled_shape);
-  const auto strides = rm_strides(full_shape);
+  const auto strides = rm_strides(full_shape_copy, replication);
   std::vector<int> indices(rank, 0);
 
   for (int i = 0; i < size; ++i) {
+    int index = i;
+    // In the case of replication, we store 8 x 3 elements in a single word
+    if (replication) {
+      index = ((i / packing_factor) * IC_DIMENSION) + (i % packing_factor);
+    }
+
     int flat = 0;
     for (int d = 0; d < rank; ++d) {
       flat += (start[d] + indices[d]) * strides[d];
     }
 
-    int src_index = src_contiguous ? i : flat;
-    int dst_index = dst_contiguous ? i : flat;
+    int src_index = src_contiguous ? index : flat;
+    int dst_index = dst_contiguous ? index : flat;
 
     float value = memory_interface->read_value(src_partition, src_address,
                                                src_index, dtype);
@@ -209,7 +239,7 @@ void DataLoader::copy_tile(const std::string& dtype,
 
     // increment indices (row-major)
     for (int d = rank - 1; d >= 0; --d) {
-      if (++indices[d] < tiled_shape[d]) break;
+      if (++indices[d] < tiled_shape_copy[d]) break;
       indices[d] = 0;
     }
   }
@@ -228,11 +258,20 @@ void DataLoader::load_scratchpad(const codegen::Operation& param,
 
   for (const auto op : op_list) {
     std::unordered_map<std::string, codegen::Tensor> tensor_dict;
+    std::vector<std::string> tensors_with_replication;
 
     for (const auto [key, value] : op.kwargs()) {
+      bool is_conv2d = op.target().find("conv2d") != std::string::npos;
       const auto tensor = value.tensor();
       if (value.has_tensor() && tensor.has_memory()) {
         tensor_dict[key] = tensor;
+
+        if (is_dut && is_conv2d && tensor.shape_size() == 4 &&
+            tensor.shape(3) == 3 && op.kwargs().at("groups").int_value() == 1 &&
+            key == "input") {
+          tensors_with_replication.push_back(key);
+        }
+
         if (tensor.has_dequant()) {
           const auto dequant_op = tensor.dequant();
           const auto scale = dequant_op.kwargs().at("scale");
@@ -275,6 +314,10 @@ void DataLoader::load_scratchpad(const codegen::Operation& param,
         }
       }
 
+      bool replication = std::find(tensors_with_replication.begin(),
+                                   tensors_with_replication.end(),
+                                   key) != tensors_with_replication.end();
+
       auto tiles = get_tiles(full_shape, tiled_shape);
       auto actual_tiles = get_tile_index(tiles, curr_tile_index);
 
@@ -290,11 +333,12 @@ void DataLoader::load_scratchpad(const codegen::Operation& param,
       }
       spdlog::debug("\n");
       spdlog::debug("Datatype: {}\n", dtype);
+      spdlog::debug("Replication: {}\n", replication);
       spdlog::debug("Main Memory Address: {}\n", address);
       spdlog::debug("Scratchpad Address: {}\n", scratch_addr);
 
       copy_tile(dtype, full_shape, tiled_shape, actual_tiles, partition,
-                address, false, scratch_par, scratch_addr, true);
+                address, false, scratch_par, scratch_addr, true, replication);
     }
   }
 }

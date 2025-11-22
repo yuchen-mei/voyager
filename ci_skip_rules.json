@@ -9,6 +9,7 @@
             "mobilenet_v2"
         ],
         "sim_type": [
+            "gold_model",
             "systemc",
             "fast-systemc",
             "rtl"
@@ -24,6 +25,7 @@
             "vit"
         ],
         "sim_type": [
+            "gold_model",
             "systemc",
             "fast-systemc",
             "rtl"
@@ -41,6 +43,7 @@
             "llama_prefill_mp"
         ],
         "sim_type": [
+            "gold_model",
             "systemc",
             "fast-systemc",
             "rtl"
@@ -57,6 +60,7 @@
             "llama_decode_mp"
         ],
         "sim_type": [
+            "gold_model",
             "systemc",
             "fast-systemc",
             "rtl"
@@ -75,6 +79,7 @@
             "llama_prefill_mp"
         ],
         "sim_type": [
+            "gold_model",
             "systemc",
             "fast-systemc",
             "rtl"
@@ -94,6 +99,7 @@
             "llama_decode_mp"
         ],
         "sim_type": [
+            "gold_model",
             "systemc",
             "fast-systemc",
             "rtl"
@@ -115,6 +121,7 @@
             "llama_decode_kivi"
         ],
         "sim_type": [
+            "gold_model",
             "systemc",
             "fast-systemc",
             "rtl"
@@ -138,6 +145,26 @@
             "to(_[0-9]+)?",
             "transpose(_[0-9]+)?",
             "transpose_int_(_[0-9]+)?"
+        ]
+    },
+    {
+        "datatype": "MXNF4",
+        "model": [
+            "resnet18",
+            "resnet50",
+            "vit"
+        ],
+        "sim_type": [
+            "gold_model",
+            "systemc",
+            "fast-systemc",
+            "rtl"
+        ],
+        "block_size": 64,
+        "layers": [
+            "cat(_[0-9]+)?",
+            "pad(_[0-9]+)?",
+            "slice(_[0-9]+)?"
         ]
     }
 ]
