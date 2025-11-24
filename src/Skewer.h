@@ -34,7 +34,7 @@ SC_MODULE(InputSerializedSkewer) {
   Connections::Out<PEInput<T>> dout[size];
 
 #define DECL_FIFO(z, i, data)                                               \
-  Connections::Fifo<PEInput<T>, i * PE_LATENCY + 1> GEN_NAMED_VAR(fifo, i); \
+  Connections::Fifo<PEInput<T>, i * PE_LATENCY + 2> GEN_NAMED_VAR(fifo, i); \
   Connections::Combinational<PEInput<T>> GEN_NAMED_VAR(fifo_din, i);        \
   Connections::Combinational<PEInput<T>> GEN_NAMED_VAR(fifo_dout, i);
   REPEAT_IC(DECL_FIFO)
@@ -216,7 +216,6 @@ SC_MODULE(DeserializedSkewer) {
 #pragma hls_pipeline_stall_mode flush
     while (true) {
       Pack1D<T, size> output;
-
 #define FIFO_READ(z, i, data) output[i] = BOOST_PP_CAT(fifo_dout, i).Pop();
       REPEAT_OC(FIFO_READ)
 #undef FIFO_READ
