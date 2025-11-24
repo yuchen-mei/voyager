@@ -288,12 +288,10 @@ SC_MODULE(VectorFetchUnit) {
                         indices[i] = permuted_indices[i];
                       }
                     } else if (params.has_slicing) {
-                      ac_int<LOOP_WIDTH, false> orig_index =
-                          indices[params.vector_fetch_0_slice_dim];
-                      ac_int<LOOP_WIDTH, false> final_index =
+                      indices[params.vector_fetch_0_slice_dim] =
                           params.vector_fetch_0_slice_start +
-                          orig_index * params.vector_fetch_0_slice_step;
-                      indices[params.vector_fetch_0_slice_dim] = final_index;
+                          indices[params.vector_fetch_0_slice_dim] *
+                              params.vector_fetch_0_slice_step;
                     }
 
                     address =

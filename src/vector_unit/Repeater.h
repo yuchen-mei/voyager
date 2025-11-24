@@ -9,7 +9,7 @@ SC_MODULE(Repeater) {
   sc_in<bool> CCS_INIT_S1(rstn);
 
   Connections::In<T> CCS_INIT_S1(data_in);
-  Connections::In<ac_int<16, false> > CCS_INIT_S1(count);
+  Connections::In<ac_int<16, false>> CCS_INIT_S1(count);
 
   Connections::Out<T> CCS_INIT_S1(data_out);
 

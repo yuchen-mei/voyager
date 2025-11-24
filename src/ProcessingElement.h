@@ -14,17 +14,17 @@
 template <typename Input, typename Weight, typename Psum>
 SC_MODULE(ProcessingElement) {
  private:
-  Input weight_reg;
+  Weight weight_reg;
 
  public:
   sc_in<bool> CCS_INIT_S1(clk);
   sc_in<bool> CCS_INIT_S1(rstn);
 
-  Connections::In<PEWeight<Weight> > CCS_INIT_S1(weight_in);
-  Connections::Out<PEWeight<Weight> > CCS_INIT_S1(weight_out);
+  Connections::In<PEWeight<Weight>> CCS_INIT_S1(weight_in);
+  Connections::Out<PEWeight<Weight>> CCS_INIT_S1(weight_out);
 
-  Connections::In<PEInput<Input> > CCS_INIT_S1(input_in);
-  Connections::Out<PEInput<Input> > CCS_INIT_S1(input_out);
+  Connections::In<PEInput<Input>> CCS_INIT_S1(input_in);
+  Connections::Out<PEInput<Input>> CCS_INIT_S1(input_out);
 
   Connections::In<Psum> CCS_INIT_S1(psum_in);
   Connections::Out<Psum> CCS_INIT_S1(psum_out);

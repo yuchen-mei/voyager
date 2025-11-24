@@ -15,11 +15,11 @@ SC_MODULE(VectorMacUnit) {
   sc_in<bool> CCS_INIT_S1(clk);
   sc_in<bool> CCS_INIT_S1(rstn);
 
-  Connections::In<Pack1D<Input, width> > CCS_INIT_S1(inputs_in);
-  Connections::In<Pack1D<Weight, width> > CCS_INIT_S1(weights_in);
+  Connections::In<Pack1D<Input, width>> CCS_INIT_S1(inputs_in);
+  Connections::In<Pack1D<Weight, width>> CCS_INIT_S1(weights_in);
 #if SUPPORT_MX
-  Connections::In<Pack1D<Scale, num_blocks> > CCS_INIT_S1(input_scales_in);
-  Connections::In<Pack1D<Scale, num_blocks> > CCS_INIT_S1(weight_scales_in);
+  Connections::In<Pack1D<Scale, num_blocks>> CCS_INIT_S1(input_scales_in);
+  Connections::In<Pack1D<Scale, num_blocks>> CCS_INIT_S1(weight_scales_in);
 #endif
   Connections::Out<Output> CCS_INIT_S1(psum_out);
 

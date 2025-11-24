@@ -119,12 +119,7 @@ SC_MODULE(VectorUnit) {
   OutputController<VectorType, ScaleType, mu_width, OUTPUT_DATATYPES>
       CCS_INIT_S1(output_controller);
 
-  SC_CTOR(VectorUnit)
-      : pipeline("pipeline"),
-        reducer("reducer"),
-        accumulator("accumulator"),
-        fetcher("fetcher"),
-        output_controller("output_controller") {
+  SC_CTOR(VectorUnit) {
     // Param deserializer
     param_deserializer.clk(clk);
     param_deserializer.rstn(rstn);

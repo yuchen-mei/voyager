@@ -12,17 +12,6 @@ proc pre_analyze {} {
             puts "$res"
             regexp {Latency = (\d+),} $res temp pe_latency
             puts "PE Latency: $pe_latency"
-
-            # Bound check: PE_LATENCY * IC_DIMENSION <= 128
-            set max_fifo_depth 128
-            set total_latency [expr {$pe_latency * $IC_DIMENSION}]
-            if {$total_latency > $max_fifo_depth} {
-                puts "\033\[31mERROR: PE_LATENCY * IC_DIMENSION = $total_latency exceeds max FIFO depth ($max_fifo_depth)\033\[0m"
-                puts "\033\[33mClamping PE_LATENCY to safe bound...\033\[0m"
-                set pe_latency [expr {int($max_fifo_depth / $IC_DIMENSION)}]
-                puts "Adjusted PE_LATENCY: $pe_latency"
-            }
-
             solution options set Input/CompilerFlags  "[solution options get Input/CompilerFlags] -DPE_LATENCY=$pe_latency"
         } else {
             puts "\033\[31mERROR: PE latency not found\033\[0m"
