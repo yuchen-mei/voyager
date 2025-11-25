@@ -184,19 +184,17 @@ static inline std::vector<int> rm_strides(const std::vector<int>& shape,
   return s;
 }
 
-void DataLoader::copy_tile(const std::string& dtype,
-                           const std::vector<int>& full_shape,
-                           const std::vector<int>& tiled_shape,
-                           const std::vector<int>& tile_index,
-                           int src_partition, uint64_t src_address,
-                           bool src_contiguous, int dst_partition,
-                           uint64_t dst_address, bool dst_contiguous,
-                           bool replication) {
+void DataLoader::copy_tile(
+    const std::string& dtype, const std::vector<int>& full_shape,
+    const std::vector<int>& tiled_shape, const std::vector<int>& tile_strides,
+    const std::vector<int>& tile_index, int src_partition, uint64_t src_address,
+    bool src_contiguous, int dst_partition, uint64_t dst_address,
+    bool dst_contiguous, bool replication) {
   const int rank = full_shape.size();
 
   std::vector<int> start(rank);
   for (int d = 0; d < rank; ++d) {
-    start[d] = tile_index[d] * tiled_shape[d];
+    start[d] = tile_index[d] * tile_strides[d];
   }
 
   const int effective_ic_dimension = IC_DIMENSION == 64 ? 32 : IC_DIMENSION;
@@ -296,6 +294,13 @@ void DataLoader::load_scratchpad(const codegen::Operation& param,
       std::string dtype = tensor.dtype();
       const auto full_shape = get_shape(tensor, false, false);
       const auto tiled_shape = get_shape(tensor, false);
+      std::vector<int> tile_strides;
+      if (tensor.tile_strides_size() > 0) {
+        tile_strides = {tensor.tile_strides().begin(),
+                        tensor.tile_strides().end()};
+      } else {
+        tile_strides = tiled_shape;
+      }
 
       const int partition = tensor.memory().partition();
       const uint64_t address = tensor.memory().address();
@@ -314,12 +319,12 @@ void DataLoader::load_scratchpad(const codegen::Operation& param,
         }
       }
 
+      auto tiles = get_tiles(full_shape, tiled_shape);
+      auto actual_tiles = get_tile_index(tiles, curr_tile_index);
+
       bool replication = std::find(tensors_with_replication.begin(),
                                    tensors_with_replication.end(),
                                    key) != tensors_with_replication.end();
-
-      auto tiles = get_tiles(full_shape, tiled_shape);
-      auto actual_tiles = get_tile_index(tiles, curr_tile_index);
 
       spdlog::debug("Loading scratchpad tensor: {}\n", tensor.node());
       spdlog::debug("Shape: ");
@@ -332,13 +337,19 @@ void DataLoader::load_scratchpad(const codegen::Operation& param,
         spdlog::debug("{} ", dim);
       }
       spdlog::debug("\n");
+      spdlog::debug("Tile Strides: ");
+      for (const auto& dim : tile_strides) {
+        spdlog::debug("{} ", dim);
+      }
+      spdlog::debug("\n");
       spdlog::debug("Datatype: {}\n", dtype);
       spdlog::debug("Replication: {}\n", replication);
       spdlog::debug("Main Memory Address: {}\n", address);
       spdlog::debug("Scratchpad Address: {}\n", scratch_addr);
 
-      copy_tile(dtype, full_shape, tiled_shape, actual_tiles, partition,
-                address, false, scratch_par, scratch_addr, true, replication);
+      copy_tile(dtype, full_shape, tiled_shape, tile_strides, actual_tiles,
+                partition, address, false, scratch_par, scratch_addr, true,
+                replication);
     }
   }
 }
@@ -351,6 +362,7 @@ void DataLoader::store_scratchpad(const codegen::Operation& param,
     const auto full_shape = get_shape(tensor, false, false);
     auto tiled_shape = get_shape(tensor, false);
     pad_shape_to_ndim(tiled_shape, full_shape.size());
+    auto tile_strides = tiled_shape;
 
     const int partition = tensor.memory().partition();
     const uint64_t address = tensor.memory().address();
@@ -377,7 +389,7 @@ void DataLoader::store_scratchpad(const codegen::Operation& param,
     spdlog::debug("Main Memory Address: {}\n", address);
     spdlog::debug("Scratchpad Address: {}\n", scratch_addr);
 
-    copy_tile(dtype, full_shape, tiled_shape, actual_tiles, scratch_par,
-              scratch_addr, true, partition, address, false);
+    copy_tile(dtype, full_shape, tiled_shape, tile_strides, actual_tiles,
+              scratch_par, scratch_addr, true, partition, address, false);
   }
 }
