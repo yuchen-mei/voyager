@@ -48,9 +48,6 @@ SC_MODULE(Accelerator) {
       accumulation_buffer_vu_read_address[2];
   Connections::Combinational<Pack1D<ACCUM_BUFFER_DATATYPE, OC_DIMENSION>>
       accumulation_buffer_vu_read_data[2];
-  Connections::Combinational<
-      BufferWriteRequest<Pack1D<ACCUM_BUFFER_DATATYPE, OC_DIMENSION>>>
-      accumulation_buffer_vu_write_request[2];
   Connections::SyncChannel accumulation_buffer_vu_done[2];
 #endif
 
@@ -184,8 +181,6 @@ SC_MODULE(Accelerator) {
           accumulation_buffer_vu_read_address[i]);
       matrix_unit.accumulation_buffer_vu_read_data[i](
           accumulation_buffer_vu_read_data[i]);
-      matrix_unit.accumulation_buffer_vu_write_request[i](
-          accumulation_buffer_vu_write_request[i]);
       matrix_unit.accumulation_buffer_vu_done[i](
           accumulation_buffer_vu_done[i]);
     }
@@ -256,8 +251,6 @@ SC_MODULE(Accelerator) {
           accumulation_buffer_vu_read_address[i]);
       vector_unit.accumulation_buffer_read_data[i](
           accumulation_buffer_vu_read_data[i]);
-      vector_unit.accumulation_buffer_write_request[i](
-          accumulation_buffer_vu_write_request[i]);
       vector_unit.accumulation_buffer_done[i](accumulation_buffer_vu_done[i]);
     }
 #endif

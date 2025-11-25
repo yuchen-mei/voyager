@@ -123,7 +123,8 @@ SC_MODULE(MatrixUnit) {
   Connections::In<ac_int<16, false>> accumulation_buffer_vu_read_address[2];
   Connections::Out<Pack1D<ACCUM_BUFFER_DATATYPE, OC_DIMENSION>>
       accumulation_buffer_vu_read_data[2];
-  Connections::In<
+  // Write request from Vector Unit, unused for now
+  Connections::Combinational<
       BufferWriteRequest<Pack1D<ACCUM_BUFFER_DATATYPE, OC_DIMENSION>>>
       accumulation_buffer_vu_write_request[2];
   Connections::SyncIn accumulation_buffer_vu_done[2];
