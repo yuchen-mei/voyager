@@ -24,8 +24,6 @@ SC_MODULE(VectorUnit) {
   Connections::In<Pack1D<BufferType, mu_width>>
       accumulation_buffer_read_data[2];
   Connections::SyncOut accumulation_buffer_done[2];
-  Connections::Out<BufferWriteRequest<Pack1D<BufferType, mu_width>>>
-      accumulation_buffer_write_request[2];
   Connections::Combinational<Pack1D<BufferType, width>>
       accumulation_buffer_output;
 #endif
@@ -119,12 +117,7 @@ SC_MODULE(VectorUnit) {
   OutputController<VectorType, ScaleType, mu_width, OUTPUT_DATATYPES>
       CCS_INIT_S1(output_controller);
 
-  SC_CTOR(VectorUnit)
-      : pipeline("pipeline"),
-        reducer("reducer"),
-        accumulator("accumulator"),
-        fetcher("fetcher"),
-        output_controller("output_controller") {
+  SC_CTOR(VectorUnit) {
     // Param deserializer
     param_deserializer.clk(clk);
     param_deserializer.rstn(rstn);
@@ -141,15 +134,11 @@ SC_MODULE(VectorUnit) {
         accumulation_buffer_read_address[0]);
     fetcher.accumulation_buffer_read_address[1](
         accumulation_buffer_read_address[1]);
-    fetcher.accumulation_buffer_done[0](accumulation_buffer_done[0]);
-    fetcher.accumulation_buffer_done[1](accumulation_buffer_done[1]);
     fetcher.accumulation_buffer_read_data[0](accumulation_buffer_read_data[0]);
     fetcher.accumulation_buffer_read_data[1](accumulation_buffer_read_data[1]);
+    fetcher.accumulation_buffer_done[0](accumulation_buffer_done[0]);
+    fetcher.accumulation_buffer_done[1](accumulation_buffer_done[1]);
     fetcher.accumulation_buffer_output(accumulation_buffer_output);
-    fetcher.accumulation_buffer_write_request[0](
-        accumulation_buffer_write_request[0]);
-    fetcher.accumulation_buffer_write_request[1](
-        accumulation_buffer_write_request[1]);
 #endif
     fetcher.vector_fetch_0_req(vector_fetch_0_req);
     fetcher.vector_fetch_0_resp(vector_fetch_0_resp);

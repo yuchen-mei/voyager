@@ -234,7 +234,7 @@ inline std::vector<int> get_tiles(std::vector<int> full_shape,
   pad_shape_to_ndim(tiled_shape, rank);
 
   for (int d = 0; d < rank; ++d) {
-    tiles[d] = full_shape[d] / tiled_shape[d];
+    tiles[d] = (full_shape[d] + tiled_shape[d] - 1) / tiled_shape[d];
   }
   return tiles;
 }

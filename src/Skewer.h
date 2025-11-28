@@ -12,68 +12,82 @@
 #define REPEAT_IC(x) BOOST_PP_REPEAT(IC_DIMENSION, x, 0)
 #define REPEAT_OC(x) BOOST_PP_REPEAT(OC_DIMENSION, x, 0)
 
-template <typename T, int Size>
-SC_MODULE(InputSerializedSkewer) {
- private:
-#define DECL_FIFOS(z, i, unused) sc_fifo<PEInput<T>> BOOST_PP_CAT(fifo, i);
-  REPEAT_IC(DECL_FIFOS)
-#undef DECL_FIFOS
-  int dummy;
+// Helper: Takes a prefix (e.g., fifo) and an index (e.g., 0)
+// Returns: fifo0{"fifo0"}
+#define GEN_NAMED_VAR(prefix, i) \
+  BOOST_PP_CAT(prefix, i) { BOOST_PP_STRINGIZE(BOOST_PP_CAT(prefix, i)) }
 
+// A version of SC_THREAD that supports macro expansion for the function name
+#define SC_THREAD_BOOST(func)                                     \
+  declare_thread_process(                                         \
+      BOOST_PP_CAT(func, _handle), /* Replaces func ## _handle */ \
+      BOOST_PP_STRINGIZE(func),    /* Replaces #func */           \
+                         SC_CURRENT_USER_MODULE, func)
+
+template <typename T, int size>
+SC_MODULE(InputSerializedSkewer) {
  public:
   sc_in<bool> CCS_INIT_S1(clk);
   sc_in<bool> CCS_INIT_S1(rstn);
 
-  Connections::In<Pack1D<PEInput<T>, Size>> CCS_INIT_S1(din);
-  Connections::Out<PEInput<T>> dout[Size];
+  Connections::In<Pack1D<PEInput<T>, size>> CCS_INIT_S1(din);
+  Connections::Out<PEInput<T>> dout[size];
 
-#define FIFO_SIZE_INIT(z, i, unused) BOOST_PP_CAT(fifo, i)(i * PE_LATENCY + 1),
+#define DECL_FIFO(z, i, data)                                               \
+  Connections::Fifo<PEInput<T>, i * PE_LATENCY + 2> GEN_NAMED_VAR(fifo, i); \
+  Connections::Combinational<PEInput<T>> GEN_NAMED_VAR(fifo_din, i);        \
+  Connections::Combinational<PEInput<T>> GEN_NAMED_VAR(fifo_dout, i);
+  REPEAT_IC(DECL_FIFO)
+#undef DECL_FIFO
 
-  SC_CTOR(InputSerializedSkewer) : REPEAT_IC(FIFO_SIZE_INIT) dummy(0) {
-#undef FIFO_SIZE_INIT
-    SC_THREAD(write_fifo);
+  SC_CTOR(InputSerializedSkewer) {
+    SC_THREAD(write_fifos);
     sensitive << clk.pos();
     async_reset_signal_is(rstn, false);
 
-#define DECL_THREADS(z, i, unused)                                          \
-  declare_thread_process(BOOST_PP_CAT(BOOST_PP_CAT(read_fifo, i), _handle), \
-                         BOOST_PP_STRINGIZE(BOOST_PP_CAT(read_fifo, i)),     \
-                                            SC_CURRENT_USER_MODULE,         \
-                                            BOOST_PP_CAT(read_fifo, i));    \
-  sensitive << clk.pos();                                                   \
+#define DECL_FIFO_CTOR(z, i, data)                      \
+  BOOST_PP_CAT(fifo, i).clk(clk);                       \
+  BOOST_PP_CAT(fifo, i).rst(rstn);                      \
+  BOOST_PP_CAT(fifo, i).enq(BOOST_PP_CAT(fifo_din, i)); \
+  BOOST_PP_CAT(fifo, i).deq(BOOST_PP_CAT(fifo_dout, i));
+    REPEAT_IC(DECL_FIFO_CTOR)
+#undef DECL_FIFO_CTOR
+
+#define DECL_THREADS(z, i, data)               \
+  SC_THREAD_BOOST(BOOST_PP_CAT(read_fifo, i)); \
+  sensitive << clk.pos();                      \
   async_reset_signal_is(rstn, false);
 
     REPEAT_IC(DECL_THREADS)
 #undef DECL_THREADS
   }
 
-  void write_fifo() {
+  void write_fifos() {
     din.Reset();
+#define RESET_WRITE(z, i, data) BOOST_PP_CAT(fifo_din, i).ResetWrite();
+    REPEAT_IC(RESET_WRITE)
+#undef RESET_WRITE
 
     wait();
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
     while (true) {
-      Pack1D<PEInput<T>, Size> input = din.Pop();
-
-#define FIFO_WRITE(z, i, unused) BOOST_PP_CAT(fifo, i).write(input[i]);
+      auto input = din.Pop();
+#define FIFO_WRITE(z, i, data) BOOST_PP_CAT(fifo_din, i).Push(input[i]);
       REPEAT_IC(FIFO_WRITE)
 #undef FIFO_WRITE
     }
   }
 
-#define DECL_FUNCS(z, i, unused)                                \
+#define DECL_FUNCS(z, i, data)                                  \
   void BOOST_PP_CAT(read_fifo, i)() {                           \
     dout[i].Reset();                                            \
+    BOOST_PP_CAT(fifo_dout, i).ResetRead();                     \
     wait();                                                     \
     _Pragma("hls_pipeline_init_interval 1")                     \
         _Pragma("hls_pipeline_stall_mode flush") while (true) { \
-      PEInput<T> pe_in = BOOST_PP_CAT(fifo, i).read();          \
-      PEInput<T> pe_out;                                        \
-      pe_out.data = pe_in.data;                                 \
-      pe_out.swap_weights = pe_in.swap_weights;                 \
-      dout[i].Push(pe_out);                                     \
+      dout[i].Push(BOOST_PP_CAT(fifo_dout, i).Pop());           \
     }                                                           \
   }
 
@@ -81,68 +95,70 @@ SC_MODULE(InputSerializedSkewer) {
 #undef DECL_FUNCS
 };
 
-template <typename T, int Size>
+template <typename T, int size>
 SC_MODULE(WeightSerializedSkewer) {
- private:
-#define DECL_FIFOS(z, i, unused) sc_fifo<PEWeight<T>> BOOST_PP_CAT(fifo, i);
-  REPEAT_OC(DECL_FIFOS)
-#undef DECL_FIFOS
-  int dummy;
-
  public:
   sc_in<bool> CCS_INIT_S1(clk);
   sc_in<bool> CCS_INIT_S1(rstn);
 
-  Connections::In<Pack1D<PEWeight<T>, Size>> CCS_INIT_S1(din);
-  Connections::Out<PEWeight<T>> dout[Size];
+  Connections::In<Pack1D<PEWeight<T>, size>> CCS_INIT_S1(din);
+  Connections::Out<PEWeight<T>> dout[size];
 
-#define FIFO_SIZE_INIT(z, i, unused) BOOST_PP_CAT(fifo, i)(i * 1 + 1),
+#define DECL_FIFO(z, i, data)                                         \
+  Connections::Fifo<PEWeight<T>, i + 1> GEN_NAMED_VAR(fifo, i);       \
+  Connections::Combinational<PEWeight<T>> GEN_NAMED_VAR(fifo_din, i); \
+  Connections::Combinational<PEWeight<T>> GEN_NAMED_VAR(fifo_dout, i);
+  REPEAT_OC(DECL_FIFO)
+#undef DECL_FIFO
 
-  SC_CTOR(WeightSerializedSkewer) : REPEAT_OC(FIFO_SIZE_INIT) dummy(0) {
-#undef FIFO_SIZE_INIT
-    SC_THREAD(write_fifo);
+  SC_CTOR(WeightSerializedSkewer) {
+    SC_THREAD(write_fifos);
     sensitive << clk.pos();
     async_reset_signal_is(rstn, false);
 
-#define DECL_THREADS(z, i, unused)                                          \
-  declare_thread_process(BOOST_PP_CAT(BOOST_PP_CAT(read_fifo, i), _handle), \
-                         BOOST_PP_STRINGIZE(BOOST_PP_CAT(read_fifo, i)),     \
-                                            SC_CURRENT_USER_MODULE,         \
-                                            BOOST_PP_CAT(read_fifo, i));    \
-  sensitive << clk.pos();                                                   \
+#define DECL_FIFO_CTOR(z, i, data)                      \
+  BOOST_PP_CAT(fifo, i).clk(clk);                       \
+  BOOST_PP_CAT(fifo, i).rst(rstn);                      \
+  BOOST_PP_CAT(fifo, i).enq(BOOST_PP_CAT(fifo_din, i)); \
+  BOOST_PP_CAT(fifo, i).deq(BOOST_PP_CAT(fifo_dout, i));
+    REPEAT_OC(DECL_FIFO_CTOR)
+#undef DECL_FIFO_CTOR
+
+#define DECL_THREADS(z, i, data)               \
+  SC_THREAD_BOOST(BOOST_PP_CAT(read_fifo, i)); \
+  sensitive << clk.pos();                      \
   async_reset_signal_is(rstn, false);
 
     REPEAT_OC(DECL_THREADS)
 #undef DECL_THREADS
   }
 
-  void write_fifo() {
+  void write_fifos() {
     din.Reset();
+#define RESET_WRITE(z, i, data) BOOST_PP_CAT(fifo_din, i).ResetWrite();
+    REPEAT_OC(RESET_WRITE)
+#undef RESET_WRITE
 
     wait();
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
     while (true) {
-      Pack1D<PEWeight<T>, Size> input = din.Pop();
-
-#define FIFO_WRITE(z, i, unused) BOOST_PP_CAT(fifo, i).write(input[i]);
+      auto input = din.Pop();
+#define FIFO_WRITE(z, i, data) BOOST_PP_CAT(fifo_din, i).Push(input[i]);
       REPEAT_OC(FIFO_WRITE)
 #undef FIFO_WRITE
     }
   }
 
-#define DECL_FUNCS(z, i, unused)                                \
+#define DECL_FUNCS(z, i, data)                                  \
   void BOOST_PP_CAT(read_fifo, i)() {                           \
     dout[i].Reset();                                            \
+    BOOST_PP_CAT(fifo_dout, i).ResetRead();                     \
     wait();                                                     \
     _Pragma("hls_pipeline_init_interval 1")                     \
         _Pragma("hls_pipeline_stall_mode flush") while (true) { \
-      PEWeight<T> pe_in = BOOST_PP_CAT(fifo, i).read();         \
-      PEWeight<T> pe_out;                                       \
-      pe_out.data = pe_in.data;                                 \
-      pe_out.tag = pe_in.tag;                                   \
-      dout[i].Push(pe_out);                                     \
+      dout[i].Push(BOOST_PP_CAT(fifo_dout, i).Pop());           \
     }                                                           \
   }
 
@@ -150,67 +166,71 @@ SC_MODULE(WeightSerializedSkewer) {
 #undef DECL_FUNCS
 };
 
-template <typename T, int Size>
+template <typename T, int size>
 SC_MODULE(DeserializedSkewer) {
- private:
-#define DECL_FIFOS(z, i, unused) sc_fifo<T> BOOST_PP_CAT(fifo, i);
-  REPEAT_OC(DECL_FIFOS)
-#undef DECL_FIFOS
-
-  int dummy;
-
  public:
   sc_in<bool> CCS_INIT_S1(clk);
   sc_in<bool> CCS_INIT_S1(rstn);
 
-  Connections::In<T> din[Size];
-  Connections::Out<Pack1D<T, Size>> CCS_INIT_S1(dout);
+  Connections::In<T> din[size];
+  Connections::Out<Pack1D<T, size>> CCS_INIT_S1(dout);
 
-#define FIFO_SIZE_INIT(z, i, unused) \
-  BOOST_PP_CAT(fifo, i)(1 * (OC_DIMENSION - i + 1)),
+#define DECL_FIFO(z, i, data)                                        \
+  Connections::Fifo<T, OC_DIMENSION - i + 2> GEN_NAMED_VAR(fifo, i); \
+  Connections::Combinational<T> GEN_NAMED_VAR(fifo_din, i);          \
+  Connections::Combinational<T> GEN_NAMED_VAR(fifo_dout, i);
+  REPEAT_OC(DECL_FIFO)
+#undef DECL_FIFO
 
-  SC_CTOR(DeserializedSkewer) : REPEAT_OC(FIFO_SIZE_INIT) dummy(0) {
-#undef FIFO_SIZE_INIT
-    SC_THREAD(read_fifo);
+  SC_CTOR(DeserializedSkewer) {
+    SC_THREAD(read_fifos);
     sensitive << clk.pos();
     async_reset_signal_is(rstn, false);
 
-#define DECL_THREADS(z, i, unused)                                           \
-  declare_thread_process(BOOST_PP_CAT(BOOST_PP_CAT(write_fifo, i), _handle), \
-                         BOOST_PP_STRINGIZE(BOOST_PP_CAT(write_fifo, i)),     \
-                                            SC_CURRENT_USER_MODULE,          \
-                                            BOOST_PP_CAT(write_fifo, i));    \
-  sensitive << clk.pos();                                                    \
+#define DECL_FIFO_CTOR(z, i, data)                      \
+  BOOST_PP_CAT(fifo, i).clk(clk);                       \
+  BOOST_PP_CAT(fifo, i).rst(rstn);                      \
+  BOOST_PP_CAT(fifo, i).enq(BOOST_PP_CAT(fifo_din, i)); \
+  BOOST_PP_CAT(fifo, i).deq(BOOST_PP_CAT(fifo_dout, i));
+    REPEAT_OC(DECL_FIFO_CTOR)
+#undef DECL_FIFO_CTOR
+
+#define DECL_THREADS(z, i, data)                \
+  SC_THREAD_BOOST(BOOST_PP_CAT(write_fifo, i)); \
+  sensitive << clk.pos();                       \
   async_reset_signal_is(rstn, false);
 
     REPEAT_OC(DECL_THREADS)
 #undef DECL_THREADS
   }
 
-  void read_fifo() {
+  void read_fifos() {
     dout.Reset();
+#define RESET_READ(z, i, data) BOOST_PP_CAT(fifo_dout, i).ResetRead();
+    REPEAT_OC(RESET_READ)
+#undef RESET_READ
 
     wait();
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
     while (true) {
-      Pack1D<T, Size> output;
-
-#define FIFO_READ(z, i, unused) output[i] = BOOST_PP_CAT(fifo, i).read();
+      Pack1D<T, size> output;
+#define FIFO_READ(z, i, data) output[i] = BOOST_PP_CAT(fifo_dout, i).Pop();
       REPEAT_OC(FIFO_READ)
 #undef FIFO_READ
       dout.Push(output);
     }
   }
 
-#define DECL_FUNCS(z, i, unused)                                \
+#define DECL_FUNCS(z, i, data)                                  \
   void BOOST_PP_CAT(write_fifo, i)() {                          \
     din[i].Reset();                                             \
+    BOOST_PP_CAT(fifo_din, i).ResetWrite();                     \
     wait();                                                     \
     _Pragma("hls_pipeline_init_interval 1")                     \
         _Pragma("hls_pipeline_stall_mode flush") while (true) { \
-      BOOST_PP_CAT(fifo, i).write(din[i].Pop());                \
+      BOOST_PP_CAT(fifo_din, i).Push(din[i].Pop());             \
     }                                                           \
   }
 

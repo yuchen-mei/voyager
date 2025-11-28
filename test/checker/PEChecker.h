@@ -58,7 +58,7 @@ class PEChecker {
  public:
   PEChecker() {
     for (int i = 0; i < rows * cols; i++) {
-      checkers[i] = new Checker<std::tuple<Input, Weight, Psum> >();
+      checkers[i] = new Checker<std::tuple<Input, Weight, Psum>>();
     }
   }
 
@@ -78,7 +78,7 @@ class PEChecker {
   }
 
  private:
-  Checker<std::tuple<Input, Weight, Psum> >* checkers[rows * cols];
+  Checker<std::tuple<Input, Weight, Psum>>* checkers[rows * cols];
 };
 
 extern PEChecker<SA_INPUT_TYPE, SA_WEIGHT_TYPE, ACCUM_DATATYPE, IC_DIMENSION,

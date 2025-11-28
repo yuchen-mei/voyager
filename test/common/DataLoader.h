@@ -23,6 +23,7 @@ class DataLoader {
 
   void copy_tile(const std::string& dtype, const std::vector<int>& full_shape,
                  const std::vector<int>& tiled_shape,
+                 const std::vector<int>& tile_strides,
                  const std::vector<int>& tile_index, int src_partition,
                  uint64_t src_address, bool src_contiguous, int dst_partition,
                  uint64_t dst_address, bool dst_contiguous,

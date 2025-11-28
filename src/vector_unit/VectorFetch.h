@@ -25,14 +25,12 @@ SC_MODULE(VectorFetchUnit) {
   Connections::Out<MemoryRequest> CCS_INIT_S1(vector_fetch_2_req);
 
 #if DOUBLE_BUFFERED_ACCUM_BUFFER
+  Connections::Out<ac_int<16, false>> accumulation_buffer_read_address[2];
   Connections::In<Pack1D<BufferType, mu_width>>
       accumulation_buffer_read_data[2];
-  Connections::Out<BufferWriteRequest<Pack1D<BufferType, mu_width>>>
-      accumulation_buffer_write_request[2];
+  Connections::SyncOut accumulation_buffer_done[2];
   Connections::Out<Pack1D<BufferType, width>> CCS_INIT_S1(
       accumulation_buffer_output);
-  Connections::Out<ac_int<16, false>> accumulation_buffer_read_address[2];
-  Connections::SyncOut accumulation_buffer_done[2];
 #endif
 
   Connections::In<ac_int<OC_PORT_WIDTH, false>> CCS_INIT_S1(
@@ -288,12 +286,10 @@ SC_MODULE(VectorFetchUnit) {
                         indices[i] = permuted_indices[i];
                       }
                     } else if (params.has_slicing) {
-                      ac_int<LOOP_WIDTH, false> orig_index =
-                          indices[params.vector_fetch_0_slice_dim];
-                      ac_int<LOOP_WIDTH, false> final_index =
+                      indices[params.vector_fetch_0_slice_dim] =
                           params.vector_fetch_0_slice_start +
-                          orig_index * params.vector_fetch_0_slice_step;
-                      indices[params.vector_fetch_0_slice_dim] = final_index;
+                          indices[params.vector_fetch_0_slice_dim] *
+                              params.vector_fetch_0_slice_step;
                     }
 
                     address =
@@ -387,8 +383,6 @@ SC_MODULE(VectorFetchUnit) {
 #if DOUBLE_BUFFERED_ACCUM_BUFFER
     accumulation_buffer_read_data[0].Reset();
     accumulation_buffer_read_data[1].Reset();
-    accumulation_buffer_write_request[0].Reset();
-    accumulation_buffer_write_request[1].Reset();
     accumulation_buffer_output.Reset();
 #endif
 
