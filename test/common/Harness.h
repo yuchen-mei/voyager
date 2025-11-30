@@ -126,15 +126,14 @@ SC_MODULE(Harness) {
       serial_spmm_unit_params_in);
 
   Connections::Combinational<MemoryRequest> CCS_INIT_S1(spmm_input_indptr_req);
-  sc_fifo<ac_int<SPMM_META_DATATYPE::width, false>> spmm_input_indptr_resp_fifo;
-  Connections::Combinational<ac_int<SPMM_META_DATATYPE::width, false>>
-      CCS_INIT_S1(spmm_input_indptr_resp);
+  sc_fifo<ac_int<OC_PORT_WIDTH, false>> spmm_input_indptr_resp_fifo;
+  Connections::Combinational<ac_int<OC_PORT_WIDTH, false>> CCS_INIT_S1(
+      spmm_input_indptr_resp);
 
   Connections::Combinational<MemoryRequest> CCS_INIT_S1(spmm_input_indices_req);
-  sc_fifo<ac_int<SPMM_META_DATATYPE::width, false>>
-      spmm_input_indices_resp_fifo;
-  Connections::Combinational<ac_int<SPMM_META_DATATYPE::width, false>>
-      CCS_INIT_S1(spmm_input_indices_resp);
+  sc_fifo<ac_int<OC_PORT_WIDTH, false>> spmm_input_indices_resp_fifo;
+  Connections::Combinational<ac_int<OC_PORT_WIDTH, false>> CCS_INIT_S1(
+      spmm_input_indices_resp);
 
   Connections::Combinational<MemoryRequest> CCS_INIT_S1(spmm_input_data_req);
   sc_fifo<ac_int<VECTOR_DATATYPE::width, false>> spmm_input_data_resp_fifo;

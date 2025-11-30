@@ -16,6 +16,10 @@ proc pre_compile {} {
     global MV_UNIT_WIDTH
     solution design set "MatrixVectorUnit<InputTypeList, WeightTypeList, $SA_INPUT_TYPE, $SA_WEIGHT_TYPE, $ACCUM_DATATYPE, $VECTOR_DATATYPE, $SCALE_DATATYPE, $OC_PORT_WIDTH, $MV_UNIT_WIDTH, $IC_DIMENSION, $VECTOR_UNIT_WIDTH>" -mapped
   }
+  if ($SUPPORT_SPMM == true) {
+    global SPMM_UNIT_WIDTH
+    solution design set "SpMMUnit<WeightTypeList, $VECTOR_DATATYPE, $SA_WEIGHT_TYPE, $SPMM_META_DATATYPE, $VECTOR_DATATYPE, $SCALE_DATATYPE, $OC_PORT_WIDTH, $SPMM_UNIT_WIDTH, $OC_DIMENSION, $VECTOR_UNIT_WIDTH>" -mapped
+  }
   if {$SUPPORT_DWC == true} {
     global DWC_DATATYPE DWC_PSUM
     solution design set "DwCUnit<$DWC_DATATYPE, $DWC_DATATYPE, $DWC_PSUM, $ACCUM_BUFFER_DATATYPE, $OC_DIMENSION, $DWC_DATATYPE>" -mapped

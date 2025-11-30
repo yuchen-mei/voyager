@@ -7,7 +7,9 @@
 #include "ArchitectureParams.h"
 #include "DwCUnit.h"
 #include "MatrixUnit.h"
+#if SUPPORT_SPMM
 #include "SpMMUnit.h"
+#endif
 #include "matrix_vector_unit/main.h"
 #include "mc_scverify.h"
 #include "vector_unit/main.h"
@@ -102,7 +104,8 @@ SC_MODULE(Accelerator) {
 
 #if SUPPORT_SPMM
   SpMMUnit<WeightTypeList, VECTOR_DATATYPE, SA_WEIGHT_TYPE, SPMM_META_DATATYPE,
-           VECTOR_DATATYPE, SCALE_DATATYPE, SPMM_UNIT_WIDTH, OC_DIMENSION>
+           VECTOR_DATATYPE, SCALE_DATATYPE, OC_PORT_WIDTH, SPMM_UNIT_WIDTH,
+           OC_DIMENSION, VECTOR_UNIT_WIDTH>
       CCS_INIT_S1(spmm_unit);
 
   Connections::In<ac_int<64, false>> CCS_INIT_S1(serial_spmm_unit_params_in);
@@ -111,9 +114,9 @@ SC_MODULE(Accelerator) {
   Connections::Out<MemoryRequest> CCS_INIT_S1(spmm_input_data_req);
   Connections::Out<MemoryRequest> CCS_INIT_S1(spmm_weight_req);
 
-  Connections::In<ac_int<SPMM_META_DATATYPE::width, false>> CCS_INIT_S1(
+  Connections::In<ac_int<OC_PORT_WIDTH, false>> CCS_INIT_S1(
       spmm_input_indptr_resp);
-  Connections::In<ac_int<SPMM_META_DATATYPE::width, false>> CCS_INIT_S1(
+  Connections::In<ac_int<OC_PORT_WIDTH, false>> CCS_INIT_S1(
       spmm_input_indices_resp);
   Connections::In<ac_int<VECTOR_DATATYPE::width, false>> CCS_INIT_S1(
       spmm_input_data_resp);
