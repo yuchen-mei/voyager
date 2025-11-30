@@ -61,15 +61,25 @@ class Int {
   Int<W2, S2> fma(Int& b, Int<W2, S2>& c);
 
   Int operator+(const Int& rhs) const;
+  Int operator-(const Int& rhs) const;
   Int operator*(const Int& rhs) const;
   Int operator/(const Int& rhs) const;
+
   Int& operator+=(const Int& rhs);
   Int& operator-=(const Int& rhs);
   Int& operator*=(const Int& rhs);
   Int& operator/=(const Int& rhs);
 
+  bool operator==(const Int& rhs) const;
+  bool operator!=(const Int& rhs) const;
+  bool operator>(const Int& rhs) const;
+  bool operator>=(const Int& rhs) const;
   bool operator<(const Int& rhs) const;
+  bool operator<=(const Int& rhs) const;
+
+#ifndef __SYNTHESIS__
   operator float() const { return float(int_val); }
+#endif
 
   template <int mantissa, int exp, bool use_dw_impl, bool ieee_compliance,
             ac_q_mode Q>
@@ -136,6 +146,11 @@ inline Int<W, S> Int<W, S>::operator+(const Int& rhs) const {
 }
 
 template <int W, bool S>
+inline Int<W, S> Int<W, S>::operator-(const Int& rhs) const {
+  return int_val - rhs.int_val;
+}
+
+template <int W, bool S>
 inline Int<W, S> Int<W, S>::operator*(const Int& rhs) const {
   return int_val * rhs.int_val;
 }
@@ -170,8 +185,33 @@ inline Int<W, S>& Int<W, S>::operator/=(const Int& rhs) {
 }
 
 template <int W, bool S>
+inline bool Int<W, S>::operator==(const Int& rhs) const {
+  return int_val == rhs.int_val;
+}
+
+template <int W, bool S>
+inline bool Int<W, S>::operator!=(const Int& rhs) const {
+  return int_val != rhs.int_val;
+}
+
+template <int W, bool S>
+inline bool Int<W, S>::operator>(const Int& rhs) const {
+  return int_val > rhs.int_val;
+}
+
+template <int W, bool S>
+inline bool Int<W, S>::operator>=(const Int& rhs) const {
+  return int_val >= rhs.int_val;
+}
+
+template <int W, bool S>
 inline bool Int<W, S>::operator<(const Int& rhs) const {
   return int_val < rhs.int_val;
+}
+
+template <int W, bool S>
+inline bool Int<W, S>::operator<=(const Int& rhs) const {
+  return int_val <= rhs.int_val;
 }
 
 template <int W, bool S>

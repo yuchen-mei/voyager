@@ -1432,6 +1432,7 @@ struct ApproxUnitConfig {
 
   inline friend std::ostream& operator<<(std::ostream& os,
                                          const ApproxUnitConfig& config) {
+#ifndef __SYNTHESIS__
     for (int i = 0; i < NUM_MAXES; i++) {
       os << "maxes[" << i << "]: " << config.maxes[i] << std::endl;
     }
@@ -1443,6 +1444,7 @@ struct ApproxUnitConfig {
     }
     os << "clamp_min: " << config.clamp_min << std::endl;
     os << "clamp_max: " << config.clamp_max << std::endl;
+#endif
     return os;
   }
 

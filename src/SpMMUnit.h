@@ -84,7 +84,7 @@ struct SpMMUnit<std::tuple<WeightTypes...>, Vector, Weight, Meta, Output, Scale,
 
   Connections::Combinational<Pack1D<Output, width>> CCS_INIT_S1(
       accumulation_out);
-  Connections::Out<Pack1D<Output, bs>> CCS_INIT_S1(matrix_out);
+  Connections::Out<Pack1D<Output, bs>> CCS_INIT_S1(spmm_unit_output);
 
   Connections::SyncOut CCS_INIT_S1(start_signal);
   Connections::SyncOut CCS_INIT_S1(done_signal);
@@ -370,7 +370,7 @@ struct SpMMUnit<std::tuple<WeightTypes...>, Vector, Weight, Meta, Output, Scale,
           Pack1D<Meta, NUM_META> indices = input_indices.Pop();
           for (int j = 0; j < NUM_META; j++) {
             ac_int<32, false> address =
-                (loop_t)indices[j] * K * width + k * width;
+                indices[j].int_val * K * width + k * width;
             (fetch_matrix_input<WeightTypes, width, WeightTypes...>(
                  params.weight_dtype, params.weight_offset, address,
                  weight_req),
@@ -379,7 +379,7 @@ struct SpMMUnit<std::tuple<WeightTypes...>, Vector, Weight, Meta, Output, Scale,
 #if SUPPORT_MX
             if (params.is_mx_op) {
               ac_int<32, false> address =
-                  (loop_t)indices[j] / bs * K * width + k * width;
+                  indices[j].int_val / bs * K * width + k * width;
               send_input_request<Scale, width>(params.weight_scale_offset,
                                                address, weight_scale_req);
             }
@@ -423,31 +423,15 @@ struct SpMMUnit<std::tuple<WeightTypes...>, Vector, Weight, Meta, Output, Scale,
                                     buffer_width, WeightTypes...>(
                    params.weight_dtype, weight_resp, bits) ||
                ...);
+
           Pack1D<Weight, width> weights;
-
 #pragma hls_unroll yes
-          for (int i = 0; i < width; i++) {
-            auto data = bits.template slc<Weight::width>(i * Weight::width);
-
-#if SUPPORT_CODEBOOK_QUANT
-            if (params.use_weight_codebook) {
-              auto value = params.weight_code[data];
-              weights[i].set_bits(value);
-            } else
-#endif
-            {
-              bool success = (decode_type<WeightTypes, Weight, Weight::width,
-                                          WeightTypes...>(params.weight_dtype,
-                                                          data, weights[i]) ||
-                              ...);
-#ifndef __SYNTHESIS__
-              if (!success) {
-                std::cerr << "Error: matrix weight dtype '"
-                          << params.weight_dtype << "' is not valid"
-                          << std::endl;
-              }
-#endif
-            }
+          for (int j = 0; j < width; j++) {
+            auto data = bits.template slc<Weight::width>(j * Weight::width);
+            weights[j] =
+                decode_input<Weight, NUM_CODEBOOK_ENTRIES, WeightTypes...>(
+                    data, params.weight_dtype, params.use_weight_codebook,
+                    params.weight_code);
           }
 
           weight_data.Push(weights);
@@ -486,9 +470,9 @@ struct SpMMUnit<std::tuple<WeightTypes...>, Vector, Weight, Meta, Output, Scale,
 
           Pack1D<Scale, width> scales;
 #pragma hls_unroll yes
-          for (int i = 0; i < width; i++) {
-            scales[i].set_bits(
-                data.template slc<Scale::width>(i * Scale::width));
+          for (int j = 0; j < width; j++) {
+            scales[j].set_bits(
+                data.template slc<Scale::width>(j * Scale::width));
           }
           weight_scale_data.Push(scales);
           if (i == indices_bound) break;
@@ -543,7 +527,7 @@ struct SpMMUnit<std::tuple<WeightTypes...>, Vector, Weight, Meta, Output, Scale,
           }
 
           for (loop_t nnz = 0;; nnz++) {
-            if (nnz == (loop_t)num_nonzero) break;
+            if (nnz == num_nonzero.int_val) break;
 #if SUPPORT_MX
             Pack1D<Scale, width> weight_scale;
             if (params.is_mx_op) {
@@ -580,7 +564,7 @@ struct SpMMUnit<std::tuple<WeightTypes...>, Vector, Weight, Meta, Output, Scale,
   void send_outputs() {
     send_outputs_param.ResetRead();
     accumulation_out.ResetRead();
-    matrix_out.Reset();
+    spmm_unit_output.Reset();
 
     wait();
 
@@ -608,7 +592,7 @@ struct SpMMUnit<std::tuple<WeightTypes...>, Vector, Weight, Meta, Output, Scale,
               int index = b * bs + j;
               outputs[j] = acc[index];
             }
-            matrix_out.Push(outputs);
+            spmm_unit_output.Push(outputs);
             if (b == num_blocks_bound) break;
           }
           if (i == indptr_bound) break;

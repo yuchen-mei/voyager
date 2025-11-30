@@ -277,7 +277,7 @@ SC_MODULE(Accelerator) {
     spmm_unit.weight_scale_req(spmm_weight_scale_req);
     spmm_unit.weight_scale_resp(spmm_weight_scale_resp);
 #endif
-    spmm_unit.matrix_out(spmm_output);
+    spmm_unit.spmm_unit_output(spmm_output);
     spmm_unit.start_signal(spmm_unit_start_signal);
     spmm_unit.done_signal(spmm_unit_done_signal);
 
