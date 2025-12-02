@@ -78,6 +78,12 @@ else
 	override BASE_FLAGS += -DSUPPORT_MVM=$(SUPPORT_MVM)
 endif
 
+ifndef SUPPORT_SPMM
+	export SUPPORT_SPMM = false
+else
+	override BASE_FLAGS += -DSUPPORT_SPMM=$(SUPPORT_SPMM)
+endif
+
 ifndef SUPPORT_DWC
 	export SUPPORT_DWC = false
 else
@@ -105,7 +111,7 @@ LDLIBS_NO_SYSC += -L$(CONDA_PREFIX)/lib
 ###########################################################
 # Build Directories
 ###########################################################
-BUILD_DIR ?= build/$(DATATYPE)_$(IC_DIMENSION)x$(OC_DIMENSION)_$(INPUT_BUFFER_SIZE)x$(WEIGHT_BUFFER_SIZE)x$(ACCUM_BUFFER_SIZE)_$(DOUBLE_BUFFERED_ACCUM_BUFFER)_$(SUPPORT_MVM)
+BUILD_DIR ?= build/$(DATATYPE)_$(IC_DIMENSION)x$(OC_DIMENSION)_$(INPUT_BUFFER_SIZE)x$(WEIGHT_BUFFER_SIZE)x$(ACCUM_BUFFER_SIZE)_$(DOUBLE_BUFFERED_ACCUM_BUFFER)_$(SUPPORT_MVM)_$(SUPPORT_SPMM)
 CC_BUILD_DIR = $(BUILD_DIR)/cc
 ALL_BUILD_DIRS = $(CC_BUILD_DIR) $(TOOLCHAIN_BUILD_DIRS)
 # Create build dirs automatically
@@ -132,8 +138,11 @@ export CATAPULT_BUILD_DIR ?= $(BUILD_DIR)/Catapult/$(TECHNOLOGY)/clock_$(CLOCK_P
 # Main target to run HLS and build RTL (Verilog)
 rtl: Accelerator
 
-# Generating RTL requires test/compiler/proto/{param.pb.cc, tiling.pb.cc} to exist. But we don't want to add it as a dependency, as it would trigger a rebuild of the rtl target every time the proto files change.
-# Instead we create a conditional dependency on the proto files, which will only create the proto file if it doesn't exist.
+# Generating RTL requires test/compiler/proto/{param.pb.cc, tiling.pb.cc} to
+# exist. But we don't want to add it as a dependency, as it would trigger a
+# rebuild of the rtl target every time the proto files change. Instead we create
+# a conditional dependency on the proto files, which will only create the proto
+# file if it doesn't exist.
 PROTOS_DEPENDENCY =
 ifeq (,$(wildcard test/compiler/proto/param.pb.cc))
 PROTOS_DEPENDENCY += test/compiler/proto/param.pb.cc
@@ -145,6 +154,9 @@ endif
 RTL_DEPENDENCIES =
 ifeq ($(SUPPORT_MVM), true)
 RTL_DEPENDENCIES += $(CATAPULT_BUILD_DIR)/MatrixVectorUnit/MatrixVectorUnit.v1/concat_rtl.v
+endif
+ifeq ($(SUPPORT_SPMM), true)
+RTL_DEPENDENCIES += $(CATAPULT_BUILD_DIR)/SpMMUnit/SpMMUnit.v1/concat_rtl.v
 endif
 ifeq ($(SUPPORT_DWC), true)
 RTL_DEPENDENCIES += $(CATAPULT_BUILD_DIR)/DwCUnit/DwCUnit.v1/concat_rtl.v
@@ -162,6 +174,7 @@ VectorUnit: $(CATAPULT_BUILD_DIR)/VectorUnit/VectorUnit.v1/concat_rtl.v
 OutputController: $(CATAPULT_BUILD_DIR)/OutputController/OutputController.v1/concat_rtl.v
 VectorPipeline: $(CATAPULT_BUILD_DIR)/VectorPipeline/VectorPipeline.v1/concat_rtl.v
 MatrixVectorUnit: $(CATAPULT_BUILD_DIR)/MatrixVectorUnit/MatrixVectorUnit.v1/concat_rtl.v
+SpMMUnit: $(CATAPULT_BUILD_DIR)/SpMMUnit/SpMMUnit.v1/concat_rtl.v
 MulAddTree: $(CATAPULT_BUILD_DIR)/MulAddTree/MulAddTree.v1/concat_rtl.v
 DwCUnit: $(CATAPULT_BUILD_DIR)/DwCUnit/DwCUnit.v1/concat_rtl.v
 Accelerator: $(CATAPULT_BUILD_DIR)/Accelerator/Accelerator.v1/concat_rtl.v
@@ -239,6 +252,10 @@ $(CATAPULT_BUILD_DIR)/MatrixVectorUnit/MatrixVectorUnit.v1/concat_rtl.v: \
 	mkdir -p $(CATAPULT_BUILD_DIR)
 	BLOCK=MatrixVectorUnit catapult -shell -file scripts/main.tcl -logfile $(CATAPULT_BUILD_DIR)/MatrixVectorUnit.log
 
+$(CATAPULT_BUILD_DIR)/SpMMUnit/SpMMUnit.v1/concat_rtl.v: src/SpMMUnit.h $(PROTOS_DEPENDENCY)
+	mkdir -p $(CATAPULT_BUILD_DIR)
+	BLOCK=SpMMUnit catapult -shell -file scripts/main.tcl -logfile $(CATAPULT_BUILD_DIR)/SpMMUnit.log
+
 $(CATAPULT_BUILD_DIR)/MulAddTree/MulAddTree.v1/concat_rtl.v: src/MulAddTree.h $(PROTOS_DEPENDENCY)
 	mkdir -p $(CATAPULT_BUILD_DIR)
 	BLOCK=MulAddTree catapult -shell -file scripts/main.tcl -logfile $(CATAPULT_BUILD_DIR)/MulAddTree.log
@@ -246,7 +263,16 @@ $(CATAPULT_BUILD_DIR)/DwCUnit/DwCUnit.v1/concat_rtl.v: src/DwCUnit.h $(CATAPULT_
 	mkdir -p $(CATAPULT_BUILD_DIR)
 	BLOCK=DwCUnit catapult -shell -file scripts/main.tcl -logfile $(CATAPULT_BUILD_DIR)/DwCUnit.log
 
-$(CATAPULT_BUILD_DIR)/Accelerator/Accelerator.v1/concat_rtl.v: src/Accelerator.h src/DoubleBuffer.h $(CATAPULT_BUILD_DIR)/InputController/InputController.v1/concat_rtl.v $(CATAPULT_BUILD_DIR)/WeightController/WeightController.v1/concat_rtl.v $(CATAPULT_BUILD_DIR)/MatrixProcessor/MatrixProcessor.v1/concat_rtl.v $(CATAPULT_BUILD_DIR)/VectorUnit/VectorUnit.v1/concat_rtl.v $(CATAPULT_BUILD_DIR)/MatrixParamsDeserializer/MatrixParamsDeserializer.v1/concat_rtl.v $(RTL_DEPENDENCIES) $(PROTOS_DEPENDENCY)
+$(CATAPULT_BUILD_DIR)/Accelerator/Accelerator.v1/concat_rtl.v: \
+	src/Accelerator.h \
+	src/DoubleBuffer.h \
+	$(CATAPULT_BUILD_DIR)/InputController/InputController.v1/concat_rtl.v \
+	$(CATAPULT_BUILD_DIR)/WeightController/WeightController.v1/concat_rtl.v \
+	$(CATAPULT_BUILD_DIR)/MatrixProcessor/MatrixProcessor.v1/concat_rtl.v \
+	$(CATAPULT_BUILD_DIR)/VectorUnit/VectorUnit.v1/concat_rtl.v \
+	$(CATAPULT_BUILD_DIR)/MatrixParamsDeserializer/MatrixParamsDeserializer.v1/concat_rtl.v \
+	$(RTL_DEPENDENCIES) \
+	$(PROTOS_DEPENDENCY)
 	mkdir -p $(CATAPULT_BUILD_DIR)
 	BLOCK=Accelerator catapult -shell -file scripts/main.tcl -logfile $(CATAPULT_BUILD_DIR)/Accelerator.log
 
@@ -387,7 +413,12 @@ $(CC_BUILD_DIR)/tiling.pb.o: test/compiler/proto/tiling.pb.cc
 	$(CC) $(C17FLAGS) -c -o $@ $<
 
 .PHONY: network-proto
-network-proto: $(CODEGEN_DIR)/networks/$(NETWORK)/$(DATATYPE)/model.txt test/compiler/proto/param.pb.cc test/compiler/proto/tiling_pb2.py test/compiler/proto/tiling.pb.cc $(CODEGEN_DIR)/networks/$(NETWORK)/$(DATATYPE)/$(IC_DIMENSION)x$(OC_DIMENSION)_$(INPUT_BUFFER_SIZE)x$(WEIGHT_BUFFER_SIZE)x$(ACCUM_BUFFER_SIZE)_$(DOUBLE_BUFFERED_ACCUM_BUFFER)/tilings.txtpb
+network-proto: \
+    $(CODEGEN_DIR)/networks/$(NETWORK)/$(DATATYPE)/model.txt \
+    test/compiler/proto/param.pb.cc \
+    test/compiler/proto/tiling_pb2.py \
+    test/compiler/proto/tiling.pb.cc \
+    $(CODEGEN_DIR)/networks/$(NETWORK)/$(DATATYPE)/$(IC_DIMENSION)x$(OC_DIMENSION)_$(INPUT_BUFFER_SIZE)x$(WEIGHT_BUFFER_SIZE)x$(ACCUM_BUFFER_SIZE)_$(DOUBLE_BUFFERED_ACCUM_BUFFER)/tilings.txtpb
 
 include codegen.mk
 

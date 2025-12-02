@@ -146,6 +146,7 @@ if { $DATATYPE == "P8_1" } {
   set SCALE_DATATYPE "DataTypes::fp8_e5m3"
   set VU_INPUT_TYPES "$VECTOR_DATATYPE, $SCALE_DATATYPE, DataTypes::e4m3, DataTypes::int1"
   set OUTPUT_DATATYPES "$INPUT_DATATYPE, $VU_INPUT_TYPES"
+  set SPMM_META_DATATYPE "DataTypes::int32"
 
   set SA_INPUT_TYPE "DataTypes::int6"
   set SA_WEIGHT_TYPE "DataTypes::int6"
@@ -163,6 +164,7 @@ if { $DATATYPE == "P8_1" } {
   set OC_PORT_WIDTH [expr {$OC_DIMENSION * 4}]
   set VECTOR_UNIT_WIDTH $OC_DIMENSION
   set MV_UNIT_WIDTH [expr {$OC_DIMENSION * 2}]
+  set SPMM_UNIT_WIDTH $OC_DIMENSION
 } else {
   puts "Invalid DATATYPE"
   exit 1
@@ -176,12 +178,12 @@ if {![info exists SUPPORT_MVM]} {
   set SUPPORT_MVM false
 }
 
-if {![info exists SUPPORT_DWC]} {
-  set SUPPORT_DWC false
+if {![info exists SUPPORT_SPMM]} {
+  set SUPPORT_SPMM false
 }
 
-if {![info exists MV_UNIT_WIDTH]} {
-  set MV_UNIT_WIDTH $OC_DIMENSION
+if {![info exists SUPPORT_DWC]} {
+  set SUPPORT_DWC false
 }
 
 if {![info exists VECTOR_UNIT_WIDTH]} {
