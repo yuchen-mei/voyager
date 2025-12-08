@@ -214,7 +214,8 @@ void Simulation::run() {
       print_ideal_runtime(operation);
 
       const auto tensors = get_op_outputs(param);
-      const auto memory = (ArrayMemory*)(memories["gold"]);
+      const auto dataloader = dataloaders["gold"];
+      const auto memory = (ArrayMemory*)dataloader->memory;
 
       if (is_soc_sim()) {
         const auto l2_tiling = get_l2_tiling(param);
@@ -223,9 +224,9 @@ void Simulation::run() {
 
         // for SoC simulation, run operation num_tiles times
         for (int i = 0; i < num_tiles; i++) {
-          dataloaders["gold"]->load_scratchpad(param, i);
+          dataloader->load_scratchpad(param, i);
 
-          const auto kwargs = memory->get_args(param);
+          const auto kwargs = dataloader->get_args(param);
           const auto outputs = run_gold_model(operation, kwargs);
 
           assert(outputs.size() == tensors.size());
@@ -234,10 +235,10 @@ void Simulation::run() {
             memory->write_tensor(tensors[i], outputs[i]);
           }
 
-          dataloaders["gold"]->store_scratchpad(param, i);
+          dataloader->store_scratchpad(param, i);
         }
       } else {
-        const auto kwargs = memory->get_args(param);
+        const auto kwargs = dataloader->get_args(param);
         const auto outputs = run_gold_model(operation, kwargs);
 
         assert(outputs.size() == tensors.size());
@@ -297,59 +298,45 @@ int Simulation::check_outputs() {
 
   const auto param = operations.back().param;
 
-  bool pytorch = std::find(sims.begin(), sims.end(), "pytorch") != sims.end();
-  auto gold_memory = memories["gold"];
-  auto accel_memory = memories["accelerator"];
+  bool has_pytorch = contains(sims, "pytorch");
+  bool has_gold = contains(sims, "gold");
+  bool has_accelerator = contains(sims, "accelerator");
 
   std::string filename;
   std::vector<std::any> outputs1, outputs2;
   std::string name1, name2;
 
-  bool has_valid_comp = false;
-
-  if (gold_memory && pytorch) {
+  if (has_gold && has_pytorch) {
     spdlog::info("Gold Model vs. PyTorch\n");
     spdlog::info("(reveals issues in data loading or mapping)\n");
     filename = prefix + "gold_vs_pytorch";
 
     name1 = "gold_model";
-    outputs1 = gold_memory->get_outputs(param);
+    outputs1 = dataloaders["gold"]->get_outputs(param);
 
     name2 = "pytorch";
-    outputs2 = gold_memory->get_reference_outputs(param);
-
-    has_valid_comp = true;
-  }
-
-  if (accel_memory && pytorch) {
+    outputs2 = dataloaders["gold"]->get_reference_outputs(param);
+  } else if (has_accelerator && has_pytorch) {
     spdlog::info("Accelerator vs. PyTorch\n");
     spdlog::info("(reveals bugs in accelerator or memory placement)\n");
     filename = prefix + "accelerator_vs_pytorch";
 
     name1 = "accelerator";
-    outputs1 = accel_memory->get_outputs(param);
+    outputs1 = dataloaders["accelerator"]->get_outputs(param);
 
     name2 = "pytorch";
-    outputs2 = accel_memory->get_reference_outputs(param);
-
-    has_valid_comp = true;
-  }
-
-  if (accel_memory && gold_memory) {
+    outputs2 = dataloaders["accelerator"]->get_reference_outputs(param);
+  } else if (has_accelerator && has_gold) {
     spdlog::info("Accelerator vs. Gold Model\n");
     spdlog::info("(reveals bugs in accelerator or memory placement)\n");
     filename = prefix + "accelerator_vs_gold";
 
     name1 = "accelerator";
-    outputs1 = accel_memory->get_outputs(param);
+    outputs1 = dataloaders["accelerator"]->get_outputs(param);
 
     name2 = "gold_model";
-    outputs2 = gold_memory->get_outputs(param);
-
-    has_valid_comp = true;
-  }
-
-  if (!has_valid_comp) {
+    outputs2 = dataloaders["gold"]->get_outputs(param);
+  } else {
     spdlog::info("No valid comparisons specified\n");
     std::abort();
   }

@@ -189,7 +189,7 @@ void Harness::process_read_request(
 
   constexpr int num_bytes = width / 8;
 
-  const auto array_memory = (ArrayMemory*)(dataloader->memory_interface);
+  const auto array_memory = (ArrayMemory*)(dataloader->memory);
   const int mem_idx = is_soc_sim() ? 1 : 0;
   char* memory = array_memory->memories[mem_idx];
 
@@ -239,7 +239,7 @@ void Harness::process_write_request(
 
   constexpr int num_bytes = width / 8;
 
-  const auto array_memory = (ArrayMemory*)(dataloader->memory_interface);
+  const auto array_memory = (ArrayMemory*)(dataloader->memory);
   const int mem_idx = is_soc_sim() ? 1 : 0;
   char* memory = array_memory->memories[mem_idx];
 

@@ -13,9 +13,13 @@
 
 #include "spdlog/spdlog.h"
 #include "src/ArchitectureParams.h"
-#include "src/datatypes/DataTypes.h"
 #include "test/compiler/proto/param.pb.h"
 // IWYU pragma: end_exports
+
+inline bool contains(const auto& container, const auto& value) {
+  return std::find(container.begin(), container.end(), value) !=
+         container.end();
+}
 
 inline bool is_gemm_op(const std::string& op_target) {
   static const std::unordered_set<std::string> GEMM_OPS = {
