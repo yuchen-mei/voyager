@@ -441,7 +441,7 @@ void map_vector_operations(const codegen::Operation& param,
     for (int i = 0; i < 6; i++) {
       if (input_shape[i] != output_shape[i] && input_shape[i] == 1) {
         vector_params->vector_fetch_0_loops[i / 3][i % 3] = output_shape[i];
-        vector_params->vector_fetch_0_broadcast[5 - i] = 1;
+        vector_params->vector_fetch_0_broadcast[i] = 1;
       }
     }
   }
