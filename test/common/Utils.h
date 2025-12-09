@@ -270,34 +270,20 @@ inline float get_tensor_scalar_scale(const codegen::Tensor& tensor) {
   return scale_val[0];
 }
 
-// full_shape  : e.g. {1, 1024, 4096}
-// tile_shape  : e.g. {1, 512, 64}
-// valid       : output mask of size = product(full_shape)
-// num_tiles_executed: number of tiles actually run
-// Assumes row-major layout (inner dim is last)
 inline void build_valid_mask(const std::vector<int>& full_shape,
                              const std::vector<int>& tile_shape,
-                             size_t num_tiles_executed,
+                             int num_tiles_executed,
                              std::vector<uint8_t>& valid) {
-  const size_t rank = full_shape.size();
-
-  // Compute total number of elements
-  size_t total_elems = 1;
-  for (size_t d = 0; d < rank; ++d) total_elems *= full_shape[d];
+  const int rank = full_shape.size();
+  const int total_elems = get_size(full_shape);
 
   valid.assign(total_elems, 0);
 
   // Compute number of tiles along each dimension
-  std::vector<size_t> tiles_per_dim(rank);
-  for (size_t d = 0; d < rank; ++d) {
+  std::vector<int> tiles_per_dim(rank);
+  for (int d = 0; d < rank; ++d) {
     tiles_per_dim[d] = (full_shape[d] + tile_shape[d] - 1) / tile_shape[d];
   }
-
-  // Compute total number of tiles
-  size_t total_tiles = 1;
-  for (auto t : tiles_per_dim) total_tiles *= t;
-
-  num_tiles_executed = std::min(num_tiles_executed, total_tiles);
 
   // Precompute strides for flattening indices
   std::vector<int> strides(rank);

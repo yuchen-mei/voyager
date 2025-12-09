@@ -47,7 +47,11 @@ ArrayMemory::ArrayMemory(std::vector<uint64_t> sizes) : MemoryInterface() {
   try {
     for (const auto size : sizes) {
       char* memory = new char[size];
+#ifdef ZERO_INIT
+      std::memset(memory, 0, size);
+#else
       fill_random_fast(memory, size);
+#endif
       memories.push_back(memory);
     }
   } catch (const std::bad_alloc& e) {

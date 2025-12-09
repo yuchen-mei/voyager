@@ -166,10 +166,6 @@ void Simulation::print_ideal_runtime(const Operation operation) {
     } else {
       int K = weight_shape[weight_shape.size() - 1];
       cycles = num_macs / K / (IC_DIMENSION * OC_DIMENSION);
-
-      if (operation.has_shrunk_tiling) {
-        cycles *= operation.shrink_factor;
-      }
     }
 
     spdlog::info("{}, matrix unit ideal runtime: {} ns\n", get_op_name(param),

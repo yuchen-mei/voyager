@@ -486,8 +486,7 @@ void Harness::record_start(const std::deque<BaseParams*>& params,
 }
 
 void Harness::record_done(const std::deque<BaseParams*>& params,
-                          const Operation& operation, int runtime_scale,
-                          bool is_last) {
+                          const Operation& operation, bool is_last) {
   for (size_t idx = 0; idx < params.size(); idx++) {
     BaseParams* base_param = params[idx];
     MatrixParams* matrix_params = dynamic_cast<MatrixParams*>(base_param);
@@ -548,9 +547,7 @@ void Harness::record_done(const std::deque<BaseParams*>& params,
     sc_time start = start_times.front();
     start_times.pop_front();
 
-    int runtime = runtime_scale * int(end.to_default_time_units() -
-                                      start.to_default_time_units());
-
+    int runtime = end.to_default_time_units() - start.to_default_time_units();
     std::cout << "Runtime: " << runtime << " ns" << std::endl;
     access_counter->print_summary(operation.tiling, operation.has_valid_tiling);
 
@@ -562,8 +559,8 @@ void Harness::record_done(const std::deque<BaseParams*>& params,
       auto start = operation_start_times.front();
       operation_start_times.pop_front();
 
-      int total_runtime = runtime_scale * int(end.to_default_time_units() -
-                                              start.to_default_time_units());
+      int total_runtime =
+          end.to_default_time_units() - start.to_default_time_units();
       std::cout << "Total Runtime: " << total_runtime << " ns" << std::endl;
     }
   }
@@ -580,6 +577,13 @@ std::deque<BaseParams*> offset_param_addresses(std::deque<BaseParams*> params,
       param->bias_offset += offset;
       param->input_scale_offset += offset;
       param->weight_scale_offset += offset;
+      param->dq_scale_offset += offset;
+      param->dq_zero_point_offset += offset;
+#if SUPPORT_SPMM
+      param->spmm_indices_offset += offset;
+      param->spmm_indptr_offset += offset;
+      param->spmm_data_offset += offset;
+#endif
       new_params.push_back(param);
     } else if (auto* vp = dynamic_cast<VectorParams*>(base_param)) {
       auto* param = new VectorParams(*vp);
@@ -632,7 +636,7 @@ void Harness::param_sender() {
           tile_done.SyncPop();
         }
 
-        std::cerr << "Sending tile " << j << " params" << std::endl;
+        spdlog::debug("Sending tile {} params\n", j);
         send_params(j % 2 == 0 ? accelerator_params : params_offseted);
       }
 
@@ -675,7 +679,7 @@ void Harness::start_monitor() {
     if (is_soc_sim()) {
       const int num_tiles = get_tile_count(param);
       for (int j = 0; j < num_tiles; j++) {
-        std::cerr << "Waiting for tile " << j << " to start" << std::endl;
+        spdlog::debug("Waiting for tile {} to start\n", j);
         bool is_first = j == 0;
         record_start(accelerator_params, operation, is_first);
       }
@@ -710,13 +714,6 @@ void Harness::done_monitor() {
     std::deque<BaseParams*> accelerator_params;
     map_operation(operation, accelerator_params);
 
-    int runtime_scale = 1;
-    if (operation.has_shrunk_tiling) {
-      runtime_scale = operation.shrink_factor;
-      std::cout << "Scale operation" << operation.name << " by "
-                << runtime_scale << std::endl;
-    }
-
     if (is_soc_sim()) {
       const int num_tiles = get_tile_count(param);
       const int bank_size = getenv_int("CACHE_SIZE", 8 * 1024 * 1024);
@@ -728,9 +725,9 @@ void Harness::done_monitor() {
       }
 
       for (int j = 0; j < num_tiles; j++) {
-        std::cerr << "Waiting for tile " << j << " to finish" << std::endl;
+        spdlog::debug("Waiting for tile {} to finish\n", j);
         bool is_last = j == num_tiles - 1;
-        record_done(accelerator_params, operation, runtime_scale, is_last);
+        record_done(accelerator_params, operation, is_last);
 
         int offset = j % 2 == 0 ? 0 : bank_size;
         dataloader->store_scratchpad(param, j, offset);
@@ -744,7 +741,7 @@ void Harness::done_monitor() {
         }
       }
     } else {
-      record_done(accelerator_params, operation, runtime_scale, true);
+      record_done(accelerator_params, operation, true);
     }
   }
 
