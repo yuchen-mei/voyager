@@ -158,90 +158,6 @@ class Pack1D {
 
 // TODO: is there a way to make this more generic?
 
-template <size_t pack_width, int W>
-class Pack1D<PEInput<ac_int<W, false>>, pack_width> {
- public:
-  PEInput<ac_int<W, false>> value[pack_width];
-
-  static const unsigned int width =
-      PEInput<ac_int<W, false>>::width * pack_width;
-
-  Pack1D() {}
-
-  PEInput<ac_int<W, false>>& operator[](unsigned int i) {
-    return this->value[i];
-  }
-
-  const PEInput<ac_int<W, false>>& operator[](unsigned int i) const {
-    return this->value[i];
-  }
-
-  template <unsigned int Size>
-  void Marshall(Marshaller<Size>& m) {
-#pragma hls_unroll yes
-    for (unsigned int i = 0; i < pack_width; i++) {
-      m& value[i].data;
-    }
-
-#pragma hls_unroll yes
-    for (unsigned int i = 0; i < pack_width; i++) {
-      m& value[i].swap_weights;
-    }
-  }
-
-  inline friend bool operator==(const Pack1D& lhs, const Pack1D& rhs) {
-    for (unsigned int i = 0; i < pack_width; i++) {
-      if (lhs.value[i] != rhs.value[i]) {
-        return false;
-      }
-    }
-
-    return true;
-  }
-};
-
-template <size_t pack_width, int W>
-class Pack1D<PEWeight<ac_int<W, false>>, pack_width> {
- public:
-  PEWeight<ac_int<W, false>> value[pack_width];
-
-  static const unsigned int width =
-      PEWeight<ac_int<W, false>>::width * pack_width;
-
-  Pack1D() {}
-
-  PEWeight<ac_int<W, false>>& operator[](unsigned int i) {
-    return this->value[i];
-  }
-
-  const PEWeight<ac_int<W, false>>& operator[](unsigned int i) const {
-    return this->value[i];
-  }
-
-  template <unsigned int Size>
-  void Marshall(Marshaller<Size>& m) {
-#pragma hls_unroll yes
-    for (unsigned int i = 0; i < pack_width; i++) {
-      m& value[i].data;
-    }
-
-#pragma hls_unroll yes
-    for (unsigned int i = 0; i < pack_width; i++) {
-      m& value[i].tag;
-    }
-  }
-
-  inline friend bool operator==(const Pack1D& lhs, const Pack1D& rhs) {
-    for (unsigned int i = 0; i < pack_width; i++) {
-      if (lhs.value[i] != rhs.value[i]) {
-        return false;
-      }
-    }
-
-    return true;
-  }
-};
-
 template <size_t pack_width, int W, int es>
 class Pack1D<PEInput<Posit<W, es>>, pack_width> {
  public:
@@ -320,12 +236,7 @@ class Pack1D<StdFloat<mantissa, exp>, pack_width> {
   StdFloat<mantissa, exp> value[pack_width];
   static const unsigned int width = StdFloat<mantissa, exp>::width * pack_width;
 
-  Pack1D() {
-#pragma hls_unroll yes
-    for (unsigned int i = 0; i < pack_width; i++) {
-      value[i] = StdFloat<mantissa, exp>::zero();
-    }
-  }
+  Pack1D() {}
 
   StdFloat<mantissa, exp>& operator[](size_t i) { return value[i]; }
   const StdFloat<mantissa, exp>& operator[](size_t i) const { return value[i]; }
@@ -433,12 +344,7 @@ class Pack1D<Int<W, S>, pack_width> {
   Int<W, S> value[pack_width];
   static const unsigned int width = Int<W, S>::width * pack_width;
 
-  Pack1D() {
-#pragma hls_unroll yes
-    for (unsigned int i = 0; i < pack_width; i++) {
-      value[i] = Int<W, S>::zero();
-    }
-  }
+  Pack1D() {}
 
   Int<W, S>& operator[](size_t i) { return value[i]; }
   const Int<W, S>& operator[](size_t i) const { return value[i]; }
@@ -516,110 +422,6 @@ class Pack1D<PEWeight<Int<W, S>>, pack_width> {
 #pragma hls_unroll yes
     for (unsigned int i = 0; i < pack_width; i++) {
       m& value[i].data.int_val;
-    }
-#pragma hls_unroll yes
-    for (unsigned int i = 0; i < pack_width; i++) {
-      m& value[i].tag;
-    }
-  }
-
-  inline friend bool operator==(const Pack1D& lhs, const Pack1D& rhs) {
-    for (unsigned int i = 0; i < pack_width; i++) {
-      if (!(lhs.value[i] == rhs.value[i])) {
-        return false;
-      }
-    }
-
-    return true;
-  }
-};
-
-template <size_t pack_width>
-class Pack1D<NormalFloat4, pack_width> {
- public:
-  NormalFloat4 value[pack_width];
-  static const unsigned int width = NormalFloat4::width * pack_width;
-
-  Pack1D() {}
-
-  NormalFloat4& operator[](size_t i) { return value[i]; }
-  const NormalFloat4& operator[](size_t i) const { return value[i]; }
-
-  template <unsigned int Size>
-  void Marshall(Marshaller<Size>& m) {
-#pragma hls_unroll yes
-    for (unsigned int i = 0; i < pack_width; i++) {
-      m& value[i].index;
-    }
-  }
-
-  inline friend bool operator==(const Pack1D& lhs, const Pack1D& rhs) {
-    for (unsigned int i = 0; i < pack_width; i++) {
-      if (!(lhs.value[i] == rhs.value[i])) {
-        return false;
-      }
-    }
-
-    return true;
-  }
-};
-
-template <size_t pack_width>
-class Pack1D<PEInput<NormalFloat4>, pack_width> {
- public:
-  PEInput<NormalFloat4> value[pack_width];
-
-  static const unsigned int width = PEInput<NormalFloat4>::width * pack_width;
-
-  Pack1D() {}
-
-  PEInput<NormalFloat4>& operator[](unsigned int i) { return this->value[i]; }
-  const PEInput<NormalFloat4>& operator[](unsigned int i) const {
-    return this->value[i];
-  }
-
-  template <unsigned int Size>
-  void Marshall(Marshaller<Size>& m) {
-#pragma hls_unroll yes
-    for (unsigned int i = 0; i < pack_width; i++) {
-      m& value[i].data.index;
-    }
-#pragma hls_unroll yes
-    for (unsigned int i = 0; i < pack_width; i++) {
-      m& value[i].swap_weights;
-    }
-  }
-
-  inline friend bool operator==(const Pack1D& lhs, const Pack1D& rhs) {
-    for (unsigned int i = 0; i < pack_width; i++) {
-      if (!(lhs.value[i] == rhs.value[i])) {
-        return false;
-      }
-    }
-
-    return true;
-  }
-};
-
-template <size_t pack_width>
-class Pack1D<PEWeight<NormalFloat4>, pack_width> {
- public:
-  PEWeight<NormalFloat4> value[pack_width];
-
-  static const unsigned int width = PEWeight<NormalFloat4>::width * pack_width;
-
-  Pack1D() {}
-
-  PEWeight<NormalFloat4>& operator[](unsigned int i) { return this->value[i]; }
-  const PEWeight<NormalFloat4>& operator[](unsigned int i) const {
-    return this->value[i];
-  }
-
-  template <unsigned int Size>
-  void Marshall(Marshaller<Size>& m) {
-#pragma hls_unroll yes
-    for (unsigned int i = 0; i < pack_width; i++) {
-      m& value[i].data.index;
     }
 #pragma hls_unroll yes
     for (unsigned int i = 0; i < pack_width; i++) {
