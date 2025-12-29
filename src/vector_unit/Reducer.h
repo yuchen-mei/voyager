@@ -32,7 +32,7 @@ SC_MODULE(VectorReducer) {
 #endif
 
   static constexpr int N = 2;
-  static constexpr int last = N - 1;
+  static constexpr int LAST = N - 1;
 
   static_assert(N > 0, "Pipeline size N must be greater than 0");
 
@@ -80,8 +80,8 @@ SC_MODULE(VectorReducer) {
 
     while (true) {
       VectorInstructions inst = instr.Pop();
-      decltype(inst.inst_count) total_values = inst.inst_count;
-      decltype(inst.inst_count) counter = 0;
+      decltype(inst.inst_loop_count) total_values = inst.inst_loop_count;
+      decltype(inst.inst_loop_count) counter = 0;
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
@@ -98,14 +98,14 @@ SC_MODULE(VectorReducer) {
             T acc;
             if (inst.reduce_op == VectorInstructions::radd) {
               T sum = tree_sum(reduce_input);
-              acc = j < N ? sum : acc_old[last] + sum;
-            } else {  // rmax
+              acc = acc_old[LAST] + sum;
+            } else {
               T max = tree_max(reduce_input);
-              acc = j < N ? max : std::max(acc_old[last], max);
+              acc = std::max(acc_old[LAST], max);
             }
 
 #pragma hls_unroll yes
-            for (int k = last; k > 0; k--) {
+            for (int k = LAST; k > 0; k--) {
               acc_old[k] = acc_old[k - 1];
             }
 
@@ -117,7 +117,7 @@ SC_MODULE(VectorReducer) {
           T output;
           if (inst.reduce_op == VectorInstructions::radd) {
             output = tree_sum(acc_old);
-          } else {  // rmax
+          } else {
             output = tree_max(acc_old);
           }
 

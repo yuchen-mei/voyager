@@ -750,15 +750,16 @@ void map_matrix_operation(const Operation& operation,
 
   VectorInstructions inst;
   inst.op_type = VectorInstructions::vector;
-  inst.inst_count = tiling.loops[0][tiling.x_loop_idx[0]] *
-                    tiling.loops[1][tiling.x_loop_idx[1]] *
-                    tiling.loops[0][tiling.y_loop_idx[0]] *
-                    tiling.loops[1][tiling.y_loop_idx[1]] *
-                    tiling.loops[0][tiling.weight_loop_idx[0]] *
-                    tiling.loops[1][tiling.weight_loop_idx[1]] * packing_factor;
+  inst.inst_loop_count = tiling.loops[0][tiling.x_loop_idx[0]] *
+                         tiling.loops[1][tiling.x_loop_idx[1]] *
+                         tiling.loops[0][tiling.y_loop_idx[0]] *
+                         tiling.loops[1][tiling.y_loop_idx[1]] *
+                         tiling.loops[0][tiling.weight_loop_idx[0]] *
+                         tiling.loops[1][tiling.weight_loop_idx[1]] *
+                         packing_factor;
 
   if (is_dwc) {
-    inst.inst_count =
+    inst.inst_loop_count =
         tiling.loops[0][0] * tiling.loops[0][1] * tiling.loops[0][2];
     inst.vector_op0_src0 = VectorInstructions::from_dwc_unit;
   } else if (is_fc) {
@@ -844,7 +845,7 @@ void map_matrix_operation(const Operation& operation,
     if (opcode == "quantize_mx") {
       float quant_max = op.kwargs().at("quant_max").float_value();
       bool force_scale_power_of_two =
-          op.kwargs().at("force_scale_power_of_two").int_value();
+          op.kwargs().at("force_scale_power_of_two").bool_value();
 
       if (force_scale_power_of_two) {
         inst.immediate2 = floor(log2(quant_max));
@@ -853,8 +854,11 @@ void map_matrix_operation(const Operation& operation,
         inst.immediate2 = scale.bits_rep();
       }
 
+      const auto outputs = get_op_outputs(param);
+      const int num_outputs = outputs.size();
+
       vector_params->quantize_output_mx = true;
-      vector_params->mx_scale_offset = get_address(param.outputs().tensors(0));
+      vector_params->mx_scale_offset = get_address(outputs[num_outputs - 2]);
 
       if (op.kwargs().contains("output_code")) {
         const auto code = op.kwargs().at("output_code").tensor();
@@ -1182,7 +1186,7 @@ void map_matrix_operation(const Operation& operation,
   // total output count
   vector_instruction_config->inst[0] = inst;
   vector_instruction_config->num_inst = 1;
-  vector_instruction_config->repeat_count = 1;
+  vector_instruction_config->config_loop_count = 1;
 
   if (is_dwc) {
     mapped_params.push_back(dwc_params);

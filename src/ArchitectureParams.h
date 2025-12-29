@@ -173,7 +173,7 @@ using F9 = StdFloat<3, 5>;
 #error "No OC dimension specified!"
 #endif
 
-#define ADDRESS_WIDTH 64
+#define ADDRESS_WIDTH 32
 
 #ifndef SUPPORT_MX
 #define SUPPORT_MX false

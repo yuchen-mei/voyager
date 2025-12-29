@@ -479,6 +479,57 @@ class Pack1D<UFloat<W, E>, pack_width> {
   }
 };
 
+template <typename T, typename Meta, int width>
+struct CsrDataAndIndices {
+  Pack1D<T, width> data;
+  Pack1D<Meta, width> indices;
+  bool is_last;
+
+  static const unsigned int total_width =
+      T::width * width + Meta::width * width + 1;
+
+  template <unsigned int Size>
+  void Marshall(Marshaller<Size>& m) {
+    for (int i = 0; i < width; i++) {
+      m& data[i];
+    }
+    for (int i = 0; i < width; i++) {
+      m& indices[i];
+    }
+    m & is_last;
+  }
+
+  inline friend std::ostream& operator<<(ostream& os,
+                                         const CsrDataAndIndices& csr) {
+    return os << "data: " << csr.data << " indices: " << csr.indices
+              << " is_last: " << csr.is_last;
+  }
+};
+
+template <typename T>
+struct CsrWriteRequest {
+  ac_int<ADDRESS_WIDTH, false> address;
+  T data;
+
+  static const unsigned int width = ADDRESS_WIDTH + T::width;
+
+  template <unsigned int Size>
+  void Marshall(Marshaller<Size>& m) {
+    m & address;
+    m & data;
+  }
+
+  inline friend std::ostream& operator<<(ostream& os,
+                                         const CsrWriteRequest& request) {
+    return os << request.address << " " << request.data << " ";
+  }
+
+  inline friend bool operator==(const CsrWriteRequest& lhs,
+                                const CsrWriteRequest& rhs) {
+    return lhs.address == rhs.address && lhs.data == rhs.data;
+  }
+};
+
 template <typename T>
 struct BufferWriteRequest {
   ac_int<16, false> address;

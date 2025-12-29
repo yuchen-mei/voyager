@@ -84,6 +84,12 @@ SC_MODULE(VectorUnit) {
   Connections::Combinational<Pack1D<VectorType, width>> CCS_INIT_S1(
       pipeline_to_memory);
   Connections::Combinational<ScaleType> CCS_INIT_S1(mx_scale);
+#if SUPPORT_SPMM
+  using Meta = SPMM_META_DATATYPE;
+  Connections::Combinational<CsrDataAndIndices<VectorType, Meta, width>>
+      CCS_INIT_S1(csr_data_and_indices);
+  Connections::Combinational<Pack1D<Meta, width>> CCS_INIT_S1(csr_indptr);
+#endif
 
   Connections::Combinational<ApproxUnitConfig> CCS_INIT_S1(approx_unit_config);
 
@@ -99,12 +105,17 @@ SC_MODULE(VectorUnit) {
 
   Connections::Combinational<Pack1D<VectorType, mu_width>> vector_unit_output;
 
-  // Output Controller
-  Connections::Out<ac_int<OC_PORT_WIDTH, false>> CCS_INIT_S1(vector_out);
+  // Outputs
+  Connections::Out<ac_int<OC_PORT_WIDTH, false>> CCS_INIT_S1(vector_output);
   Connections::Out<ac_int<ADDRESS_WIDTH, false>> CCS_INIT_S1(
-      vector_address_out);
-  Connections::Out<ac_int<ScaleType::width, false>> CCS_INIT_S1(scale_out);
-  Connections::Out<ac_int<ADDRESS_WIDTH, false>> CCS_INIT_S1(scale_address_out);
+      vector_output_address);
+  Connections::Out<ac_int<ScaleType::width, false>> CCS_INIT_S1(
+      mx_scale_output);
+  Connections::Out<ac_int<ADDRESS_WIDTH, false>> CCS_INIT_S1(mx_scale_address);
+  Connections::Out<ac_int<OC_PORT_WIDTH, false>> CCS_INIT_S1(
+      sparse_tensor_output);
+  Connections::Out<ac_int<ADDRESS_WIDTH, false>> CCS_INIT_S1(
+      sparse_tensor_address);
 
   Connections::SyncOut CCS_INIT_S1(start);
   Connections::SyncOut CCS_INIT_S1(done);
@@ -181,6 +192,10 @@ SC_MODULE(VectorUnit) {
     pipeline.reducer_input(reducer_input);
     pipeline.accumulator_input(accumulator_input);
     pipeline.approx_unit_config(approx_unit_config);
+#if SUPPORT_SPMM
+    pipeline.csr_data_and_indices(csr_data_and_indices);
+    pipeline.csr_indptr(csr_indptr);
+#endif
 
     // Reducer
     reducer.clk(clk);
@@ -205,10 +220,16 @@ SC_MODULE(VectorUnit) {
     output_controller.params_in(output_controller_params);
     output_controller.vector_in(vector_unit_output);
     output_controller.scale_in(mx_scale);
-    output_controller.vector_out(vector_out);
-    output_controller.vector_address_out(vector_address_out);
-    output_controller.scale_out(scale_out);
-    output_controller.scale_address_out(scale_address_out);
+#if SUPPORT_SPMM
+    output_controller.csr_indptr(csr_indptr);
+    output_controller.csr_data_and_indices(csr_data_and_indices);
+#endif
+    output_controller.vector_output(vector_output);
+    output_controller.vector_output_address(vector_output_address);
+    output_controller.mx_scale_output(mx_scale_output);
+    output_controller.mx_scale_address(mx_scale_address);
+    output_controller.sparse_tensor_output(sparse_tensor_output);
+    output_controller.sparse_tensor_address(sparse_tensor_address);
     output_controller.done(done);
 #if SUPPORT_DWC
     output_controller.dwc_address_in(dwc_address_in);
@@ -257,7 +278,7 @@ SC_MODULE(VectorUnit) {
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
-      for (decltype(instruction_config.repeat_count) i = 0;; i++) {
+      for (decltype(instruction_config.config_loop_count) i = 0;; i++) {
         for (decltype(instruction_config.num_inst) j = 0;; j++) {
           VectorInstructions inst = instruction_config.inst[j];
 
@@ -272,7 +293,7 @@ SC_MODULE(VectorUnit) {
 
           if (j == instruction_config.num_inst - 1) break;
         }
-        if (i == instruction_config.repeat_count - 1) break;
+        if (i == instruction_config.config_loop_count - 1) break;
       }
     }
   }
@@ -312,20 +333,27 @@ SC_MODULE(VectorUnit) {
       VectorParams params = send_output_params.Pop();
       VectorInstructionConfig instruction_config = output_instruction.Pop();
 
-      ac_int<32, false> num_outputs =
-          params.output_loops[0][0] * params.output_loops[0][1] *
-          params.output_loops[0][2] * params.output_loops[1][0] *
-          params.output_loops[1][1] * params.output_loops[1][2];
-
-      ac_int<2, false> op_type = 0;
+      ac_int<2, false> op_type;
+      VectorInstructions output_inst;
 #pragma hls_unroll yes
       for (int i = 0; i < 8; i++) {
         VectorInstructions inst = instruction_config.inst[i];
         if (inst.vdest == VectorInstructions::to_output ||
             inst.rdest == VectorInstructions::to_memory) {
           op_type = inst.op_type;
+          output_inst = inst;
+          break;
         }
       }
+
+      ac_int<32, false> num_outputs =
+          output_inst.inst_loop_count * instruction_config.config_loop_count;
+#if VECTOR_UNIT_WIDTH != OC_DIMENSION
+      if (output_inst.op_type == VectorInstructions::reduction &&
+          output_inst.rduplicate) {
+        num_outputs *= (mu_width / vu_width);
+      }
+#endif
 
 #if SUPPORT_CODEBOOK_QUANT
       VectorType midpoints[NUM_CODEBOOK_ENTRIES];
@@ -345,7 +373,7 @@ SC_MODULE(VectorUnit) {
         Pack1D<VectorType, mu_width> packed_outputs;
 
         for (int pack = 0; pack < mu_width / width; pack++) {
-          Pack1D<VectorType, width> outputs = Pack1D<VectorType, width>::zero();
+          auto outputs = Pack1D<VectorType, width>::zero();
 
           if (op_type == VectorInstructions::vector) {
             outputs = pipeline_to_memory.Pop();
