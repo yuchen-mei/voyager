@@ -842,7 +842,7 @@ void map_matrix_operation(const Operation& operation,
       inst.vector_op3 = vop;
     }
 
-    if (opcode == "quantize_mx") {
+    if (opcode == "quantize_mx" || opcode == "quantize_mx_outlier") {
       float quant_max = op.kwargs().at("quant_max").float_value();
       bool force_scale_power_of_two =
           op.kwargs().at("force_scale_power_of_two").bool_value();
@@ -859,6 +859,24 @@ void map_matrix_operation(const Operation& operation,
 
       vector_params->quantize_output_mx = true;
       vector_params->mx_scale_offset = get_address(outputs[num_outputs - 2]);
+
+      if (opcode == "quantize_mx_outlier") {
+        vector_params->has_sparse_output = true;
+        vector_params->csr_data_offset = get_address(outputs[0]);
+        vector_params->csr_indices_offset = get_address(outputs[1]);
+        vector_params->csr_indptr_offset = get_address(outputs[2]);
+
+        auto& config = vector_instruction_config->outlier_filter;
+
+        VECTOR_DATATYPE threshold = op.kwargs().at("threshold").float_value();
+        config.outlier_threshold = threshold.bits_rep();
+
+        const auto quantize_input = op.kwargs().at("input").tensor();
+        const auto quantize_shape = get_shape(quantize_input);
+        config.dense_input_shape[1] = quantize_shape.back() / VECTOR_UNIT_WIDTH;
+        config.dense_input_shape[0] =
+            get_size(quantize_input) / quantize_shape.back();
+      }
 
       if (op.kwargs().contains("output_code")) {
         const auto code = op.kwargs().at("output_code").tensor();

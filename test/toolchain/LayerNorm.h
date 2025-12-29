@@ -390,7 +390,7 @@ void map_layer_norm(const codegen::Operation& param,
   }
   inst3.vdest = VectorInstructions::to_output;
 
-  set_quantize_params(param, vector_params, inst3);
+  set_quantize_params(param, vector_params, inst3, vector_instruction_config);
 
   vector_instruction_config->inst[0] = inst3;
 

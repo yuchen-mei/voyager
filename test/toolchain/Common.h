@@ -279,8 +279,8 @@ void set_dequantize_scale(const codegen::Tensor& tensor,
 }
 
 void set_quantize_params(const codegen::Operation& param,
-                         VectorParams* vector_params,
-                         VectorInstructions& inst) {
+                         VectorParams* vector_params, VectorInstructions& inst,
+                         VectorInstructionConfig* vector_instruction_config) {
   const auto op_list = get_op_list(param);
   const auto op = op_list.back();
   const auto kwargs = op.kwargs();
@@ -328,13 +328,15 @@ void set_quantize_params(const codegen::Operation& param,
       vector_params->csr_indices_offset = get_address(outputs[1]);
       vector_params->csr_indptr_offset = get_address(outputs[2]);
 
+      auto& config = vector_instruction_config->outlier_filter;
+
       VECTOR_DATATYPE threshold = kwargs.at("threshold").float_value();
-      inst.outlier_threshold = threshold.bits_rep();
+      config.outlier_threshold = threshold.bits_rep();
 
       const auto quantize_input = kwargs.at("input").tensor();
       const auto quantize_shape = get_shape(quantize_input);
-      inst.dense_input_shape[1] = quantize_shape.back() / VECTOR_UNIT_WIDTH;
-      inst.dense_input_shape[0] =
+      config.dense_input_shape[1] = quantize_shape.back() / VECTOR_UNIT_WIDTH;
+      config.dense_input_shape[0] =
           get_size(quantize_input) / quantize_shape.back();
     }
 

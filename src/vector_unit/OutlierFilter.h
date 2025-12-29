@@ -8,7 +8,7 @@ SC_MODULE(OutlierFilter) {
   sc_in<bool> CCS_INIT_S1(clk);
   sc_in<bool> CCS_INIT_S1(rstn);
 
-  Connections::In<VectorInstructions> inst_in;
+  Connections::In<OutlierFilterConfig> CCS_INIT_S1(config_in);
   Connections::In<Pack1D<Vector, width>> CCS_INIT_S1(data_in);
 
   Connections::Out<Pack1D<Vector, width>> CCS_INIT_S1(data_out);
@@ -23,7 +23,7 @@ SC_MODULE(OutlierFilter) {
   }
 
   void run() {
-    inst_in.Reset();
+    config_in.Reset();
     data_in.Reset();
     data_out.Reset();
     csr_data_and_indices_out.Reset();
@@ -32,10 +32,10 @@ SC_MODULE(OutlierFilter) {
     wait();
 
     while (true) {
-      auto inst = inst_in.Pop();
+      auto config = config_in.Pop();
 
       Vector threshold;
-      threshold.set_bits(inst.outlier_threshold);
+      threshold.set_bits(config.outlier_threshold);
 
       auto indptr = Pack1D<Meta, width>::zero();
       ac_int<32, false> nnz = 0;
@@ -112,7 +112,7 @@ SC_MODULE(OutlierFilter) {
             }
           }
 
-          if (k == inst.dense_input_shape[1] - 1) break;
+          if (k == config.dense_input_shape[1] - 1) break;
         }
 
         int indptr_idx = x % width;
@@ -125,7 +125,7 @@ SC_MODULE(OutlierFilter) {
           indptr[indptr_idx + 1] = nnz;
         }
 
-        if (x == inst.dense_input_shape[0] - 1) break;
+        if (x == config.dense_input_shape[0] - 1) break;
       }
 
       // Flush remaining data

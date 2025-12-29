@@ -288,7 +288,7 @@ void map_softmax(const codegen::Operation& param,
   inst4.vector_op2 = VectorInstructions::vmult;
   inst4.vdest = VectorInstructions::to_output;
 
-  set_quantize_params(param, vector_params, inst4);
+  set_quantize_params(param, vector_params, inst4, vector_instruction_config);
 
   vector_instruction_config->inst[0] = inst4;
 

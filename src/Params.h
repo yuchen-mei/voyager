@@ -636,11 +636,7 @@ struct VectorInstructions {
   ac_int<16, false> immediate1;
   ac_int<16, false> immediate2;
 
-  ac_int<16, false> outlier_threshold;
-  ac_int<16, false> dense_input_shape[2];
-
-  static const unsigned int sparse_params_width = 48;
-  static const unsigned int width = 135 + sparse_params_width;
+  static const unsigned int width = 135;
 
 #ifndef NO_SYSC
   template <unsigned int Size>
@@ -668,9 +664,6 @@ struct VectorInstructions {
     m & immediate0;
     m & immediate1;
     m & immediate2;
-    m & outlier_threshold;
-    m& dense_input_shape[0];
-    m& dense_input_shape[1];
   }
 
   inline friend void sc_trace(sc_trace_file* tf,
@@ -705,9 +698,6 @@ struct VectorInstructions {
     os << "immediate0: " << params.immediate0 << std::endl;
     os << "immediate1: " << params.immediate1 << std::endl;
     os << "immediate2: " << params.immediate2 << std::endl;
-    os << "outlier_threshold: " << params.outlier_threshold << std::endl;
-    os << "dense_input_shape[0]: " << params.dense_input_shape[0] << std::endl;
-    os << "dense_input_shape[1]: " << params.dense_input_shape[1] << std::endl;
     return os;
   }
 
@@ -730,11 +720,7 @@ struct VectorInstructions {
            lhs.rreciprocal == rhs.rreciprocal && lhs.rscale == rhs.rscale &&
            lhs.rduplicate == rhs.rduplicate && lhs.rdest == rhs.rdest &&
            lhs.vdest == rhs.vdest && lhs.immediate0 == rhs.immediate0 &&
-           lhs.immediate1 == rhs.immediate1 &&
-           lhs.immediate2 == rhs.immediate2 &&
-           lhs.outlier_threshold == rhs.outlier_threshold &&
-           lhs.dense_input_shape[0] == rhs.dense_input_shape[0] &&
-           lhs.dense_input_shape[1] == rhs.dense_input_shape[1];
+           lhs.immediate1 == rhs.immediate1 && lhs.immediate2 == rhs.immediate2;
   }
 };
 
@@ -1513,6 +1499,47 @@ struct ApproxUnitConfig {
   }
 };
 
+struct OutlierFilterConfig {
+#ifndef __SYNTHESIS__
+  OutlierFilterConfig() {
+    outlier_threshold = 0;
+    dense_input_shape[0] = 0;
+    dense_input_shape[1] = 0;
+  }
+#endif
+
+  ac_int<16, false> outlier_threshold;
+  ac_int<16, false> dense_input_shape[2];
+
+  static const unsigned int width = 16 + 16 * 2;
+
+#ifndef NO_SYSC
+  template <unsigned int Size>
+  void Marshall(Marshaller<Size>& m) {
+    m & outlier_threshold;
+    m& dense_input_shape[0];
+    m& dense_input_shape[1];
+  }
+
+#endif
+
+  inline friend std::ostream& operator<<(std::ostream& os,
+                                         const OutlierFilterConfig& config) {
+    os << "outlier_threshold: " << config.outlier_threshold << std::endl;
+    os << "dense_input_shape[0]: " << config.dense_input_shape[0] << std::endl;
+    os << "dense_input_shape[1]: " << config.dense_input_shape[1] << std::endl;
+    return os;
+  }
+
+  inline friend bool operator==(const OutlierFilterConfig& lhs,
+                                const OutlierFilterConfig& rhs) {
+    if (lhs.outlier_threshold != rhs.outlier_threshold) return false;
+    if (lhs.dense_input_shape[0] != rhs.dense_input_shape[0]) return false;
+    if (lhs.dense_input_shape[1] != rhs.dense_input_shape[1]) return false;
+    return true;
+  }
+};
+
 struct VectorInstructionConfig : BaseParams {
 #ifndef __SYNTHESIS__
   VectorInstructionConfig() {
@@ -1525,9 +1552,11 @@ struct VectorInstructionConfig : BaseParams {
   ac_int<4, false> num_inst;
   ac_int<16, false> config_loop_count;
   ApproxUnitConfig approx;
+  OutlierFilterConfig outlier_filter;
 
-  static const unsigned int width =
-      VectorInstructions::width * 8 + 4 + 16 + ApproxUnitConfig::width;
+  static const unsigned int width = VectorInstructions::width * 8 + 4 + 16 +
+                                    ApproxUnitConfig::width +
+                                    OutlierFilterConfig::width;
 
 #ifndef NO_SYSC
   template <unsigned int Size>
@@ -1601,15 +1630,6 @@ struct VectorInstructionConfig : BaseParams {
     for (int j = 0; j < 8; j++) {
       m& inst[j].immediate2;
     }
-    for (int j = 0; j < 8; j++) {
-      m& inst[j].outlier_threshold;
-    }
-    for (int j = 0; j < 8; j++) {
-      m& inst[j].dense_input_shape[0];
-    }
-    for (int j = 0; j < 8; j++) {
-      m& inst[j].dense_input_shape[1];
-    }
 
     m & num_inst;
     m & config_loop_count;
@@ -1624,6 +1644,10 @@ struct VectorInstructionConfig : BaseParams {
     }
     m & approx.clamp_min;
     m & approx.clamp_max;
+
+    m & outlier_filter.outlier_threshold;
+    m & outlier_filter.dense_input_shape[0];
+    m & outlier_filter.dense_input_shape[1];
   }
 
   inline friend void sc_trace(sc_trace_file* tf,

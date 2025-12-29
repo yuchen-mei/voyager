@@ -550,14 +550,31 @@ void map_vector_operations(const codegen::Operation& param,
         vector_params->csr_indices_offset = get_address(outputs[1]);
         vector_params->csr_indptr_offset = get_address(outputs[2]);
 
+        auto& config = vector_instruction_config->outlier_filter;
+
         VECTOR_DATATYPE threshold = op.kwargs().at("threshold").float_value();
-        inst.outlier_threshold = threshold.bits_rep();
+        config.outlier_threshold = threshold.bits_rep();
 
         const auto quantize_input = op.kwargs().at("input").tensor();
         const auto quantize_shape = get_shape(quantize_input);
-        inst.dense_input_shape[1] = quantize_shape.back() / VECTOR_UNIT_WIDTH;
-        inst.dense_input_shape[0] =
+        config.dense_input_shape[1] = quantize_shape.back() / VECTOR_UNIT_WIDTH;
+        config.dense_input_shape[0] =
             get_size(quantize_input) / quantize_shape.back();
+      }
+
+      if (op.kwargs().contains("output_code")) {
+        const auto code = op.kwargs().at("output_code").tensor();
+        const int size = get_size(code);
+
+        float* array = read_constant_param(code);
+
+        for (int i = 0; i < size; i++) {
+          vector_params->output_code[i] = array[i] * 2;
+        }
+
+        delete[] array;
+
+        vector_params->use_output_codebook = true;
       }
 
       // Copy coefficients from ApproximationConstants.h
@@ -870,21 +887,6 @@ void map_vector_operations(const codegen::Operation& param,
           set_vector_fetch_2(tensor_to_load, output_shape, vector_params);
         }
       }
-    }
-
-    if (op.kwargs().contains("output_code")) {
-      const auto code = op.kwargs().at("output_code").tensor();
-      const int size = get_size(code);
-
-      float* array = read_constant_param(code);
-
-      for (int i = 0; i < size; i++) {
-        vector_params->output_code[i] = array[i] * 2;
-      }
-
-      delete[] array;
-
-      vector_params->use_output_codebook = true;
     }
 
     stage++;

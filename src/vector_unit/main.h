@@ -84,12 +84,6 @@ SC_MODULE(VectorUnit) {
   Connections::Combinational<Pack1D<VectorType, width>> CCS_INIT_S1(
       pipeline_to_memory);
   Connections::Combinational<ScaleType> CCS_INIT_S1(mx_scale);
-#if SUPPORT_SPMM
-  using Meta = SPMM_META_DATATYPE;
-  Connections::Combinational<CsrDataAndIndices<VectorType, Meta, width>>
-      CCS_INIT_S1(csr_data_and_indices);
-  Connections::Combinational<Pack1D<Meta, width>> CCS_INIT_S1(csr_indptr);
-#endif
 
   Connections::Combinational<ApproxUnitConfig> CCS_INIT_S1(approx_unit_config);
 
@@ -104,6 +98,16 @@ SC_MODULE(VectorUnit) {
   Connections::Combinational<Pack1D<VectorType, width>> accumulator_to_memory;
 
   Connections::Combinational<Pack1D<VectorType, mu_width>> vector_unit_output;
+
+#if SUPPORT_SPMM
+  using Meta = SPMM_META_DATATYPE;
+
+  Connections::Combinational<OutlierFilterConfig> CCS_INIT_S1(
+      outlier_filter_config);
+  Connections::Combinational<CsrDataAndIndices<VectorType, Meta, width>>
+      CCS_INIT_S1(csr_data_and_indices);
+  Connections::Combinational<Pack1D<Meta, width>> CCS_INIT_S1(csr_indptr);
+#endif
 
   // Outputs
   Connections::Out<ac_int<OC_PORT_WIDTH, false>> CCS_INIT_S1(vector_output);
@@ -193,6 +197,7 @@ SC_MODULE(VectorUnit) {
     pipeline.accumulator_input(accumulator_input);
     pipeline.approx_unit_config(approx_unit_config);
 #if SUPPORT_SPMM
+    pipeline.outlier_filter_config(outlier_filter_config);
     pipeline.csr_data_and_indices(csr_data_and_indices);
     pipeline.csr_indptr(csr_indptr);
 #endif
@@ -255,6 +260,9 @@ SC_MODULE(VectorUnit) {
     reducer_instr.ResetWrite();
     approx_unit_config.ResetWrite();
     output_instruction.ResetWrite();
+#if SUPPORT_SPMM
+    outlier_filter_config.ResetWrite();
+#endif
 
     vector_params.ResetRead();
     vector_fetch_params.ResetWrite();
@@ -285,6 +293,11 @@ SC_MODULE(VectorUnit) {
           if (inst.op_type == VectorInstructions::vector) {
             pipeline_instr.Push(inst);
             approx_unit_config.Push(instruction_config.approx);
+#if SUPPORT_SPMM
+            if (params.has_sparse_output) {
+              outlier_filter_config.Push(instruction_config.outlier_filter);
+            }
+#endif
           } else if (inst.op_type == VectorInstructions::accumulation) {
             accumulator_instr.Push(inst);
           } else if (inst.op_type == VectorInstructions::reduction) {

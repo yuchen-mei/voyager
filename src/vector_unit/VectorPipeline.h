@@ -22,11 +22,10 @@ SC_MODULE(VectorPipeline) {
   sc_in<bool> clk;
   sc_in<bool> rstn;
 
-  // Inputs
   Connections::In<VectorInstructions> instr;
   Connections::In<ApproxUnitConfig> approx_unit_config;
-  Connections::In<Pack1D<BufferType, vu_width>> matrix_unit_output;
 
+  Connections::In<Pack1D<BufferType, vu_width>> matrix_unit_output;
 #if DOUBLE_BUFFERED_ACCUM_BUFFER
   Connections::In<Pack1D<BufferType, vu_width>> accumulation_buffer_output;
 #endif
@@ -78,7 +77,7 @@ SC_MODULE(VectorPipeline) {
 #if SUPPORT_SPMM
   using Meta = SPMM_META_DATATYPE;
 
-  Connections::Combinational<VectorInstructions> outlier_filter_inst;
+  Connections::In<OutlierFilterConfig> outlier_filter_config;
 
   Connections::Combinational<VectorPack> stage_3_payload;
   Connections::Combinational<VectorPack> outlier_filter_input;
@@ -128,7 +127,7 @@ SC_MODULE(VectorPipeline) {
 
     outlier_filter.clk(clk);
     outlier_filter.rstn(rstn);
-    outlier_filter.inst_in(outlier_filter_inst);
+    outlier_filter.config_in(outlier_filter_config);
     outlier_filter.data_in(outlier_filter_input);
     outlier_filter.data_out(filtered_data);
     outlier_filter.csr_data_and_indices_out(csr_data_and_indices);
@@ -159,11 +158,6 @@ SC_MODULE(VectorPipeline) {
     stage_2_inst.ResetWrite();
     stage_3_inst.ResetWrite();
     stage_0_input.ResetWrite();
-#if SUPPORT_SPMM
-    outlier_filter_inst.ResetWrite();
-    outlier_filter_input.ResetWrite();
-    stage_3_payload.ResetWrite();
-#endif
 
     wait();
 
@@ -175,11 +169,7 @@ SC_MODULE(VectorPipeline) {
       stage_1_inst.Push(inst);
       stage_2_inst.Push(inst);
       stage_3_inst.Push(inst);
-#if SUPPORT_SPMM
-      if (inst.vector_op3 == VectorInstructions::vquantize_mx_outlier) {
-        outlier_filter_inst.Push(inst);
-      }
-#endif
+
       for (decltype(inst.inst_loop_count) i = 0;; i++) {
         VectorPack op0_src0, op0_src1, op2_src1, op3_src1;
 
@@ -458,6 +448,10 @@ SC_MODULE(VectorPipeline) {
     stage_2_input.ResetRead();
     reducer_input.Reset();
     accumulator_input.Reset();
+#if SUPPORT_SPMM
+    outlier_filter_input.ResetWrite();
+    stage_3_payload.ResetWrite();
+#endif
 #if MX_SPLIT_MODE
     calculate_qparam_inputs.ResetWrite();
     stage_3_input_fifo_in.ResetWrite();
@@ -531,7 +525,6 @@ SC_MODULE(VectorPipeline) {
       auto filtered = filtered_data.Pop();
       auto payload = stage_3_payload.Pop();
       auto payloads_next = Pack1D<VectorPack, 2>::create({filtered, payload});
-      // FIXME: use the actual op3 from the instruction
       push_stage_3_inputs(VectorInstructions::vquantize_mx_outlier,
                           payloads_next);
     }
