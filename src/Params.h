@@ -1463,7 +1463,6 @@ struct ApproxUnitConfig {
                               const std::string& name) {
     // TODO
   }
-
 #endif
 
   inline friend std::ostream& operator<<(std::ostream& os,
@@ -1521,6 +1520,10 @@ struct OutlierFilterConfig {
     m& dense_input_shape[1];
   }
 
+  // TODO
+  inline friend void sc_trace(sc_trace_file* tf,
+                              const OutlierFilterConfig& config,
+                              const std::string& name) {}
 #endif
 
   inline friend std::ostream& operator<<(std::ostream& os,

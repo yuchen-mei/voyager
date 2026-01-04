@@ -61,15 +61,15 @@ struct PEInput {
     m & swap_weights;
   }
 
-  inline friend void sc_trace(sc_trace_file* tf, const PEInput& peInput,
+  inline friend void sc_trace(sc_trace_file* tf, const PEInput& pe_input,
                               const std::string& name) {
-    sc_trace(tf, peInput.data, name + ".data");
-    sc_trace(tf, peInput.swap_weights, name + ".swap_weights");
+    sc_trace(tf, pe_input.data, name + ".data");
+    sc_trace(tf, pe_input.swap_weights, name + ".swap_weights");
   }
 
-  inline friend std::ostream& operator<<(ostream& os, const PEInput& peInput) {
-    os << peInput.data << " ";
-    os << peInput.swap_weights << " ";
+  inline friend std::ostream& operator<<(ostream& os, const PEInput& pe_input) {
+    os << pe_input.data << " ";
+    os << pe_input.swap_weights << " ";
 
     return os;
   }
@@ -544,10 +544,23 @@ struct CsrDataAndIndices {
     m & is_last;
   }
 
+  inline friend void sc_trace(sc_trace_file* tf, const CsrDataAndIndices& csr,
+                              const std::string& name) {
+    sc_trace(tf, csr.data, name + ".data");
+    sc_trace(tf, csr.indices, name + ".indices");
+    sc_trace(tf, csr.is_last, name + ".is_last");
+  }
+
   inline friend std::ostream& operator<<(ostream& os,
                                          const CsrDataAndIndices& csr) {
     return os << "data: " << csr.data << " indices: " << csr.indices
               << " is_last: " << csr.is_last;
+  }
+
+  inline friend bool operator==(const CsrDataAndIndices& lhs,
+                                const CsrDataAndIndices& rhs) {
+    return lhs.data == rhs.data && lhs.indices == rhs.indices &&
+           lhs.is_last == rhs.is_last;
   }
 };
 
@@ -562,6 +575,12 @@ struct CsrWriteRequest {
   void Marshall(Marshaller<Size>& m) {
     m & address;
     m & data;
+  }
+
+  inline friend void sc_trace(sc_trace_file* tf, const CsrWriteRequest& request,
+                              const std::string& name) {
+    sc_trace(tf, request.address, name + ".address");
+    sc_trace(tf, request.data, name + ".data");
   }
 
   inline friend std::ostream& operator<<(ostream& os,
