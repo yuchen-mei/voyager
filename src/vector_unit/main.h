@@ -110,12 +110,14 @@ SC_MODULE(VectorUnit) {
 #endif
 
   // Outputs
-  Connections::Out<ac_int<OC_PORT_WIDTH, false>> CCS_INIT_S1(vector_output_data);
+  Connections::Out<ac_int<OC_PORT_WIDTH, false>> CCS_INIT_S1(
+      vector_output_data);
   Connections::Out<ac_int<ADDRESS_WIDTH, false>> CCS_INIT_S1(
       vector_output_addr);
   Connections::Out<ac_int<ScaleType::width, false>> CCS_INIT_S1(
       mx_scale_output_data);
-  Connections::Out<ac_int<ADDRESS_WIDTH, false>> CCS_INIT_S1(mx_scale_output_addr);
+  Connections::Out<ac_int<ADDRESS_WIDTH, false>> CCS_INIT_S1(
+      mx_scale_output_addr);
   Connections::Out<ac_int<OC_PORT_WIDTH, false>> CCS_INIT_S1(
       sparse_tensor_output_data);
   Connections::Out<ac_int<ADDRESS_WIDTH, false>> CCS_INIT_S1(
@@ -362,9 +364,10 @@ SC_MODULE(VectorUnit) {
       ac_int<32, false> num_outputs =
           output_inst.inst_loop_count * instruction_config.config_loop_count;
 #if VECTOR_UNIT_WIDTH != OC_DIMENSION
-      if (output_inst.op_type == VectorInstructions::reduction &&
-          output_inst.rduplicate) {
-        num_outputs *= (mu_width / vu_width);
+      if (output_inst.op_type != VectorInstructions::reduction ||
+          !output_inst.rduplicate) {
+        constexpr int factor = mu_width / width;
+        num_outputs = num_outputs / factor;
       }
 #endif
 

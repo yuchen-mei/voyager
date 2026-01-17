@@ -560,7 +560,7 @@ SC_MODULE(VectorPipeline) {
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
     while (1) {
-      VectorType amax_history = VectorType::Zero();
+      VectorType amax_history = VectorType::zero();
 
       for (int i = 0; i < mu_width / vu_width; i++) {
         auto op3_src0 = calculate_qparam_inputs.Pop();
