@@ -95,8 +95,8 @@ void map_microscaling(const codegen::Operation& param,
                                   ? 1.0 / pow(2, floor(log2(quant_max)))
                                   : 1.0 / quant_max;
   vinst1.immediate0 = immediate.bits_rep();
-  vinst1.vector_op0 = VectorInstructions::vmult;
-  vinst1.vector_op1 = VectorInstructions::vabs;
+  vinst1.vector_op0 = VectorInstructions::op0_mul;
+  vinst1.vector_op1 = VectorInstructions::op1_abs;
   vinst1.vdest = VectorInstructions::to_accumulate;
   vector_instruction_config->inst[1] = vinst1;
 

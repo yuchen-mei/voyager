@@ -60,11 +60,34 @@ Pack1D<T, width> vdiv(const Pack1D<T, width> op0, const Pack1D<T, width> op1) {
 }
 
 template <typename T, size_t width>
+Pack1D<T, width> vdiv_fp8(const Pack1D<T, width> op0,
+                          const Pack1D<T, width> op1) {
+  Pack1D<T, width> res;
+#pragma hls_unroll yes
+  for (int i = 0; i < width; i++) {
+    DataTypes::e4m3 b = op1[i];
+    res[i] = op0[i].float_val / b.float_val;
+  }
+  return res;
+}
+
+template <typename T, size_t width>
 Pack1D<T, width> vexp(const Pack1D<T, width> op0) {
   Pack1D<T, width> res;
 #pragma hls_unroll yes
   for (int i = 0; i < width; i++) {
     res[i] = op0[i].exponential();
+  }
+  return res;
+}
+
+template <typename T, size_t width>
+Pack1D<T, width> vexp_fp8(const Pack1D<T, width> op0) {
+  Pack1D<T, width> res;
+#pragma hls_unroll yes
+  for (int i = 0; i < width; i++) {
+    DataTypes::e4m3 q = op0[i];
+    res[i] = q.exponential();
   }
   return res;
 }
@@ -218,18 +241,19 @@ Output dequantize(Input input, Output scale) {
 }
 
 template <typename Input, typename Output, int width>
-void vdequantize(const Pack1D<Input, width>& op0, Pack1D<Output, width>& res,
-                 ac_int<Output::width, false> scale_bits) {
-  Output scale;
-  scale.set_bits(scale_bits);
+Pack1D<Output, width> vdequantize(const Pack1D<Input, width>& op0,
+                                  ac_int<Output::width, false> scale_bits) {
+  Output scale = Output::from_bits(scale_bits);
   if (scale.is_zero()) {
     scale = Output::one();
   }
 
+  Pack1D<Output, width> res;
 #pragma hls_unroll yes
   for (int i = 0; i < width; i++) {
     res[i] = dequantize(op0[i], scale);
   }
+  return res;
 }
 
 template <typename VectorType, typename ScaleType>
@@ -248,8 +272,7 @@ ScaleType compute_scale(const VectorType amax, ac_int<16> qparam) {
 
     scale.set_bits(scaled_exp);
   } else {
-    VectorType quant_max;
-    quant_max.set_bits(qparam);
+    VectorType quant_max = VectorType::from_bits(qparam);
     scale = amax / quant_max;
   }
 
@@ -286,12 +309,9 @@ ScaleType calculate_mx_scale(const Pack1D<VectorType, width>& op0,
     for (int i = 0; i < width; i++) {
       temp[i] = op0[i].abs();
     }
-
     VectorType max_val = tree_max(temp);
 
-    VectorType quant_max;
-    quant_max.set_bits(qparam);
-
+    VectorType quant_max = VectorType::from_bits(qparam);
     scale = max_val / quant_max;
   }
 
@@ -321,9 +341,8 @@ bool unpack_vector_data(ac_int<DTYPE_INDEX_WIDTH, false> dtype,
 
 #pragma hls_unroll yes
   for (int i = 0; i < N; i++) {
-    T data;
-    data.set_bits(bits.template slc<T::width>(offset + i * T::width));
-    outputs[i] = data;
+    outputs[i] =
+        T::from_bits(bits.template slc<T::width>(offset + i * T::width));
   }
 
   return true;

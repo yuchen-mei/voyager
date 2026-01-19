@@ -42,10 +42,8 @@ SC_MODULE(VectorPipeline) {
   Connections::In<VectorPack> vector_fetch_0_data;
   Connections::In<VectorPack> vector_fetch_1_data;
   Connections::In<VectorPack> vector_fetch_2_data;
-
+  Connections::In<VectorPack> reducer_output;
   Connections::In<VectorPack> accumulator_output;
-  Connections::In<VectorPack> reducer_output_0;
-  Connections::In<VectorPack> reducer_output_1;
 
   // Outputs to other submodules
   Connections::Out<ScaleType> mx_scale;
@@ -138,13 +136,13 @@ SC_MODULE(VectorPipeline) {
 
   void router() {
     instr.Reset();
+    approx_unit_config.Reset();
     matrix_unit_output.Reset();
     vector_fetch_0_data.Reset();
     vector_fetch_1_data.Reset();
     vector_fetch_2_data.Reset();
+    reducer_output.Reset();
     accumulator_output.Reset();
-    reducer_output_0.Reset();
-    reducer_output_1.Reset();
 #if DOUBLE_BUFFERED_ACCUM_BUFFER
     accumulation_buffer_output.Reset();
 #endif
@@ -169,6 +167,8 @@ SC_MODULE(VectorPipeline) {
 #pragma hls_pipeline_stall_mode flush
     while (true) {
       VectorInstructions inst = instr.Pop();
+      ApproxUnitConfig approx_config = approx_unit_config.Pop();
+
       stage_0_inst.Push(inst);
       stage_1_inst.Push(inst);
       stage_2_inst.Push(inst);
@@ -196,13 +196,13 @@ SC_MODULE(VectorPipeline) {
         }
 #if DOUBLE_BUFFERED_ACCUM_BUFFER
         else if (inst.vector_op0_src0 ==
-                     VectorInstructions::from_accumulation_buffer ||
+                     VectorInstructions::from_accum_buffer ||
                  inst.vector_op0_src1 ==
-                     VectorInstructions::from_accumulation_buffer) {
+                     VectorInstructions::from_accum_buffer) {
           raw_dq_input = accumulation_buffer_output.Pop();
           dq_active = true;
-          dq_is_src0 = (inst.vector_op0_src0 ==
-                        VectorInstructions::from_accumulation_buffer);
+          dq_is_src0 =
+              (inst.vector_op0_src0 == VectorInstructions::from_accum_buffer);
         }
 #endif
 #if SUPPORT_MVM
@@ -227,14 +227,9 @@ SC_MODULE(VectorPipeline) {
 #endif
         if (dq_active) {
           VectorPack processed_dq;
-          if (inst.vdequantize) {
-            vdequantize<BufferType, VectorType, vu_width>(
-                raw_dq_input, processed_dq, inst.vector_dq_scale);
-          } else {
 #pragma hls_unroll yes
-            for (int i = 0; i < vu_width; i++) {
-              processed_dq[i] = raw_dq_input[i];
-            }
+          for (int i = 0; i < vu_width; i++) {
+            processed_dq[i] = raw_dq_input[i];
           }
 
           if (dq_is_src0) {
@@ -284,36 +279,32 @@ SC_MODULE(VectorPipeline) {
           }
         }
 
-        if (inst.vector_op0_src0 == VectorInstructions::from_accumulation ||
-            inst.vector_op0_src1 == VectorInstructions::from_accumulation ||
-            inst.vector_op2_src1 == VectorInstructions::from_accumulation) {
+        if (inst.vector_op0_src0 == VectorInstructions::from_accumulator ||
+            inst.vector_op0_src1 == VectorInstructions::from_accumulator ||
+            inst.vector_op2_src1 == VectorInstructions::from_accumulator) {
           VectorPack temp = accumulator_output.Pop();
-          if (inst.vector_op0_src0 == VectorInstructions::from_accumulation) {
+          if (inst.vector_op0_src0 == VectorInstructions::from_accumulator) {
             op0_src0 = temp;
           } else if (inst.vector_op0_src1 ==
-                     VectorInstructions::from_accumulation) {
+                     VectorInstructions::from_accumulator) {
             op0_src1 = temp;
           } else {
             op2_src1 = temp;
           }
         }
 
-        if (inst.vector_op0_src0 == VectorInstructions::from_reduction_0 ||
-            inst.vector_op0_src1 == VectorInstructions::from_reduction_0 ||
-            inst.vector_op2_src1 == VectorInstructions::from_reduction_0) {
-          VectorPack temp = reducer_output_0.Pop();
-          if (inst.vector_op0_src0 == VectorInstructions::from_reduction_0) {
+        if (inst.vector_op0_src0 == VectorInstructions::from_vector_reducer ||
+            inst.vector_op0_src1 == VectorInstructions::from_vector_reducer ||
+            inst.vector_op2_src1 == VectorInstructions::from_vector_reducer) {
+          VectorPack temp = reducer_output.Pop();
+          if (inst.vector_op0_src0 == VectorInstructions::from_vector_reducer) {
             op0_src0 = temp;
           } else if (inst.vector_op0_src1 ==
-                     VectorInstructions::from_reduction_0) {
+                     VectorInstructions::from_vector_reducer) {
             op0_src1 = temp;
           } else {
             op2_src1 = temp;
           }
-        }
-
-        if (inst.vector_op2_src1 == VectorInstructions::from_reduction_1) {
-          op2_src1 = reducer_output_1.Pop();
         }
 
         if (inst.vector_op0_src0 == VectorInstructions::from_immediate_0 ||
@@ -331,18 +322,20 @@ SC_MODULE(VectorPipeline) {
           }
         }
 
-        if (inst.vector_op2_src1 == VectorInstructions::from_immediate_1) {
+        if (inst.vector_op0 == VectorInstructions::op0_poly) {
 #pragma hls_unroll yes
           for (int i = 0; i < vu_width; i++) {
-            op2_src1[i].set_bits(inst.immediate1);
+            auto coef = vpoly_coef<VectorType>(op0_src0[i], approx_config);
+            auto& [c0, c1, c2] = coef;
+            op0_src1[i] = c2;
+            op2_src1[i] = c1;
+            op3_src1[i] = c0;
           }
         }
 
-        if (inst.vector_op3_src1 == VectorInstructions::from_immediate_2) {
-#pragma hls_unroll yes
-          for (int i = 0; i < vu_width; i++) {
-            op3_src1[i].set_bits(inst.immediate2);
-          }
+        if (inst.vdequantize) {
+          op0_src0 = vdequantize<VectorType, VectorType, vu_width>(
+              op0_src0, inst.vector_dq_scale);
         }
 
         auto payloads = Pack1D<VectorPack, 4>::create(
@@ -366,31 +359,50 @@ SC_MODULE(VectorPipeline) {
     while (1) {
       VectorInstructions inst = stage_0_inst.Pop();
       auto op0 = inst.vector_op0;
+      bool is_poly = (op0 == VectorInstructions::op0_poly);
+      bool is_mac = (op0 == VectorInstructions::op0_mac);
+      VectorType immediate = VectorType::from_bits(inst.immediate0);
 
       for (decltype(inst.inst_loop_count) i = 0;; i++) {
         auto payloads = stage_0_input.Pop();
         auto op0_src0 = payloads[0];
         auto op0_src1 = payloads[1];
-        VectorPack res0;
 
-        // Stage 0: add, sub, mult
-        if (op0 == VectorInstructions::vadd ||
-            op0 == VectorInstructions::vsub) {
-          if (op0 == VectorInstructions::vsub) {
+        if (op0 == VectorInstructions::op0_sub) {
 #pragma hls_unroll yes
-            for (int i = 0; i < vu_width; i++) {
-              op0_src1[i] = op0_src1[i].negate();
-            }
+          for (int i = 0; i < vu_width; i++) {
+            op0_src1[i] = op0_src1[i].negate();
           }
-          res0 = vadd<VectorType, vu_width>(op0_src0, op0_src1);
-        } else if (op0 == VectorInstructions::vmult) {
-          res0 = vmul<VectorType, vu_width>(op0_src0, op0_src1);
-        } else {
-          res0 = op0_src0;
         }
 
-        auto payloads_next =
-            Pack1D<VectorPack, 3>::create({res0, payloads[2], payloads[3]});
+        // op0_mac: op0_src0 + op0_src1 * immediate0
+        // op0_vpoly: op0_src0 * op0_src1 + op2_src1
+
+        VectorPack mul_lhs = is_mac ? VectorPack::fill(immediate) : op0_src0;
+        VectorPack mul_rhs = op0_src1;
+        VectorPack mul_result = vmul<VectorType, vu_width>(mul_lhs, mul_rhs);
+
+        VectorPack add_lhs = is_poly ? mul_result : op0_src0;
+        VectorPack add_rhs =
+            is_poly ? payloads[2] : (is_mac ? mul_result : op0_src1);
+        VectorPack add_result = vadd<VectorType, vu_width>(add_lhs, add_rhs);
+
+        // Stage 0: add, sub, mult
+        VectorPack stage0_output;
+        if (op0 == VectorInstructions::op0_add ||
+            op0 == VectorInstructions::op0_sub || is_poly || is_mac) {
+          stage0_output = add_result;
+        } else if (op0 == VectorInstructions::op0_mul) {
+          stage0_output = mul_result;
+        } else {
+          stage0_output = op0_src0;
+        }
+
+        // For polynomial ops, inputs need to be multiplied again
+        VectorPack payload2 = is_poly ? op0_src0 : payloads[2];
+
+        auto payloads_next = Pack1D<VectorPack, 3>::create(
+            {stage0_output, payload2, payloads[3]});
         stage_1_input.Push(payloads_next);
 
         if (i == inst.inst_loop_count - 1) break;
@@ -400,7 +412,7 @@ SC_MODULE(VectorPipeline) {
 
   void run_stage_1() {
     stage_1_inst.ResetRead();
-    approx_unit_config.Reset();
+
     stage_1_input.ResetRead();
     stage_2_input.ResetWrite();
 
@@ -410,29 +422,27 @@ SC_MODULE(VectorPipeline) {
 #pragma hls_pipeline_stall_mode flush
     while (1) {
       VectorInstructions inst = stage_1_inst.Pop();
-      ApproxUnitConfig config = approx_unit_config.Pop();
+
       auto op1 = inst.vector_op1;
 
       for (decltype(inst.inst_loop_count) i = 0;; i++) {
         auto payloads = stage_1_input.Pop();
         auto op1_src0 = payloads[0];
-        VectorPack res1;
 
-        // Stage 1: exp, abs, activations
-        if (op1 == VectorInstructions::vpoly) {
-          res1 =
-              vpoly<VectorType, vu_width>(op1_src0, config.maxes, config.ranges,
-                                          config.clamp_min, config.clamp_max);
-        } else if (op1 == VectorInstructions::vabs) {
-          res1 = vabs<VectorType, vu_width>(op1_src0);
-        } else if (op1 == VectorInstructions::vrelu) {
-          res1 = vrelu<VectorType, vu_width>(op1_src0);
+        // Stage 1: exp, abs, relu
+        VectorPack stage1_output;
+        if (op1 == VectorInstructions::op1_abs) {
+          stage1_output = vabs<VectorType, vu_width>(op1_src0);
+        } else if (op1 == VectorInstructions::op1_exp) {
+          stage1_output = vexp_fp8<VectorType, vu_width>(op1_src0);
+        } else if (op1 == VectorInstructions::op1_relu) {
+          stage1_output = vrelu<VectorType, vu_width>(op1_src0);
         } else {
-          res1 = op1_src0;
+          stage1_output = op1_src0;
         }
 
-        auto payloads_next =
-            Pack1D<VectorPack, 3>::create({res1, payloads[1], payloads[2]});
+        auto payloads_next = Pack1D<VectorPack, 3>::create(
+            {stage1_output, payloads[1], payloads[2]});
         stage_2_input.Push(payloads_next);
 
         if (i == inst.inst_loop_count - 1) break;
@@ -443,8 +453,8 @@ SC_MODULE(VectorPipeline) {
   void push_stage_3_inputs(const ac_int<2, false> op3,
                            const Pack1D<VectorPack, 2>& payloads) {
 #if MX_SPLIT_MODE
-    if (op3 == VectorInstructions::vquantize_mx ||
-        op3 == VectorInstructions::vquantize_mx_outlier) {
+    if (op3 == VectorInstructions::op3_quantize_mx ||
+        op3 == VectorInstructions::op3_quantize_mx_outlier) {
       calculate_qparam_inputs.Push(payloads[0]);
     }
     stage_3_input_fifo_in.Push(payloads);
@@ -478,42 +488,63 @@ SC_MODULE(VectorPipeline) {
       auto op2 = inst.vector_op2;
       auto op3 = inst.vector_op3;
       auto vdest = inst.vdest;
+      bool is_poly = (op2 == VectorInstructions::op2_poly);
+      bool is_mac = (op2 == VectorInstructions::op2_mac);
+      VectorType immediate = VectorType::from_bits(inst.immediate1);
 
       for (decltype(inst.inst_loop_count) i = 0;; i++) {
         auto payloads = stage_2_input.Pop();
         auto op2_src0 = payloads[0];
         auto op2_src1 = payloads[1];
-        VectorPack res2;
+
+        if (op2 == VectorInstructions::op2_sqr) {
+          op2_src1 = op2_src0;
+        }
+
+        if (inst.vector_op2_src1 == VectorInstructions::from_immediate_1) {
+#pragma hls_unroll yes
+          for (int i = 0; i < vu_width; i++) {
+            op2_src1[i].set_bits(inst.immediate1);
+          }
+        }
+
+        VectorPack mul_lhs = is_mac ? VectorPack::fill(immediate) : op2_src0;
+        VectorPack mul_rhs = op2_src1;
+
+        VectorPack mul_result = vmul<VectorType, vu_width>(mul_lhs, mul_rhs);
+
+        VectorPack add_lhs = is_poly ? mul_result : op2_src0;
+        VectorPack add_rhs =
+            is_poly ? payloads[2] : (is_mac ? mul_result : op2_src1);
+        VectorPack add_result = vadd<VectorType, vu_width>(add_lhs, add_rhs);
 
         // Stage 2: add, mult, square
-        if (op2 == VectorInstructions::vadd) {
-          res2 = vadd<VectorType, vu_width>(op2_src0, op2_src1);
-        } else if (op2 == VectorInstructions::vmult ||
-                   op2 == VectorInstructions::vsquare) {
-          if (op2 == VectorInstructions::vsquare) {
-            op2_src1 = op2_src0;
-          }
-          res2 = vmul<VectorType, vu_width>(op2_src0, op2_src1);
+        VectorPack stage2_output;
+        if (op2 == VectorInstructions::op2_add || is_poly || is_mac) {
+          stage2_output = add_result;
+        } else if (op2 == VectorInstructions::op2_mul ||
+                   op2 == VectorInstructions::op2_sqr) {
+          stage2_output = mul_result;
         } else {
-          res2 = op2_src0;
+          stage2_output = op2_src0;
         }
 
         // Write outputs
         if (vdest == VectorInstructions::to_output) {
           auto payloads_next =
-              Pack1D<VectorPack, 2>::create({res2, payloads[2]});
+              Pack1D<VectorPack, 2>::create({stage2_output, payloads[2]});
 #if SUPPORT_SPMM
           if (op3 == VectorInstructions::vquantize_mx_outlier) {
-            outlier_filter_input.Push(res2);
+            outlier_filter_input.Push(stage2_output);
           }
           stage_3_payload.Push(payloads_next);
 #else
           push_stage_3_inputs(op3, payloads_next);
 #endif
         } else if (vdest == VectorInstructions::to_reduce) {
-          reducer_input.Push(res2);
+          reducer_input.Push(stage2_output);
         } else if (vdest == VectorInstructions::to_accumulate) {
-          accumulator_input.Push(res2);
+          accumulator_input.Push(stage2_output);
         }
 
         if (i == inst.inst_loop_count - 1) break;
@@ -600,8 +631,8 @@ SC_MODULE(VectorPipeline) {
       auto qparam = inst.immediate2;
 
       bool is_mx_quantization =
-          (op3 == VectorInstructions::vquantize_mx ||
-           op3 == VectorInstructions::vquantize_mx_outlier);
+          (op3 == VectorInstructions::op3_quantize_mx ||
+           op3 == VectorInstructions::op3_quantize_mx_outlier);
 
 #if MX_SPLIT_MODE
       constexpr int ratio = mu_width / vu_width;
@@ -612,7 +643,13 @@ SC_MODULE(VectorPipeline) {
         auto payloads = stage_3_input.Pop();
         auto op3_src0 = payloads[0];
         auto op3_src1 = payloads[1];
-        VectorPack res3;
+
+        if (inst.vector_op3_src1 == VectorInstructions::from_immediate_2) {
+#pragma hls_unroll yes
+          for (int i = 0; i < vu_width; i++) {
+            op3_src1[i].set_bits(inst.immediate2);
+          }
+        }
 
 #if SUPPORT_MX
         if (is_mx_quantization) {
@@ -635,13 +672,14 @@ SC_MODULE(VectorPipeline) {
         }
 #endif
         // Stage 3: div, quantize
-        if (op3 == VectorInstructions::vdiv || is_mx_quantization) {
-          res3 = vdiv<VectorType, vu_width>(op3_src0, op3_src1);
+        VectorPack stage3_output;
+        if (op3 == VectorInstructions::op3_div || is_mx_quantization) {
+          stage3_output = vdiv<VectorType, vu_width>(op3_src0, op3_src1);
         } else {
-          res3 = op3_src0;
+          stage3_output = op3_src0;
         }
 
-        vector_unit_output.Push(res3);
+        vector_unit_output.Push(stage3_output);
 
         if (i == inst.inst_loop_count - 1) break;
       }

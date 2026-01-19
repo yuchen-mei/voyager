@@ -89,8 +89,7 @@ SC_MODULE(VectorUnit) {
 
   // Internal connections between submodules
   Connections::Combinational<Pack1D<VectorType, width>> reducer_input;
-  Connections::Combinational<Pack1D<VectorType, width>> reducer_output_0;
-  Connections::Combinational<Pack1D<VectorType, width>> reducer_output_1;
+  Connections::Combinational<Pack1D<VectorType, width>> reducer_to_pipeline;
   Connections::Combinational<Pack1D<VectorType, width>> reducer_to_memory;
 
   Connections::Combinational<Pack1D<VectorType, width>> accumulator_input;
@@ -138,14 +137,12 @@ SC_MODULE(VectorUnit) {
       CCS_INIT_S1(output_controller);
 
   SC_CTOR(VectorUnit) {
-    // Param deserializer
     param_deserializer.clk(clk);
     param_deserializer.rstn(rstn);
     param_deserializer.serial_params_in(serial_params_in);
     param_deserializer.vector_params_out(vector_params);
     param_deserializer.vector_instructions_out(vector_instruction);
 
-    // Vector fetcher
     fetcher.clk(clk);
     fetcher.rstn(rstn);
     fetcher.params_in(vector_fetch_params);
@@ -170,7 +167,6 @@ SC_MODULE(VectorUnit) {
     fetcher.vector_fetch_2_resp(vector_fetch_2_resp);
     fetcher.vector_fetch_2_data(vector_fetch_2_data);
 
-    // Main pipeline
     pipeline.clk(clk);
     pipeline.rstn(rstn);
     pipeline.instr(pipeline_instr);
@@ -191,8 +187,7 @@ SC_MODULE(VectorUnit) {
     pipeline.vector_fetch_1_data(vector_fetch_1_data);
     pipeline.vector_fetch_2_data(vector_fetch_2_data);
     pipeline.accumulator_output(accumulator_to_pipeline);
-    pipeline.reducer_output_0(reducer_output_0);
-    pipeline.reducer_output_1(reducer_output_1);
+    pipeline.reducer_output(reducer_to_pipeline);
     pipeline.mx_scale(mx_scale);
     pipeline.vector_unit_output(pipeline_to_memory);
     pipeline.reducer_input(reducer_input);
@@ -204,16 +199,13 @@ SC_MODULE(VectorUnit) {
     pipeline.csr_indptr(csr_indptr);
 #endif
 
-    // Reducer
     reducer.clk(clk);
     reducer.rstn(rstn);
     reducer.instr(reducer_instr);
     reducer.input(reducer_input);
-    reducer.output_to_stage0(reducer_output_0);
-    reducer.output_to_stage2(reducer_output_1);
+    reducer.output_to_pipeline(reducer_to_pipeline);
     reducer.output_to_memory(reducer_to_memory);
 
-    // Accumulator
     accumulator.clk(clk);
     accumulator.rstn(rstn);
     accumulator.instr(accumulator_instr);
@@ -221,7 +213,6 @@ SC_MODULE(VectorUnit) {
     accumulator.output_to_pipeline(accumulator_to_pipeline);
     accumulator.output_to_memory(accumulator_to_memory);
 
-    // Output controller
     output_controller.clk(clk);
     output_controller.rstn(rstn);
     output_controller.params_in(output_controller_params);

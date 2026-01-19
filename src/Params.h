@@ -573,44 +573,52 @@ struct VectorInstructions {
   ac_int<4, false> vector_op3_src1;
 
   static const unsigned int from_matrix_unit = 1;
-  static const unsigned int from_accumulation_buffer = 2;
+  static const unsigned int from_accum_buffer = 2;
   static const unsigned int from_matrix_vector_unit = 3;
   static const unsigned int from_vector_fetch_0 = 4;
   static const unsigned int from_vector_fetch_1 = 5;
   static const unsigned int from_vector_fetch_2 = 6;
-  static const unsigned int from_accumulation = 7;
-  static const unsigned int from_reduction_0 = 8;
-  static const unsigned int from_reduction_1 = 9;
-  static const unsigned int from_immediate_0 = 10;
-  static const unsigned int from_immediate_1 = 11;
-  static const unsigned int from_immediate_2 = 12;
-  static const unsigned int from_dwc_unit = 13;
-  static const unsigned int from_spmm_unit = 14;
+  static const unsigned int from_accumulator = 7;
+  static const unsigned int from_vector_reducer = 8;
+  static const unsigned int from_immediate_0 = 9;
+  static const unsigned int from_immediate_1 = 10;
+  static const unsigned int from_immediate_2 = 11;
+  static const unsigned int from_dwc_unit = 12;
+  static const unsigned int from_spmm_unit = 13;
 
-  ac_int<1, false> vdequantize;
+  bool vdequantize;
   ac_int<16, false> vector_dq_scale;
 
-  // Stage 0: add, sub, mult
-  ac_int<2, false> vector_op0;
-  static const unsigned int nop = 0;
-  static const unsigned int vadd = 1;
-  static const unsigned int vmult = 2;
-  static const unsigned int vsub = 3;
+  // Stage 0: add, sub, mul
+  ac_int<3, false> vector_op0;
+  static const unsigned int op0_nop = 0;
+  static const unsigned int op0_add = 1;
+  static const unsigned int op0_mul = 2;
+  static const unsigned int op0_sub = 3;
+  static const unsigned int op0_poly = 4;
+  static const unsigned int op0_mac = 5;
 
   // Stage 1: exp, abs, activations
   ac_int<2, false> vector_op1;
-  static const unsigned int vpoly = 1;
-  static const unsigned int vabs = 2;
-  static const unsigned int vrelu = 3;
+  static const unsigned int op1_nop = 0;
+  static const unsigned int op1_abs = 1;
+  static const unsigned int op1_exp = 2;
+  static const unsigned int op1_relu = 3;
 
-  // Stage 2: add, mult, square
-  ac_int<2, false> vector_op2;
-  static const unsigned int vsquare = 3;
+  // Stage 2: add, mul, square
+  ac_int<3, false> vector_op2;
+  static const unsigned int op2_nop = 0;
+  static const unsigned int op2_add = 1;
+  static const unsigned int op2_mul = 2;
+  static const unsigned int op2_sqr = 3;
+  static const unsigned int op2_poly = 4;
+  static const unsigned int op2_mac = 5;
 
   ac_int<2, false> vector_op3;
-  static const unsigned int vdiv = 1;
-  static const unsigned int vquantize_mx = 2;
-  static const unsigned int vquantize_mx_outlier = 3;
+  static const unsigned int op3_nop = 0;
+  static const unsigned int op3_div = 1;
+  static const unsigned int op3_quantize_mx = 2;
+  static const unsigned int op3_quantize_mx_outlier = 3;
 
   ac_int<10, false> reduce_count;
   ac_int<2, false> reduce_op;
@@ -623,9 +631,8 @@ struct VectorInstructions {
   ac_int<1, false> rduplicate;
 
   ac_int<2, false> rdest;
-  static const unsigned int to_op0 = 1;
-  static const unsigned int to_op2 = 2;
-  static const unsigned int to_memory = 3;
+  static const unsigned int to_pipeline = 1;
+  static const unsigned int to_memory = 2;
 
   ac_int<2, false> vdest;
   static const unsigned int to_output = 1;
@@ -636,7 +643,7 @@ struct VectorInstructions {
   ac_int<16, false> immediate1;
   ac_int<16, false> immediate2;
 
-  static const unsigned int width = 135;
+  static const unsigned int width = 137;
 
 #ifndef NO_SYSC
   template <unsigned int Size>
@@ -739,7 +746,7 @@ struct VectorParams : BaseParams {
       vector_fetch_0_x_loop_idx[i] = 1;
       vector_fetch_0_k_loop_idx[i] = 2;
     }
-    vector_fetch_0_dq_scale = 0;
+
     vector_fetch_0_dtype = 0;
     vector_fetch_0_burst_size = 0;
     vector_fetch_0_num_beats = 1;
@@ -757,7 +764,6 @@ struct VectorParams : BaseParams {
       vector_fetch_1_x_loop_idx[i] = 1;
       vector_fetch_1_k_loop_idx[i] = 2;
     }
-    vector_fetch_1_dq_scale = 0;
     vector_fetch_1_dtype = 0;
     vector_fetch_1_burst_size = 0;
     vector_fetch_1_num_beats = 1;
@@ -775,7 +781,6 @@ struct VectorParams : BaseParams {
       vector_fetch_2_x_loop_idx[i] = 1;
       vector_fetch_2_k_loop_idx[i] = 2;
     }
-    vector_fetch_2_dq_scale = 0;
     vector_fetch_2_dtype = 0;
     vector_fetch_2_burst_size = 0;
     vector_fetch_2_num_beats = 1;
@@ -849,7 +854,6 @@ struct VectorParams : BaseParams {
   ac_int<3, false> vector_fetch_0_x_loop_idx[2];
   ac_int<3, false> vector_fetch_0_y_loop_idx[2];
   ac_int<3, false> vector_fetch_0_k_loop_idx[2];
-  ac_int<16, false> vector_fetch_0_dq_scale;
   ac_int<4, false> vector_fetch_0_dtype;
 
   ac_int<10, false> vector_fetch_0_burst_size;
@@ -863,7 +867,6 @@ struct VectorParams : BaseParams {
   ac_int<3, false> vector_fetch_1_x_loop_idx[2];
   ac_int<3, false> vector_fetch_1_y_loop_idx[2];
   ac_int<3, false> vector_fetch_1_k_loop_idx[2];
-  ac_int<16, false> vector_fetch_1_dq_scale;
   ac_int<4, false> vector_fetch_1_dtype;
 
   ac_int<10, false> vector_fetch_1_burst_size;
@@ -877,7 +880,6 @@ struct VectorParams : BaseParams {
   ac_int<3, false> vector_fetch_2_x_loop_idx[2];
   ac_int<3, false> vector_fetch_2_y_loop_idx[2];
   ac_int<3, false> vector_fetch_2_k_loop_idx[2];
-  ac_int<16, false> vector_fetch_2_dq_scale;
   ac_int<4, false> vector_fetch_2_dtype;
 
   ac_int<10, false> vector_fetch_2_burst_size;
@@ -933,10 +935,10 @@ struct VectorParams : BaseParams {
   bool is_dwc;
 
   // Each address generator has a 2-bit mode flag, 64-bit address, 6 x 11-bit
-  // loop boundaries, 6 x 3-bit loop indices, a 16-bit dequantize scale, a 4-bit
-  // data type, and a 18-bit packing factor param
+  // loop boundaries, 6 x 3-bit loop indices,  a 4-bit data type, and a 18-bit
+  // packing factor param
   static const unsigned int address_gen_width =
-      2 + ADDRESS_WIDTH + 6 * LOOP_WIDTH + 6 * 3 + 16 + 4 + 18;
+      2 + ADDRESS_WIDTH + 6 * LOOP_WIDTH + 6 * 3 + 4 + 18;
 
   static const unsigned int codebook_params_width =
       (NUM_CODEBOOK_ENTRIES - 1) * (MAX_DECODED_DTYPE_WIDTH + 1);
@@ -945,10 +947,10 @@ struct VectorParams : BaseParams {
 
   // There are 4 address generators in total + 12-bit broadcasting flag + 36-bit
   // slicing params + 32-bit pooling param + 18-bit reshape params + 4-bit head
-  // size + 8 boolean flags + 64-bit scale offset - output dequantize scale and
-  // packing params + cookbook params
+  // size + 8 boolean flags + output scale offset and packing params + cookbook
+  // params
   static const unsigned int width = 4 * address_gen_width + 12 + 36 + 32 + 18 +
-                                    4 + 8 + ADDRESS_WIDTH - 16 - 18 +
+                                    4 + 8 + ADDRESS_WIDTH - 18 +
                                     codebook_params_width + sparse_params_width;
 
 #ifndef NO_SYSC
@@ -971,7 +973,6 @@ struct VectorParams : BaseParams {
     for (int i = 0; i < 2; i++) {
       m& vector_fetch_0_k_loop_idx[i];
     }
-    m & vector_fetch_0_dq_scale;
     m & vector_fetch_0_dtype;
     m & vector_fetch_0_burst_size;
     m & vector_fetch_0_num_beats;
@@ -994,7 +995,6 @@ struct VectorParams : BaseParams {
     for (int i = 0; i < 2; i++) {
       m& vector_fetch_1_k_loop_idx[i];
     }
-    m & vector_fetch_1_dq_scale;
     m & vector_fetch_1_dtype;
     m & vector_fetch_1_burst_size;
     m & vector_fetch_1_num_beats;
@@ -1017,7 +1017,6 @@ struct VectorParams : BaseParams {
     for (int i = 0; i < 2; i++) {
       m& vector_fetch_2_k_loop_idx[i];
     }
-    m & vector_fetch_2_dq_scale;
     m & vector_fetch_2_dtype;
     m & vector_fetch_2_burst_size;
     m & vector_fetch_2_num_beats;
@@ -1120,8 +1119,6 @@ struct VectorParams : BaseParams {
       os << "vector_fetch_0_k_loop_idx[" << i
          << "]: " << params.vector_fetch_0_k_loop_idx[i] << std::endl;
     }
-    os << "vector_fetch_0_dq_scale: " << params.vector_fetch_0_dq_scale
-       << std::endl;
     os << "vector_fetch_0_dtype: " << params.vector_fetch_0_dtype << std::endl;
     os << "vector_fetch_0_burst_size: " << params.vector_fetch_0_burst_size
        << std::endl;
@@ -1153,8 +1150,6 @@ struct VectorParams : BaseParams {
       os << "vector_fetch_1_k_loop_idx[" << i
          << "]: " << params.vector_fetch_1_k_loop_idx[i] << std::endl;
     }
-    os << "vector_fetch_1_dq_scale: " << params.vector_fetch_1_dq_scale
-       << std::endl;
     os << "vector_fetch_1_dtype: " << params.vector_fetch_1_dtype << std::endl;
     os << "vector_fetch_1_burst_size: " << params.vector_fetch_1_burst_size
        << std::endl;
@@ -1186,8 +1181,6 @@ struct VectorParams : BaseParams {
       os << "vector_fetch_2_k_loop_idx[" << i
          << "]: " << params.vector_fetch_2_k_loop_idx[i] << std::endl;
     }
-    os << "vector_fetch_2_dq_scale: " << params.vector_fetch_2_dq_scale
-       << std::endl;
     os << "vector_fetch_2_dtype: " << params.vector_fetch_2_dtype << std::endl;
     os << "vector_fetch_2_burst_size: " << params.vector_fetch_2_burst_size
        << std::endl;
@@ -1284,8 +1277,6 @@ struct VectorParams : BaseParams {
       if (lhs.vector_fetch_0_k_loop_idx[i] != rhs.vector_fetch_0_k_loop_idx[i])
         return false;
     }
-    if (lhs.vector_fetch_0_dq_scale != rhs.vector_fetch_0_dq_scale)
-      return false;
     if (lhs.vector_fetch_0_dtype != rhs.vector_fetch_0_dtype) return false;
     if (lhs.vector_fetch_0_burst_size != rhs.vector_fetch_0_burst_size)
       return false;
@@ -1311,8 +1302,6 @@ struct VectorParams : BaseParams {
       if (lhs.vector_fetch_1_k_loop_idx[i] != rhs.vector_fetch_1_k_loop_idx[i])
         return false;
     }
-    if (lhs.vector_fetch_1_dq_scale != rhs.vector_fetch_1_dq_scale)
-      return false;
     if (lhs.vector_fetch_1_dtype != rhs.vector_fetch_1_dtype) return false;
     if (lhs.vector_fetch_1_burst_size != rhs.vector_fetch_1_burst_size)
       return false;
@@ -1338,8 +1327,6 @@ struct VectorParams : BaseParams {
       if (lhs.vector_fetch_2_k_loop_idx[i] != rhs.vector_fetch_2_k_loop_idx[i])
         return false;
     }
-    if (lhs.vector_fetch_2_dq_scale != rhs.vector_fetch_2_dq_scale)
-      return false;
     if (lhs.vector_fetch_2_dtype != rhs.vector_fetch_2_dtype) return false;
     if (lhs.vector_fetch_2_burst_size != rhs.vector_fetch_2_burst_size)
       return false;

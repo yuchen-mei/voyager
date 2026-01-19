@@ -60,6 +60,12 @@ class StdFloat {
 
   void set_bits(int i) { float_val.d = i; }
 
+  static StdFloat from_bits(int i) {
+    StdFloat r;
+    r.float_val.d = i;
+    return r;
+  }
+
   bool is_zero() const { return float_val == ac_float_rep::zero(); }
 
   static StdFloat zero() {

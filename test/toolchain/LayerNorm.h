@@ -52,7 +52,6 @@ void map_layer_norm(const codegen::Operation& param,
   vector_params->vector_fetch_0_offset = get_address(input);
   vector_params->vector_fetch_0_mode = 2;
   vector_params->vector_fetch_0_dtype = input_dtype;
-  set_dequantize_scale(input, vector_params);
 
   int vector_fetch_0_input_width = OC_DIMENSION * input_type_width;
   vector_params->vector_fetch_0_burst_size = vector_fetch_0_input_width / 8;
@@ -95,10 +94,11 @@ void map_layer_norm(const codegen::Operation& param,
   inst0_1.inst_loop_count = input_size / OC_DIMENSION * packing_factor;
   inst0_1.vector_op0_src0 = VectorInstructions::from_vector_fetch_0;
   inst0_1.vector_op0_src1 = VectorInstructions::from_immediate_0;
-  inst0_1.vector_op0 = VectorInstructions::vmult;
+  inst0_1.vector_op0 = VectorInstructions::op0_mul;
   VECTOR_DATATYPE immediate = 1.0 / reduction_dim;
   inst0_1.immediate0 = immediate.bits_rep();
   inst0_1.vdest = VectorInstructions::to_reduce;
+  set_dequantize_scale(input, inst0_1);
   vector_instruction_config->inst[1] = inst0_1;
 
   vector_instruction_config->num_inst = 2;
@@ -117,7 +117,6 @@ void map_layer_norm(const codegen::Operation& param,
   vector_params->vector_fetch_0_offset = get_address(input);
   vector_params->vector_fetch_0_mode = 2;
   vector_params->vector_fetch_0_dtype = input_dtype;
-  set_dequantize_scale(input, vector_params);
 
   vector_params->vector_fetch_0_burst_size = vector_fetch_0_input_width / 8;
   vector_params->vector_fetch_0_num_beats =
@@ -182,9 +181,10 @@ void map_layer_norm(const codegen::Operation& param,
   inst1_1.inst_loop_count = input_size / OC_DIMENSION * packing_factor;
   inst1_1.vector_op0_src0 = VectorInstructions::from_vector_fetch_0;
   inst1_1.vector_op0_src1 = VectorInstructions::from_vector_fetch_1;
-  inst1_1.vector_op0 = VectorInstructions::vsub;
-  inst1_1.vector_op2 = VectorInstructions::vsquare;
+  inst1_1.vector_op0 = VectorInstructions::op0_sub;
+  inst1_1.vector_op2 = VectorInstructions::op2_sqr;
   inst1_1.vdest = VectorInstructions::to_reduce;
+  set_dequantize_scale(input, inst1_1);
   vector_instruction_config->inst[1] = inst1_1;
 
   vector_instruction_config->num_inst = 2;
@@ -203,7 +203,6 @@ void map_layer_norm(const codegen::Operation& param,
   vector_params->vector_fetch_0_offset = get_address(input);
   vector_params->vector_fetch_0_mode = 2;
   vector_params->vector_fetch_0_dtype = input_dtype;
-  set_dequantize_scale(input, vector_params);
 
   vector_params->vector_fetch_0_burst_size = vector_fetch_0_input_width / 8;
   vector_params->vector_fetch_0_num_beats =
@@ -272,9 +271,10 @@ void map_layer_norm(const codegen::Operation& param,
   inst2.vector_op0_src0 = VectorInstructions::from_vector_fetch_0;
   inst2.vector_op0_src1 = VectorInstructions::from_vector_fetch_1;
   inst2.vector_op2_src1 = VectorInstructions::from_vector_fetch_2;
-  inst2.vector_op0 = VectorInstructions::vsub;
-  inst2.vector_op2 = VectorInstructions::vmult;
+  inst2.vector_op0 = VectorInstructions::op0_sub;
+  inst2.vector_op2 = VectorInstructions::op2_mul;
   inst2.vdest = VectorInstructions::to_output;
+  set_dequantize_scale(input, inst2);
   vector_instruction_config->inst[0] = inst2;
 
   vector_instruction_config->num_inst = 1;
@@ -375,10 +375,10 @@ void map_layer_norm(const codegen::Operation& param,
   inst3.inst_loop_count = get_size(output) / OC_DIMENSION * packing_factor;
   inst3.vector_op0_src0 = VectorInstructions::from_vector_fetch_0;
   inst3.vector_op0_src1 = VectorInstructions::from_vector_fetch_1;
-  inst3.vector_op0 = VectorInstructions::vmult;
+  inst3.vector_op0 = VectorInstructions::op0_mul;
   if (has_bias) {
     inst3.vector_op2_src1 = VectorInstructions::from_vector_fetch_2;
-    inst3.vector_op2 = VectorInstructions::vadd;
+    inst3.vector_op2 = VectorInstructions::op2_add;
   }
   inst3.vdest = VectorInstructions::to_output;
 

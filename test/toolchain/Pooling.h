@@ -101,7 +101,7 @@ void map_pool2d(const codegen::Operation& param,
   vinst1.vdest = VectorInstructions::to_accumulate;
 
   if (!is_max_pool) {
-    vinst1.vector_op2 = VectorInstructions::vmult;
+    vinst1.vector_op2 = VectorInstructions::op2_mul;
     vinst1.vector_op2_src1 = VectorInstructions::from_immediate_1;
     int kernel_size = tiling.loops[1][tiling.x_loop_idx[1]];
     VECTOR_DATATYPE scale = 1.0 / (kernel_size * kernel_size);

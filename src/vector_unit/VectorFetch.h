@@ -449,13 +449,9 @@ SC_MODULE(VectorFetchUnit) {
             }
 #endif
 
-            Pack1D<VectorType, BUFSIZE> dequantized;
-            vdequantize<VectorType, VectorType, BUFSIZE>(
-                outputs, dequantized, params.vector_fetch_0_dq_scale);
-
 #pragma hls_unroll yes
             for (int row = 0; row < BUFSIZE; row++) {
-              buffer[row][col] = dequantized[row];
+              buffer[row][col] = outputs[row];
             }
           }
 
@@ -558,10 +554,7 @@ SC_MODULE(VectorFetchUnit) {
 #endif
             }
 
-            Pack1D<VectorType, width> dequantized;
-            vdequantize<VectorType, VectorType, width>(
-                outputs, dequantized, params.vector_fetch_0_dq_scale);
-            vector_fetch_0_data.Push(dequantized);
+            vector_fetch_0_data.Push(outputs);
 
             if (pack == params.vector_fetch_0_packing_factor - 1) break;
           }
@@ -736,18 +729,13 @@ SC_MODULE(VectorFetchUnit) {
                                              MAX_RESPONSE_WIDTH, InputTypes...>(
                               params.vector_fetch_1_dtype, bits, outputs, i) ||
                           ...);
-
 #ifndef __SYNTHESIS__
             if (!found) {
               std::cerr << "Error: vector fetch 1 input dtype '"
                         << params.vector_fetch_1_dtype << "' is not valid.\n";
             }
 #endif
-
-            Pack1D<VectorType, width> dequantized;
-            vdequantize<VectorType, VectorType, width>(
-                outputs, dequantized, params.vector_fetch_1_dq_scale);
-            vector_fetch_1_data.Push(dequantized);
+            vector_fetch_1_data.Push(outputs);
 
             if (i == params.vector_fetch_1_packing_factor - 1) break;
           }
@@ -920,18 +908,13 @@ SC_MODULE(VectorFetchUnit) {
                                              MAX_RESPONSE_WIDTH, InputTypes...>(
                               params.vector_fetch_2_dtype, bits, outputs, i) ||
                           ...);
-
 #ifndef __SYNTHESIS__
             if (!found) {
               std::cerr << "Error: vector fetch 2 input dtype '"
                         << params.vector_fetch_2_dtype << "' is not valid.\n";
             }
 #endif
-
-            Pack1D<VectorType, width> dequantized;
-            vdequantize<VectorType, VectorType, width>(
-                outputs, dequantized, params.vector_fetch_2_dq_scale);
-            vector_fetch_2_data.Push(dequantized);
+            vector_fetch_2_data.Push(outputs);
 
             if (i == params.vector_fetch_2_packing_factor - 1) break;
           }

@@ -3,6 +3,7 @@
 #include <ac_int.h>
 
 #include "../ArchitectureParams.h"
+#include "../Params.h"
 
 /**
  * \brief Run the polynomial approximation on a single vector element.
@@ -63,4 +64,33 @@ T vepoly(T x, const T maxes[NUM_MAXES], const T ranges[NUM_RANGES][NUM_COEFFS],
   }
 
   return c0 + x * (c1 + x * c2);
+}
+
+#pragma hls_design ccore
+template <typename T>
+std::tuple<T, T, T> vpoly_coef(T x, const ApproxUnitConfig& config) {
+  static_assert(NUM_RANGES == NUM_MAXES + 1, "Ranges must fencepost the maxes");
+  static_assert(NUM_COEFFS == 3, "We only support quadratic polynomials");
+#ifndef __SYNTHESIS__
+  // We assume that the `maxes` array is sorted.
+  for (int i = 1; i < NUM_MAXES; i++) {
+    assert(config.maxes[i - 1] <= config.maxes[i]);
+  }
+#endif
+
+  ac_int<4, false> idx = 0;
+
+#pragma hls_unroll yes
+  for (int i = 0; i < NUM_MAXES; i++) {
+    if (x > config.maxes[i]) {
+      idx++;
+    }
+  }
+
+  if (config.clamp_max && idx == NUM_MAXES) {
+    idx = NUM_MAXES - 1;
+  }
+
+  return std::make_tuple(config.ranges[idx][0], config.ranges[idx][1],
+                         config.ranges[idx][2]);
 }

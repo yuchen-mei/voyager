@@ -131,8 +131,8 @@ void map_matrix_vector_multiply(const codegen::Operation& param,
   vinst0.op_type = VectorInstructions::reduction;
   vinst0.reduce_count = reduction_dim / VECTOR_UNIT_WIDTH;
   vinst0.reduce_op = VectorInstructions::radd;
-  vinst0.rdest =
-      has_bias ? VectorInstructions::to_op0 : VectorInstructions::to_memory;
+  vinst0.rdest = has_bias ? VectorInstructions::to_pipeline
+                          : VectorInstructions::to_memory;
   vinst0.immediate0 = 1;
   vector_instruction_config->inst[0] = vinst0;
 
@@ -144,7 +144,7 @@ void map_matrix_vector_multiply(const codegen::Operation& param,
   vinst1.inst_loop_count = reduction_dim;
   vinst1.vector_op0_src0 = VectorInstructions::from_vector_fetch_0;
   vinst1.vector_op0_src1 = VectorInstructions::from_vector_fetch_1;
-  vinst1.vector_op0 = VectorInstructions::vmult;
+  vinst1.vector_op0 = VectorInstructions::op0_mul;
   vinst1.vdest = VectorInstructions::to_reduce;
   vector_instruction_config->inst[1] = vinst1;
 
@@ -152,9 +152,9 @@ void map_matrix_vector_multiply(const codegen::Operation& param,
   if (has_bias) {
     VectorInstructions vinst2;
     vinst2.op_type = VectorInstructions::vector;
-    vinst2.vector_op0_src0 = VectorInstructions::from_reduction_0;
+    vinst2.vector_op0_src0 = VectorInstructions::from_vector_reducer;
     vinst2.vector_op2_src1 = VectorInstructions::from_vector_fetch_2;
-    vinst2.vector_op2 = VectorInstructions::vadd;
+    vinst2.vector_op2 = VectorInstructions::op2_add;
     vinst2.vdest = VectorInstructions::to_output;
     vector_instruction_config->inst[2] = vinst2;
   }

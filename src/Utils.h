@@ -132,9 +132,8 @@ bool decode_type(ac_int<DTYPE_INDEX_WIDTH, false> dtype,
     return false;
   }
 
-  T1 temp;
-  temp.set_bits(bits);
-  output = typename T1::decoded(temp);
+  T1 value = T1::from_bits(bits);
+  output = typename T1::decoded(value);
 
   return true;
 }

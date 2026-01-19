@@ -6,82 +6,192 @@
 #include "src/Params.h"
 #include "test/common/Utils.h"
 #include "test/compiler/proto/param.pb.h"
+#include "test/toolchain/ApproximationConstants.h"
 
 constexpr int MAX_LOOP_VALUE = 65535;
 
-std::vector<std::set<std::string>> vector_unit_stages = {
+const std::set<std::string> poly_ops = {
+    "gelu",        "gelu_",        "silu",        "silu_",        "elu",
+    "elu_",        "tanh",         "tanh_",       "tanh_1",       "tanh_1_",
+    "sigmoid",     "sigmoid_",     "hardsigmoid", "hardsigmoid_", "hardswish",
+    "hardswish_",  "mish",         "mish_",       "softplus",     "softplus_",
+    "log_sigmoid", "log_sigmoid_", "selu",        "selu_",        "celu",
+    "celu_",       "hardshrink",   "hardshrink_", "hardtanh",     "hardtanh_",
+    "leaky_relu",  "leaky_relu_",  "rrelu",       "rrelu_",       "softshrink",
+    "softshrink_", "threshold",    "threshold_"};
+
+const std::vector<std::set<std::string>> vector_unit_ops = {
     {"add", "add_", "sub", "sub_", "mul", "mul_", "div", "div_", "neg"},
-    {"exp",          "abs",          "relu",      "relu_",      "gelu",
-     "gelu_",        "silu",         "silu_",     "elu",        "elu_",
-     "hardsigmoid",  "hardsigmoid_", "hardswish", "hardswish_", "log_sigmoid",
-     "log_sigmoid_", "selu",         "selu_",     "celu",       "celu_",
-     "sigmoid",      "sigmoid_",     "mish",      "mish_",      "softplus",
-     "softplus_",    "tanh",         "tanh_",     "tanh_1",     "tanh_1_",
-     "hardshrink",   "hardshrink_",  "hardtanh",  "hardtanh_",  "leaky_relu",
-     "leaky_relu_",  "rrelu",        "rrelu_",    "softshrink", "softshrink_",
-     "threshold",    "threshold_"},
+    {"exp", "abs", "relu", "relu_"},
     {"add", "add_", "mul", "mul_", "square", "div", "div_"},
     {"div", "div_", "quantize", "quantize_mx", "quantize_mx_outlier"},
 };
 
-std::map<std::string, unsigned int> get_vector_instruction_mapping() {
-  std::map<std::string, unsigned int> mapping;
-  mapping["add"] = VectorInstructions::vadd;
-  mapping["add_"] = VectorInstructions::vadd;
-  mapping["sub"] = VectorInstructions::vsub;
-  mapping["sub_"] = VectorInstructions::vsub;
-  mapping["mul"] = VectorInstructions::vmult;
-  mapping["mul_"] = VectorInstructions::vmult;
-  mapping["div"] = VectorInstructions::vdiv;
-  mapping["div_"] = VectorInstructions::vdiv;
-  mapping["square"] = VectorInstructions::vsquare;
-  mapping["neg"] = VectorInstructions::vsub;
-  mapping["exp"] = VectorInstructions::vpoly;
-  mapping["abs"] = VectorInstructions::vabs;
-  mapping["relu"] = VectorInstructions::vrelu;
-  mapping["relu_"] = VectorInstructions::vrelu;
-  mapping["gelu"] = VectorInstructions::vpoly;
-  mapping["gelu_"] = VectorInstructions::vpoly;
-  mapping["silu"] = VectorInstructions::vpoly;
-  mapping["silu_"] = VectorInstructions::vpoly;
-  mapping["elu"] = VectorInstructions::vpoly;
-  mapping["elu_"] = VectorInstructions::vpoly;
-  mapping["hardsigmoid"] = VectorInstructions::vpoly;
-  mapping["hardsigmoid_"] = VectorInstructions::vpoly;
-  mapping["hardswish"] = VectorInstructions::vpoly;
-  mapping["hardswish_"] = VectorInstructions::vpoly;
-  mapping["log_sigmoid"] = VectorInstructions::vpoly;
-  mapping["log_sigmoid_"] = VectorInstructions::vpoly;
-  mapping["selu"] = VectorInstructions::vpoly;
-  mapping["selu_"] = VectorInstructions::vpoly;
-  mapping["celu"] = VectorInstructions::vpoly;
-  mapping["celu_"] = VectorInstructions::vpoly;
-  mapping["sigmoid"] = VectorInstructions::vpoly;
-  mapping["sigmoid_"] = VectorInstructions::vpoly;
-  mapping["mish"] = VectorInstructions::vpoly;
-  mapping["mish_"] = VectorInstructions::vpoly;
-  mapping["softplus"] = VectorInstructions::vpoly;
-  mapping["softplus_"] = VectorInstructions::vpoly;
-  mapping["tanh"] = VectorInstructions::vpoly;
-  mapping["tanh_"] = VectorInstructions::vpoly;
-  mapping["tanh_1"] = VectorInstructions::vpoly;
-  mapping["tanh_1_"] = VectorInstructions::vpoly;
-  mapping["hardshrink"] = VectorInstructions::vpoly;
-  mapping["hardshrink_"] = VectorInstructions::vpoly;
-  mapping["hardtanh"] = VectorInstructions::vpoly;
-  mapping["hardtanh_"] = VectorInstructions::vpoly;
-  mapping["leaky_relu"] = VectorInstructions::vpoly;
-  mapping["leaky_relu_"] = VectorInstructions::vpoly;
-  mapping["rrelu"] = VectorInstructions::vpoly;
-  mapping["rrelu_"] = VectorInstructions::vpoly;
-  mapping["softshrink"] = VectorInstructions::vpoly;
-  mapping["softshrink_"] = VectorInstructions::vpoly;
-  mapping["threshold"] = VectorInstructions::vpoly;
-  mapping["threshold_"] = VectorInstructions::vpoly;
-  mapping["quantize"] = VectorInstructions::vdiv;
-  mapping["quantize_mx"] = VectorInstructions::vquantize_mx;
-  mapping["quantize_mx_outlier"] = VectorInstructions::vquantize_mx_outlier;
-  return mapping;
+// --------------------------------------------------------------------------
+// Stage 0: Basic Arithmetic (Add, Sub, Mult)
+// --------------------------------------------------------------------------
+unsigned int get_stage0_op(const std::string& opcode) {
+  if (opcode == "add" || opcode == "add_") return VectorInstructions::op0_add;
+  if (opcode == "sub" || opcode == "sub_" || opcode == "neg")
+    return VectorInstructions::op0_sub;
+  if (opcode == "mul" || opcode == "mul_") return VectorInstructions::op0_mul;
+
+  // Division/Quantization in Stage 0 is implemented as Multiplication by
+  // reciprocal
+  if (opcode == "div" || opcode == "div_" || opcode == "quantize")
+    return VectorInstructions::op0_mul;
+
+  return VectorInstructions::op0_nop;
+}
+
+// --------------------------------------------------------------------------
+// Stage 1: Abs, Exp, and Activations Functions
+// --------------------------------------------------------------------------
+unsigned int get_stage1_op(const std::string& opcode) {
+  if (opcode == "abs") return VectorInstructions::op1_abs;
+  if (opcode == "exp") return VectorInstructions::op1_exp;
+  if (opcode == "relu" || opcode == "relu_")
+    return VectorInstructions::op1_relu;
+
+  return VectorInstructions::op1_nop;
+}
+
+// --------------------------------------------------------------------------
+// Stage 2: Advanced Arithmetic (Add, Mult, Square)
+// --------------------------------------------------------------------------
+unsigned int get_stage2_op(const std::string& opcode) {
+  if (opcode == "add" || opcode == "add_") return VectorInstructions::op2_add;
+  if (opcode == "mul" || opcode == "mul_") return VectorInstructions::op2_mul;
+  if (opcode == "square") return VectorInstructions::op2_sqr;
+
+  if (opcode == "div" || opcode == "div_" || opcode == "quantize")
+    return VectorInstructions::op2_mul;
+
+  return VectorInstructions::op2_nop;
+}
+
+// --------------------------------------------------------------------------
+// Stage 3: Quantization & True Division
+// --------------------------------------------------------------------------
+unsigned int get_stage3_op(const std::string& opcode) {
+  if (opcode == "div" || opcode == "div_" || opcode == "quantize")
+    return VectorInstructions::op3_div;
+  if (opcode == "quantize_mx") return VectorInstructions::op3_quantize_mx;
+  if (opcode == "quantize_mx_outlier")
+    return VectorInstructions::op3_quantize_mx_outlier;
+
+  return VectorInstructions::op3_nop;
+}
+
+// --------------------------------------------------------------------------
+// Approximation Constants Loader
+// --------------------------------------------------------------------------
+void load_approx_params(const std::string& opcode,
+                        VectorInstructionConfig* vector_instruction_config,
+                        const std::map<std::string, float>& kwargs) {
+  auto& approx = vector_instruction_config->approx;
+
+// Macro updated to use braces for all loops
+#define LOAD_ACTIVATION_CONSTANTS(NAME)            \
+  do {                                             \
+    for (int i = 0; i < NUM_MAXES; i++) {          \
+      approx.maxes[i] = NAME##_MAXES[i];           \
+    }                                              \
+    for (int i = 0; i < NUM_RANGES; i++) {         \
+      for (int j = 0; j < NUM_COEFFS; j++) {       \
+        approx.ranges[i][j] = NAME##_RANGES[i][j]; \
+      }                                            \
+    }                                              \
+    approx.clamp_min = NAME##_CLAMP_MIN;           \
+    approx.clamp_max = NAME##_CLAMP_MAX;           \
+  } while (0)
+
+  // Standard Activations
+  if (opcode == "gelu" || opcode == "gelu_") {
+    LOAD_ACTIVATION_CONSTANTS(GELU);
+  } else if (opcode == "silu" || opcode == "silu_") {
+    LOAD_ACTIVATION_CONSTANTS(SILU);
+  } else if (opcode == "elu" || opcode == "elu_") {
+    LOAD_ACTIVATION_CONSTANTS(ELU);
+  } else if (opcode == "log_sigmoid" || opcode == "log_sigmoid_") {
+    LOAD_ACTIVATION_CONSTANTS(LOGSIGMOID);
+  } else if (opcode == "tanh" || opcode == "tanh_") {
+    LOAD_ACTIVATION_CONSTANTS(TANH);
+  } else if (opcode == "tanh_1" || opcode == "tanh_1_") {
+    LOAD_ACTIVATION_CONSTANTS(TANHSHRINK);
+  } else if (opcode == "softplus" || opcode == "softplus_") {
+    LOAD_ACTIVATION_CONSTANTS(SOFTPLUS);
+  } else if (opcode == "mish" || opcode == "mish_") {
+    LOAD_ACTIVATION_CONSTANTS(MISH);
+  } else if (opcode == "sigmoid" || opcode == "sigmoid_") {
+    LOAD_ACTIVATION_CONSTANTS(SIGMOID);
+  } else if (opcode == "selu" || opcode == "selu_") {
+    LOAD_ACTIVATION_CONSTANTS(SELU);
+  } else if (opcode == "celu" || opcode == "celu_") {
+    LOAD_ACTIVATION_CONSTANTS(CELU);
+  } else if (opcode == "hardsigmoid" || opcode == "hardsigmoid_") {
+    LOAD_ACTIVATION_CONSTANTS(HARDSIGMOID);
+  } else if (opcode == "hardswish" || opcode == "hardswish_") {
+    LOAD_ACTIVATION_CONSTANTS(HARDSWISH);
+  }
+
+  // Parametric Activations
+  else if (opcode == "hardshrink" || opcode == "hardshrink_") {
+    const VECTOR_DATATYPE lambda = kwargs.at("lambd");
+    const VECTOR_DATATYPE HARDSHRINK_MAXES[NUM_MAXES] = {-lambda, 0.0, 0.0,
+                                                         0.0,     0.0, lambda};
+    LOAD_ACTIVATION_CONSTANTS(HARDSHRINK);
+  } else if (opcode == "hardtanh" || opcode == "hardtanh_") {
+    const VECTOR_DATATYPE min_val = kwargs.at("min_val");
+    const VECTOR_DATATYPE max_val = kwargs.at("max_val");
+    const VECTOR_DATATYPE HARDTANH_MAXES[NUM_MAXES] = {
+        min_val, max_val, max_val, max_val, max_val, max_val};
+    const VECTOR_DATATYPE HARDTANH_RANGES[NUM_RANGES][NUM_COEFFS] = {
+        {min_val, 0.0, 0.0}, {0.0, 1.0, 0.0}, {0.0, 1.0, 0.0},
+        {0.0, 1.0, 0.0},     {0.0, 1.0, 0.0}, {0.0, 1.0, 0.0},
+        {max_val, 0.0, 0.0}};
+    LOAD_ACTIVATION_CONSTANTS(HARDTANH);
+  } else if (opcode == "leaky_relu" || opcode == "leaky_relu_") {
+    const VECTOR_DATATYPE negative_slope = kwargs.at("negative_slope");
+    const VECTOR_DATATYPE LEAKYRELU_RANGES[NUM_RANGES][NUM_COEFFS] = {
+        {0.0, negative_slope, 0.0},
+        {0.0, 0.0, 0.0},
+        {0.0, 0.0, 0.0},
+        {0.0, 0.0, 0.0},
+        {0.0, 0.0, 0.0},
+        {0.0, 0.0, 0.0},
+        {0.0, 1.0, 0.0}};
+    LOAD_ACTIVATION_CONSTANTS(LEAKYRELU);
+  } else if (opcode == "rrelu" || opcode == "rrelu_") {
+    const VECTOR_DATATYPE lower = kwargs.at("lower");
+    const VECTOR_DATATYPE upper = kwargs.at("upper");
+    const VECTOR_DATATYPE alpha = (lower + upper) / VECTOR_DATATYPE(2);
+    const VECTOR_DATATYPE RRELU_RANGES[NUM_RANGES][NUM_COEFFS] = {
+        {0.0, alpha, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0},
+        {0.0, 0.0, 0.0},   {0.0, 0.0, 0.0}, {0.0, 1.0, 0.0}};
+    LOAD_ACTIVATION_CONSTANTS(RRELU);
+  } else if (opcode == "softshrink" || opcode == "softshrink_") {
+    const VECTOR_DATATYPE lambda = kwargs.at("lambd");
+    const VECTOR_DATATYPE SOFTSHRINK_MAXES[NUM_MAXES] = {-lambda, 0.0, 0.0,
+                                                         0.0,     0.0, lambda};
+    const VECTOR_DATATYPE SOFTSHRINK_RANGES[NUM_RANGES][NUM_COEFFS] = {
+        {lambda, 1.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0},
+        {0.0, 0.0, 0.0},    {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0},
+        {-lambda, 1.0, 0.0}};
+    LOAD_ACTIVATION_CONSTANTS(SOFTSHRINK);
+  } else if (opcode == "threshold" || opcode == "threshold_") {
+    const VECTOR_DATATYPE threshold = kwargs.at("threshold");
+    const VECTOR_DATATYPE value = kwargs.at("value");
+    const VECTOR_DATATYPE THRESHOLD_MAXES[NUM_MAXES] = {0.0, 0.0, 0.0,
+                                                        0.0, 0.0, threshold};
+    const VECTOR_DATATYPE THRESHOLD_RANGES[NUM_RANGES][NUM_COEFFS] = {
+        {value, 0.0, 0.0}, {value, 0.0, 0.0}, {value, 0.0, 0.0},
+        {value, 0.0, 0.0}, {value, 0.0, 0.0}, {value, 0.0, 0.0},
+        {0.0, 1.0, 0.0}};
+    LOAD_ACTIVATION_CONSTANTS(THRESHOLD);
+  }
+
+#undef LOAD_ACTIVATION_CONSTANTS
 }
 
 inline std::vector<int> squeeze_shape(const std::vector<int>& input) {
@@ -266,15 +376,11 @@ void update_tensor_shape(codegen::Tensor& tensor,
 }
 
 void set_dequantize_scale(const codegen::Tensor& tensor,
-                          VectorParams* vector_params) {
+                          VectorInstructions& inst) {
   if (tensor.has_dequant()) {
-    const auto& dequant_op = tensor.dequant();
-    const auto scale = dequant_op.kwargs().at("scale").tensor();
-    assert(get_size(scale) == 1);
-
-    float* array = read_constant_param(scale);
-    VECTOR_DATATYPE immediate = array[0];
-    vector_params->vector_fetch_0_dq_scale = immediate.bits_rep();
+    VECTOR_DATATYPE immediate = get_tensor_scalar_scale(tensor);
+    inst.vdequantize = true;
+    inst.vector_dq_scale = immediate.bits_rep();
   }
 }
 
@@ -290,7 +396,7 @@ void set_quantize_params(const codegen::Operation& param,
     const auto scale = kwargs.at("scale").tensor();
     assert(get_size(scale) == 1);
 
-    inst.vector_op3 = VectorInstructions::vdiv;
+    inst.vector_op3 = VectorInstructions::op3_div;
     inst.vector_op3_src1 = VectorInstructions::from_immediate_2;
 
     // scalar scale factor
@@ -307,7 +413,7 @@ void set_quantize_params(const codegen::Operation& param,
 
     assert(block_size == IC_DIMENSION);
 
-    inst.vector_op3 = VectorInstructions::vquantize_mx;
+    inst.vector_op3 = VectorInstructions::op3_quantize_mx;
 
     if (force_scale_power_of_two) {
       inst.immediate2 = floor(log2(quant_max));
@@ -323,7 +429,7 @@ void set_quantize_params(const codegen::Operation& param,
     vector_params->mx_scale_offset = get_address(outputs[num_outputs - 2]);
 
     if (opcode == "quantize_mx_outlier") {
-      inst.vector_op3 = VectorInstructions::vquantize_mx_outlier;
+      inst.vector_op3 = VectorInstructions::op3_quantize_mx_outlier;
       vector_params->has_sparse_output = true;
       vector_params->csr_data_offset = get_address(outputs[0]);
       vector_params->csr_indices_offset = get_address(outputs[1]);

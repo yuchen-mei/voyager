@@ -30,8 +30,7 @@ inline T* softmax(std::any input_ptr, const std::vector<int> shape) {
 
     for (int j = 0; j < num_cols; j++) {
       T normalized = static_cast<T>(inputs[offset + j] - max);
-      outputs[offset + j] = poly_approx(normalized, EXP_MAXES, EXP_RANGES,
-                                        EXP_CLAMP_MIN, EXP_CLAMP_MAX);
+      outputs[offset + j] = std::exp(normalized);
     }
 
     T sums[2] = {0, 0};
