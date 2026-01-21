@@ -118,8 +118,8 @@ void set_immediate(const float scalar, const int stage,
                    const std::string opcode, VectorInstructions& inst) {
   VECTOR_DATATYPE immediate = scalar;
 
-  if (opcode == "div" || opcode == "div_") {
-    immediate = 1.0 / immediate;
+  if (opcode == "div" || opcode == "div_" || opcode == "quantize") {
+    immediate = 1.0 / scalar;
   }
 
   if (stage == 0) {
@@ -130,6 +130,7 @@ void set_immediate(const float scalar, const int stage,
     inst.immediate1 = immediate.bits_rep();
   } else {
     inst.vector_op3_src1 = VectorInstructions::from_immediate_2;
+    inst.vector_op3 = VectorInstructions::op3_mul;
     inst.immediate2 = immediate.bits_rep();
   }
 }
@@ -787,6 +788,11 @@ void map_matrix_operation(const Operation& operation,
     }
 
     if (poly_ops.count(opcode)) {
+      if (stage != 0) {
+        throw std::runtime_error(
+            "Polynomial approximation must be the first vector operation!\n");
+      }
+
       // Grab kwargs that are relevant for some activation functions
       std::map<std::string, float> kwargs;
 
@@ -804,12 +810,12 @@ void map_matrix_operation(const Operation& operation,
       continue;
     }
 
-    // Find the stage of the operation
     for (; stage < vector_unit_ops.size(); stage++) {
-      // Only the last stage has a true divider
-      if (opcode == "div" && stage != 3) {
-        const auto other = op.kwargs().at("other").tensor();
-        if (get_size(other) > 1) {
+      // Stage 0 and 2 can only perform per-tensor quantization
+      if (opcode == "quantize") {
+        const auto scale = op.kwargs().at("scale").tensor();
+        const int size = get_size(scale);
+        if (stage != 3 && size > 1) {
           continue;
         }
       }

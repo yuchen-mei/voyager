@@ -326,7 +326,8 @@ SC_MODULE(VectorPipeline) {
 #pragma hls_unroll yes
           for (int i = 0; i < vu_width; i++) {
             auto coef = vpoly_coef<VectorType>(op0_src0[i], approx_config);
-            auto& [c0, c1, c2] = coef;
+            auto& [x, c0, c1, c2] = coef;
+            op0_src0[i] = x;
             op0_src1[i] = c2;
             op2_src1[i] = c1;
             op3_src1[i] = c0;
@@ -434,7 +435,7 @@ SC_MODULE(VectorPipeline) {
         if (op1 == VectorInstructions::op1_abs) {
           stage1_output = vabs<VectorType, vu_width>(op1_src0);
         } else if (op1 == VectorInstructions::op1_exp) {
-          stage1_output = vexp_fp8<VectorType, vu_width>(op1_src0);
+          stage1_output = vexp_quantized<VectorType, vu_width, 6, 5>(op1_src0);
         } else if (op1 == VectorInstructions::op1_relu) {
           stage1_output = vrelu<VectorType, vu_width>(op1_src0);
         } else {
@@ -510,7 +511,6 @@ SC_MODULE(VectorPipeline) {
 
         VectorPack mul_lhs = is_mac ? VectorPack::fill(immediate) : op2_src0;
         VectorPack mul_rhs = op2_src1;
-
         VectorPack mul_result = vmul<VectorType, vu_width>(mul_lhs, mul_rhs);
 
         VectorPack add_lhs = is_poly ? mul_result : op2_src0;
@@ -630,9 +630,8 @@ SC_MODULE(VectorPipeline) {
       auto op3 = inst.vector_op3;
       auto qparam = inst.immediate2;
 
-      bool is_mx_quantization =
-          (op3 == VectorInstructions::op3_quantize_mx ||
-           op3 == VectorInstructions::op3_quantize_mx_outlier);
+      bool is_mx_op = (op3 == VectorInstructions::op3_quantize_mx ||
+                       op3 == VectorInstructions::op3_quantize_mx_outlier);
 
 #if MX_SPLIT_MODE
       constexpr int ratio = mu_width / vu_width;
@@ -651,15 +650,8 @@ SC_MODULE(VectorPipeline) {
           }
         }
 
-        // Cast the second operand to ScaleType for division
-        Pack1D<ScaleType, vu_width> div_op1;
-#pragma hls_unroll yes
-        for (int i = 0; i < vu_width; i++) {
-          div_op1[i] = op3_src1[i];
-        }
-
 #if SUPPORT_MX
-        if (is_mx_quantization) {
+        if (is_mx_op) {
 #if MX_SPLIT_MODE
           if (i % ratio == 0) {
             VectorType amax = stage_3_amax.Pop();
@@ -674,15 +666,18 @@ SC_MODULE(VectorPipeline) {
 
 #pragma hls_unroll yes
           for (int i = 0; i < vu_width; i++) {
-            div_op1[i] = scale;
+            op3_src1[i] = scale;
           }
         }
 #endif
+        if (op3 == VectorInstructions::op3_div || is_mx_op) {
+          op3_src1 = vreciprocal<VectorType, ScaleType, vu_width>(op3_src1);
+        }
+
         // Stage 3: quantize
         VectorPack stage3_output;
-        if (op3 == VectorInstructions::op3_div || is_mx_quantization) {
-          stage3_output =
-              vquantize<VectorType, ScaleType, vu_width>(op3_src0, div_op1);
+        if (op3 != VectorInstructions::op3_nop) {
+          stage3_output = vmul<VectorType, vu_width>(op3_src0, op3_src1);
         } else {
           stage3_output = op3_src0;
         }

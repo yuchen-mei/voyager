@@ -616,9 +616,10 @@ struct VectorInstructions {
 
   ac_int<2, false> vector_op3;
   static const unsigned int op3_nop = 0;
-  static const unsigned int op3_div = 1;
-  static const unsigned int op3_quantize_mx = 2;
-  static const unsigned int op3_quantize_mx_outlier = 3;
+  static const unsigned int op3_mul = 1;
+  static const unsigned int op3_div = 2;
+  static const unsigned int op3_quantize_mx = 3;
+  static const unsigned int op3_quantize_mx_outlier = 4;
 
   ac_int<10, false> reduce_count;
   ac_int<2, false> reduce_op;

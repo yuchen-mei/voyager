@@ -100,7 +100,7 @@ class StdFloat {
   }
 
   StdFloat sqrt() const {
-    return float_val.template sqrt<AC_RND_CONV, false>();
+    return float_val.template sqrt<Q, !ieee_compliance>();
   }
 
   StdFloat inv_sqrt() const { return sqrt().reciprocal(); }

@@ -68,7 +68,7 @@ T vepoly(T x, const T maxes[NUM_MAXES], const T ranges[NUM_RANGES][NUM_COEFFS],
 
 #pragma hls_design ccore
 template <typename T>
-std::tuple<T, T, T> vpoly_coef(T x, const ApproxUnitConfig& config) {
+std::tuple<T, T, T, T> vpoly_coef(T x, const ApproxUnitConfig& config) {
   static_assert(NUM_RANGES == NUM_MAXES + 1, "Ranges must fencepost the maxes");
   static_assert(NUM_COEFFS == 3, "We only support quadratic polynomials");
 #ifndef __SYNTHESIS__
@@ -77,6 +77,12 @@ std::tuple<T, T, T> vpoly_coef(T x, const ApproxUnitConfig& config) {
     assert(config.maxes[i - 1] <= config.maxes[i]);
   }
 #endif
+
+  if (config.clamp_min && x < config.maxes[0]) {
+    x = config.maxes[0];
+  } else if (config.clamp_max && config.maxes[NUM_MAXES - 1] < x) {
+    x = config.maxes[NUM_MAXES - 1];
+  }
 
   ac_int<4, false> idx = 0;
 
@@ -87,10 +93,6 @@ std::tuple<T, T, T> vpoly_coef(T x, const ApproxUnitConfig& config) {
     }
   }
 
-  if (config.clamp_max && idx == NUM_MAXES) {
-    idx = NUM_MAXES - 1;
-  }
-
-  return std::make_tuple(config.ranges[idx][0], config.ranges[idx][1],
+  return std::make_tuple(x, config.ranges[idx][0], config.ranges[idx][1],
                          config.ranges[idx][2]);
 }

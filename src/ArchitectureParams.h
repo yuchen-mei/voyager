@@ -199,6 +199,18 @@ using F9 = StdFloat<3, 5>;
 #define VECTOR_UNIT_WIDTH OC_DIMENSION
 #endif
 
+#ifndef VECTOR_REDUCER_WIDTH
+#define VECTOR_REDUCER_WIDTH OC_DIMENSION
+#endif
+
+#ifndef VECTOR_ACCUMULATOR_WIDTH
+#define VECTOR_ACCUMULATOR_WIDTH OC_DIMENSION
+#endif
+
+#ifndef VECTOR_PIPELINE_WIDTH
+#define VECTOR_PIPELINE_WIDTH OC_DIMENSION
+#endif
+
 // ================================================================
 // Default Datatypes
 // ================================================================

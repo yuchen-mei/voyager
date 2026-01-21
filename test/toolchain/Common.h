@@ -21,10 +21,12 @@ const std::set<std::string> poly_ops = {
     "softshrink_", "threshold",    "threshold_"};
 
 const std::vector<std::set<std::string>> vector_unit_ops = {
-    {"add", "add_", "sub", "sub_", "mul", "mul_", "div", "div_", "neg"},
+    {"add", "add_", "sub", "sub_", "mul", "mul_", "div", "div_", "neg",
+     "quantize"},
     {"exp", "abs", "relu", "relu_"},
-    {"add", "add_", "mul", "mul_", "square", "div", "div_"},
-    {"div", "div_", "quantize", "quantize_mx", "quantize_mx_outlier"},
+    {"add", "add_", "mul", "mul_", "div", "div_", "square", "quantize"},
+    {"mul", "mul_", "div", "div_", "quantize", "quantize_mx",
+     "quantize_mx_outlier"},
 };
 
 // --------------------------------------------------------------------------
@@ -74,6 +76,7 @@ unsigned int get_stage2_op(const std::string& opcode) {
 // Stage 3: Quantization & True Division
 // --------------------------------------------------------------------------
 unsigned int get_stage3_op(const std::string& opcode) {
+  if (opcode == "mul" || opcode == "mul_") return VectorInstructions::op3_mul;
   if (opcode == "div" || opcode == "div_" || opcode == "quantize")
     return VectorInstructions::op3_div;
   if (opcode == "quantize_mx") return VectorInstructions::op3_quantize_mx;
