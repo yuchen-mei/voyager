@@ -29,6 +29,7 @@ void set_vector_fetch_1(const codegen::Tensor& tensor, const Tiling& tiling,
   const int fetch_width = OC_DIMENSION * dtype_width;
 
   vector_params->vector_fetch_1_dtype = dtype;
+  vector_params->vector_fetch_1_stride = OC_DIMENSION;
   vector_params->vector_fetch_1_burst_size = fetch_width / 8;
   vector_params->vector_fetch_1_num_beats =
       (fetch_width + OC_PORT_WIDTH - 1) / OC_PORT_WIDTH;
@@ -80,6 +81,7 @@ void set_vector_fetch_2(const codegen::Tensor& tensor, const Tiling& tiling,
   const int fetch_width = OC_DIMENSION * dtype_width;
 
   vector_params->vector_fetch_2_dtype = dtype;
+  vector_params->vector_fetch_2_stride = OC_DIMENSION;
   vector_params->vector_fetch_2_burst_size = fetch_width / 8;
   vector_params->vector_fetch_2_num_beats =
       (fetch_width + OC_PORT_WIDTH - 1) / OC_PORT_WIDTH;
