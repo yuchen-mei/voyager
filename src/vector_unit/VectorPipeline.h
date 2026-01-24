@@ -163,8 +163,6 @@ SC_MODULE(VectorPipeline) {
 
     wait();
 
-#pragma hls_pipeline_init_interval 1
-#pragma hls_pipeline_stall_mode flush
     while (true) {
       VectorInstructions inst = instr.Pop();
       ApproxUnitConfig approx_config = approx_unit_config.Pop();
@@ -180,6 +178,8 @@ SC_MODULE(VectorPipeline) {
 #endif
       }
 
+#pragma hls_pipeline_init_interval 1
+#pragma hls_pipeline_stall_mode flush
       for (decltype(inst.inst_loop_count) i = 0;; i++) {
         VectorPack op0_src0, op0_src1, op2_src1, op3_src1;
 
@@ -355,8 +355,6 @@ SC_MODULE(VectorPipeline) {
 
     wait();
 
-#pragma hls_pipeline_init_interval 1
-#pragma hls_pipeline_stall_mode flush
     while (1) {
       VectorInstructions inst = stage_0_inst.Pop();
       auto op0 = inst.vector_op0;
@@ -364,6 +362,8 @@ SC_MODULE(VectorPipeline) {
       bool is_mac = (op0 == VectorInstructions::op0_mac);
       VectorType immediate = VectorType::from_bits(inst.immediate0);
 
+#pragma hls_pipeline_init_interval 1
+#pragma hls_pipeline_stall_mode flush
       for (decltype(inst.inst_loop_count) i = 0;; i++) {
         auto payloads = stage_0_input.Pop();
         auto op0_src0 = payloads[0];
@@ -413,19 +413,17 @@ SC_MODULE(VectorPipeline) {
 
   void run_stage_1() {
     stage_1_inst.ResetRead();
-
     stage_1_input.ResetRead();
     stage_2_input.ResetWrite();
 
     wait();
 
-#pragma hls_pipeline_init_interval 1
-#pragma hls_pipeline_stall_mode flush
     while (1) {
       VectorInstructions inst = stage_1_inst.Pop();
-
       auto op1 = inst.vector_op1;
 
+#pragma hls_pipeline_init_interval 1
+#pragma hls_pipeline_stall_mode flush
       for (decltype(inst.inst_loop_count) i = 0;; i++) {
         auto payloads = stage_1_input.Pop();
         auto op1_src0 = payloads[0];
@@ -435,7 +433,7 @@ SC_MODULE(VectorPipeline) {
         if (op1 == VectorInstructions::op1_abs) {
           stage1_output = vabs<VectorType, vu_width>(op1_src0);
         } else if (op1 == VectorInstructions::op1_exp) {
-          stage1_output = vexp_quantized<VectorType, vu_width, 6, 5>(op1_src0);
+          stage1_output = vexp<VectorType, vu_width>(op1_src0);
         } else if (op1 == VectorInstructions::op1_relu) {
           stage1_output = vrelu<VectorType, vu_width>(op1_src0);
         } else {
@@ -482,8 +480,6 @@ SC_MODULE(VectorPipeline) {
 
     wait();
 
-#pragma hls_pipeline_init_interval 1
-#pragma hls_pipeline_stall_mode flush
     while (1) {
       VectorInstructions inst = stage_2_inst.Pop();
       auto op2 = inst.vector_op2;
@@ -493,6 +489,8 @@ SC_MODULE(VectorPipeline) {
       bool is_mac = (op2 == VectorInstructions::op2_mac);
       VectorType immediate = VectorType::from_bits(inst.immediate1);
 
+#pragma hls_pipeline_init_interval 1
+#pragma hls_pipeline_stall_mode flush
       for (decltype(inst.inst_loop_count) i = 0;; i++) {
         auto payloads = stage_2_input.Pop();
         auto op2_src0 = payloads[0];
@@ -534,7 +532,7 @@ SC_MODULE(VectorPipeline) {
           auto payloads_next =
               Pack1D<VectorPack, 2>::create({stage2_output, payloads[2]});
 #if SUPPORT_SPMM
-          if (op3 == VectorInstructions::vquantize_mx_outlier) {
+          if (op3 == VectorInstructions::op3_quantize_mx_outlier) {
             outlier_filter_input.Push(stage2_output);
           }
           stage_3_payload.Push(payloads_next);
@@ -560,16 +558,16 @@ SC_MODULE(VectorPipeline) {
 
     wait();
 
-#pragma hls_pipeline_init_interval 1
-#pragma hls_pipeline_stall_mode flush
     while (1) {
       VectorInstructions inst = outlier_filter_inst.Pop();
       auto op3 = inst.vector_op3;
 
+#pragma hls_pipeline_init_interval 1
+#pragma hls_pipeline_stall_mode flush
       for (decltype(inst.inst_loop_count) i = 0;; i++) {
         auto payload = stage_3_payload.Pop();
 
-        if (op3 == VectorInstructions::vquantize_mx_outlier) {
+        if (op3 == VectorInstructions::op3_quantize_mx_outlier) {
           payload[0] = outlier_filter_output.Pop();
         }
 
@@ -623,8 +621,6 @@ SC_MODULE(VectorPipeline) {
 
     wait();
 
-#pragma hls_pipeline_init_interval 1
-#pragma hls_pipeline_stall_mode flush
     while (1) {
       auto inst = stage_3_inst.Pop();
       auto op3 = inst.vector_op3;
@@ -638,6 +634,8 @@ SC_MODULE(VectorPipeline) {
       ScaleType scale;
 #endif
 
+#pragma hls_pipeline_init_interval 1
+#pragma hls_pipeline_stall_mode flush
       for (decltype(inst.inst_loop_count) i = 0;; i++) {
         auto payloads = stage_3_input.Pop();
         auto op3_src0 = payloads[0];
@@ -671,7 +669,7 @@ SC_MODULE(VectorPipeline) {
         }
 #endif
         if (op3 == VectorInstructions::op3_div || is_mx_op) {
-          op3_src1 = vreciprocal<VectorType, ScaleType, vu_width>(op3_src1);
+          op3_src1 = vreciprocal<VectorType, vu_width>(op3_src1);
         }
 
         // Stage 3: quantize

@@ -95,6 +95,7 @@ class StdFloat {
     return ac_math::ac_exp_pwl<ac_float_rep>(float_val);
   }
 
+#pragma hls_design ccore
   StdFloat reciprocal() const {
     return ac_math::ac_reciprocal_pwl<ac_float_rep, AC_RND>(float_val);
   }

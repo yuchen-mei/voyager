@@ -117,7 +117,8 @@ Input* quantize_mx(std::any input, std::any scale, std::vector<int> input_shape,
     }
 
     int flat_idx_b = get_flat_index(indices_b, scale_shape);
-    outputs[i] = inputs[i] / scales[flat_idx_b];
+    Input inv_scale = static_cast<Input>(scales[flat_idx_b]).reciprocal();
+    outputs[i] = inputs[i] * inv_scale;
   }
 
   delete[] inputs;

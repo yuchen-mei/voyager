@@ -1,5 +1,5 @@
 set block "VectorUnit"
-set full_block_name "VectorUnit<$VECTOR_DATATYPE, $ACCUM_BUFFER_DATATYPE, $SCALE_DATATYPE, $VECTOR_UNIT_WIDTH, $OC_DIMENSION>"
+set full_block_name "VectorUnit<$VECTOR_DATATYPE, $ACCUM_BUFFER_DATATYPE, $VECTOR_UNIT_WIDTH, $REDUCER_WIDTH, $ACCUMULATOR_WIDTH, $OC_DIMENSION, $OC_PORT_WIDTH>"
 
 proc pre_libraries {} {
   solution library add {[Block] VectorFetchUnit.v1}

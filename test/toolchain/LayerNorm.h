@@ -26,21 +26,24 @@ void map_layer_norm(const codegen::Operation& param,
   pad_shape_to_ndim(non_reduction_loops, 2);
   const int reduced_size = get_size(non_reduction_loops);
 
-  const int packing_factor = OC_DIMENSION / VECTOR_UNIT_WIDTH;
+  constexpr int packing_factor = OC_DIMENSION / VECTOR_UNIT_WIDTH;
 
   int input_dtype = get_index_from_type_name<VU_INPUT_TYPES>(input.dtype());
-  int input_type_width = get_type_width<VU_INPUT_TYPES>(input_dtype);
+  int input_dtype_width = get_type_width<VU_INPUT_TYPES>(input_dtype);
+  int input_fetch_width = OC_DIMENSION * input_dtype_width;
 
   int vector_dtype = get_type_index<VECTOR_DATATYPE, VU_INPUT_TYPES>();
-  int vector_type_width = get_type_width<VU_INPUT_TYPES>(vector_dtype);
+  int vector_dtype_width = get_type_width<VU_INPUT_TYPES>(vector_dtype);
+  int vector_fetch_width = OC_DIMENSION * vector_dtype_width;
 
   const int mean_scratch_address =
-      get_address(input) + input_size * input_type_width / 8;
+      get_address(input) + input_size * input_dtype_width / 8;
   const int var_scratch_address =
       mean_scratch_address +
-      reduced_size * OC_DIMENSION * vector_type_width / 8;
+      reduced_size * OC_DIMENSION * vector_dtype_width / 8;
   const int intermediate_address =
-      var_scratch_address + reduced_size * OC_DIMENSION * vector_type_width / 8;
+      var_scratch_address +
+      reduced_size * OC_DIMENSION * vector_dtype_width / 8;
 
   // ======================================================================
   // Pass 1: compute mean
@@ -52,11 +55,9 @@ void map_layer_norm(const codegen::Operation& param,
   vector_params->vector_fetch_0_offset = get_address(input);
   vector_params->vector_fetch_0_mode = 2;
   vector_params->vector_fetch_0_dtype = input_dtype;
-
-  int vector_fetch_0_input_width = OC_DIMENSION * input_type_width;
-  vector_params->vector_fetch_0_burst_size = vector_fetch_0_input_width / 8;
-  vector_params->vector_fetch_0_num_beats =
-      vector_fetch_0_input_width / OC_PORT_WIDTH;
+  vector_params->vector_fetch_0_stride = OC_DIMENSION;
+  vector_params->vector_fetch_0_burst_size = input_fetch_width / 8;
+  vector_params->vector_fetch_0_num_beats = input_fetch_width / OC_PORT_WIDTH;
   vector_params->vector_fetch_0_packing_factor = packing_factor;
 
   for (int i = 0; i < 3; i++) {
@@ -79,27 +80,27 @@ void map_layer_norm(const codegen::Operation& param,
   vector_params->output_loops[1][2] = reduced_size;
 
   // Configure reduction engine
-  VectorInstructions inst0_0;
-  inst0_0.op_type = VectorInstructions::reduction;
-  inst0_0.inst_loop_count = reduced_size;
-  inst0_0.reduce_count = reduction_dim / OC_DIMENSION * packing_factor;
-  inst0_0.reduce_op = VectorInstructions::radd;
-  inst0_0.rduplicate = 1;
-  inst0_0.rdest = VectorInstructions::to_memory;
-  vector_instruction_config->inst[0] = inst0_0;
+  VectorInstructions inst0;
+  inst0.op_type = VectorInstructions::reduction;
+  inst0.inst_loop_count = reduced_size;
+  inst0.reduce_count = reduction_dim / REDUCER_WIDTH;
+  inst0.reduce_op = VectorInstructions::radd;
+  inst0.rduplicate = 1;
+  inst0.rdest = VectorInstructions::to_memory;
+  vector_instruction_config->inst[0] = inst0;
 
   // Scale inputs by 1 / norm_size and send to the reduction engine
-  VectorInstructions inst0_1;
-  inst0_1.op_type = VectorInstructions::vector;
-  inst0_1.inst_loop_count = input_size / OC_DIMENSION * packing_factor;
-  inst0_1.vector_op0_src0 = VectorInstructions::from_vector_fetch_0;
-  inst0_1.vector_op0_src1 = VectorInstructions::from_immediate_0;
-  inst0_1.vector_op0 = VectorInstructions::op0_mul;
+  VectorInstructions inst1;
+  inst1.op_type = VectorInstructions::vector;
+  inst1.inst_loop_count = input_size / VECTOR_UNIT_WIDTH;
+  inst1.vector_op0_src0 = VectorInstructions::from_vector_fetch_0;
+  inst1.vector_op0_src1 = VectorInstructions::from_immediate_0;
+  inst1.vector_op0 = VectorInstructions::op0_mul;
   VECTOR_DATATYPE immediate = 1.0 / reduction_dim;
-  inst0_1.immediate0 = immediate.bits_rep();
-  inst0_1.vdest = VectorInstructions::to_reduce;
-  set_dequantize_scale(input, inst0_1);
-  vector_instruction_config->inst[1] = inst0_1;
+  inst1.immediate0 = immediate.bits_rep();
+  inst1.vdest = VectorInstructions::to_reduce;
+  set_dequantize_scale(input, inst1);
+  vector_instruction_config->inst[1] = inst1;
 
   vector_instruction_config->num_inst = 2;
   vector_instruction_config->config_loop_count = 1;
@@ -117,10 +118,9 @@ void map_layer_norm(const codegen::Operation& param,
   vector_params->vector_fetch_0_offset = get_address(input);
   vector_params->vector_fetch_0_mode = 2;
   vector_params->vector_fetch_0_dtype = input_dtype;
-
-  vector_params->vector_fetch_0_burst_size = vector_fetch_0_input_width / 8;
-  vector_params->vector_fetch_0_num_beats =
-      vector_fetch_0_input_width / OC_PORT_WIDTH;
+  vector_params->vector_fetch_0_stride = OC_DIMENSION;
+  vector_params->vector_fetch_0_burst_size = input_fetch_width / 8;
+  vector_params->vector_fetch_0_num_beats = input_fetch_width / OC_PORT_WIDTH;
   vector_params->vector_fetch_0_packing_factor = packing_factor;
 
   for (int i = 0; i < 3; i++) {
@@ -134,11 +134,9 @@ void map_layer_norm(const codegen::Operation& param,
   vector_params->vector_fetch_1_offset = mean_scratch_address;
   vector_params->vector_fetch_1_mode = 1;
   vector_params->vector_fetch_1_dtype = vector_dtype;
-
-  int vector_fetch_1_input_width = OC_DIMENSION * vector_type_width;
-  vector_params->vector_fetch_1_burst_size = vector_fetch_1_input_width / 8;
-  vector_params->vector_fetch_1_num_beats =
-      vector_fetch_1_input_width / OC_PORT_WIDTH;
+  vector_params->vector_fetch_1_stride = OC_DIMENSION;
+  vector_params->vector_fetch_1_burst_size = vector_fetch_width / 8;
+  vector_params->vector_fetch_1_num_beats = vector_fetch_width / OC_PORT_WIDTH;
   vector_params->vector_fetch_1_packing_factor = packing_factor;
 
   vector_params->vector_fetch_1_broadcast = 0b100;
@@ -162,30 +160,30 @@ void map_layer_norm(const codegen::Operation& param,
   vector_params->output_loops[1][2] = reduced_size;
 
   // Configure reduction unit
-  VectorInstructions inst1_0;
-  inst1_0.op_type = VectorInstructions::reduction;
-  inst1_0.inst_loop_count = reduced_size;
-  inst1_0.reduce_count = reduction_dim / OC_DIMENSION * packing_factor;
-  inst1_0.reduce_op = VectorInstructions::radd;
-  inst1_0.rsqrt = 1;
-  inst1_0.rreciprocal = 1;
-  inst1_0.rscale = 1;
+  VectorInstructions inst2;
+  inst2.op_type = VectorInstructions::reduction;
+  inst2.inst_loop_count = reduced_size;
+  inst2.reduce_count = reduction_dim / REDUCER_WIDTH;
+  inst2.reduce_op = VectorInstructions::radd;
+  inst2.rsqrt = 1;
+  inst2.rreciprocal = 1;
+  inst2.rscale = 1;
   VECTOR_DATATYPE divisor = sqrt(reduction_dim);
-  inst1_0.immediate1 = divisor.bits_rep();
-  inst1_0.rduplicate = 1;
-  inst1_0.rdest = VectorInstructions::to_memory;
-  vector_instruction_config->inst[0] = inst1_0;
+  inst2.immediate1 = divisor.bits_rep();
+  inst2.rduplicate = 1;
+  inst2.rdest = VectorInstructions::to_memory;
+  vector_instruction_config->inst[0] = inst2;
 
-  VectorInstructions inst1_1;
-  inst1_1.op_type = VectorInstructions::vector;
-  inst1_1.inst_loop_count = input_size / OC_DIMENSION * packing_factor;
-  inst1_1.vector_op0_src0 = VectorInstructions::from_vector_fetch_0;
-  inst1_1.vector_op0_src1 = VectorInstructions::from_vector_fetch_1;
-  inst1_1.vector_op0 = VectorInstructions::op0_sub;
-  inst1_1.vector_op2 = VectorInstructions::op2_sqr;
-  inst1_1.vdest = VectorInstructions::to_reduce;
-  set_dequantize_scale(input, inst1_1);
-  vector_instruction_config->inst[1] = inst1_1;
+  VectorInstructions inst3;
+  inst3.op_type = VectorInstructions::vector;
+  inst3.inst_loop_count = input_size / OC_DIMENSION * packing_factor;
+  inst3.vector_op0_src0 = VectorInstructions::from_vector_fetch_0;
+  inst3.vector_op0_src1 = VectorInstructions::from_vector_fetch_1;
+  inst3.vector_op0 = VectorInstructions::op0_sub;
+  inst3.vector_op2 = VectorInstructions::op2_sqr;
+  inst3.vdest = VectorInstructions::to_reduce;
+  set_dequantize_scale(input, inst3);
+  vector_instruction_config->inst[1] = inst3;
 
   vector_instruction_config->num_inst = 2;
   vector_instruction_config->config_loop_count = 1;
@@ -204,9 +202,9 @@ void map_layer_norm(const codegen::Operation& param,
   vector_params->vector_fetch_0_mode = 2;
   vector_params->vector_fetch_0_dtype = input_dtype;
 
-  vector_params->vector_fetch_0_burst_size = vector_fetch_0_input_width / 8;
-  vector_params->vector_fetch_0_num_beats =
-      vector_fetch_0_input_width / OC_PORT_WIDTH;
+  vector_params->vector_fetch_0_stride = OC_DIMENSION;
+  vector_params->vector_fetch_0_burst_size = input_fetch_width / 8;
+  vector_params->vector_fetch_0_num_beats = input_fetch_width / OC_PORT_WIDTH;
   vector_params->vector_fetch_0_packing_factor = packing_factor;
 
   for (int i = 0; i < 3; i++) {
@@ -220,10 +218,9 @@ void map_layer_norm(const codegen::Operation& param,
   vector_params->vector_fetch_1_offset = mean_scratch_address;
   vector_params->vector_fetch_1_mode = 1;
   vector_params->vector_fetch_1_dtype = vector_dtype;
-
-  vector_params->vector_fetch_1_burst_size = vector_fetch_1_input_width / 8;
-  vector_params->vector_fetch_1_num_beats =
-      vector_fetch_1_input_width / OC_PORT_WIDTH;
+  vector_params->vector_fetch_1_stride = OC_DIMENSION;
+  vector_params->vector_fetch_1_burst_size = vector_fetch_width / 8;
+  vector_params->vector_fetch_1_num_beats = vector_fetch_width / OC_PORT_WIDTH;
   vector_params->vector_fetch_1_packing_factor = packing_factor;
 
   vector_params->vector_fetch_1_broadcast = 0b100;
@@ -238,10 +235,9 @@ void map_layer_norm(const codegen::Operation& param,
   vector_params->vector_fetch_2_offset = var_scratch_address;
   vector_params->vector_fetch_2_mode = 1;
   vector_params->vector_fetch_2_dtype = vector_dtype;
-
-  vector_params->vector_fetch_2_burst_size = vector_fetch_1_input_width / 8;
-  vector_params->vector_fetch_2_num_beats =
-      vector_fetch_1_input_width / OC_PORT_WIDTH;
+  vector_params->vector_fetch_2_stride = OC_DIMENSION;
+  vector_params->vector_fetch_2_burst_size = vector_fetch_width / 8;
+  vector_params->vector_fetch_2_num_beats = vector_fetch_width / OC_PORT_WIDTH;
   vector_params->vector_fetch_2_packing_factor = packing_factor;
 
   vector_params->vector_fetch_2_broadcast = 0b100;
@@ -265,17 +261,17 @@ void map_layer_norm(const codegen::Operation& param,
   vector_params->output_loops[1][2] = reduction_dim / OC_DIMENSION;
 
   // Multiply inputs with the inverse sqrt of the variance
-  VectorInstructions inst2;
-  inst2.op_type = VectorInstructions::vector;
-  inst2.inst_loop_count = input_size / OC_DIMENSION * packing_factor;
-  inst2.vector_op0_src0 = VectorInstructions::from_vector_fetch_0;
-  inst2.vector_op0_src1 = VectorInstructions::from_vector_fetch_1;
-  inst2.vector_op2_src1 = VectorInstructions::from_vector_fetch_2;
-  inst2.vector_op0 = VectorInstructions::op0_sub;
-  inst2.vector_op2 = VectorInstructions::op2_mul;
-  inst2.vdest = VectorInstructions::to_output;
-  set_dequantize_scale(input, inst2);
-  vector_instruction_config->inst[0] = inst2;
+  VectorInstructions inst4;
+  inst4.op_type = VectorInstructions::vector;
+  inst4.inst_loop_count = input_size / OC_DIMENSION * packing_factor;
+  inst4.vector_op0_src0 = VectorInstructions::from_vector_fetch_0;
+  inst4.vector_op0_src1 = VectorInstructions::from_vector_fetch_1;
+  inst4.vector_op2_src1 = VectorInstructions::from_vector_fetch_2;
+  inst4.vector_op0 = VectorInstructions::op0_sub;
+  inst4.vector_op2 = VectorInstructions::op2_mul;
+  inst4.vdest = VectorInstructions::to_output;
+  set_dequantize_scale(input, inst4);
+  vector_instruction_config->inst[0] = inst4;
 
   vector_instruction_config->num_inst = 1;
   vector_instruction_config->config_loop_count = 1;
@@ -295,10 +291,10 @@ void map_layer_norm(const codegen::Operation& param,
   vector_params->vector_fetch_0_mode = 2;
   vector_params->vector_fetch_0_dtype = vector_dtype;
 
-  vector_fetch_0_input_width = OC_DIMENSION * vector_type_width;
-  vector_params->vector_fetch_0_burst_size = vector_fetch_0_input_width / 8;
-  vector_params->vector_fetch_0_num_beats =
-      vector_fetch_0_input_width / OC_PORT_WIDTH;
+  input_fetch_width = OC_DIMENSION * vector_dtype_width;
+  vector_params->vector_fetch_0_stride = OC_DIMENSION;
+  vector_params->vector_fetch_0_burst_size = input_fetch_width / 8;
+  vector_params->vector_fetch_0_num_beats = input_fetch_width / OC_PORT_WIDTH;
   vector_params->vector_fetch_0_packing_factor = packing_factor;
 
   for (int i = 0; i < 3; i++) {
@@ -310,18 +306,17 @@ void map_layer_norm(const codegen::Operation& param,
 
   // Fetch weights
   const auto weight = layer_norm_op.kwargs().at("weight").tensor();
+  int weight_dtype = get_index_from_type_name<VU_INPUT_TYPES>(weight.dtype());
+  int weight_dtype_width = get_type_width<VU_INPUT_TYPES>(weight_dtype);
+  int weight_fetch_width = OC_DIMENSION * weight_dtype_width;
+
   vector_params->vector_fetch_1_offset = get_address(weight);
   vector_params->vector_fetch_1_mode = true;
   vector_params->vector_fetch_1_broadcast = 0b011;
-  vector_params->vector_fetch_1_dtype =
-      get_index_from_type_name<VU_INPUT_TYPES>(weight.dtype());
-
-  vector_fetch_1_input_width =
-      OC_DIMENSION *
-      get_type_width<VU_INPUT_TYPES>(vector_params->vector_fetch_1_dtype);
-  vector_params->vector_fetch_1_burst_size = vector_fetch_1_input_width / 8;
-  vector_params->vector_fetch_1_num_beats =
-      vector_fetch_1_input_width / OC_PORT_WIDTH;
+  vector_params->vector_fetch_1_dtype = weight_dtype;
+  vector_params->vector_fetch_1_stride = OC_DIMENSION;
+  vector_params->vector_fetch_1_burst_size = weight_fetch_width / 8;
+  vector_params->vector_fetch_1_num_beats = weight_fetch_width / OC_PORT_WIDTH;
   vector_params->vector_fetch_1_packing_factor = packing_factor;
 
   for (int i = 0; i < 3; i++) {
@@ -335,18 +330,17 @@ void map_layer_norm(const codegen::Operation& param,
   const bool has_bias = layer_norm_op.kwargs().contains("bias");
   if (has_bias) {
     const auto bias = layer_norm_op.kwargs().at("bias").tensor();
+    int bias_dtype = get_index_from_type_name<VU_INPUT_TYPES>(bias.dtype());
+    int bias_dtype_width = get_type_width<VU_INPUT_TYPES>(bias_dtype);
+    int bias_fetch_width = OC_DIMENSION * bias_dtype_width;
+
     vector_params->vector_fetch_2_offset = get_address(bias);
     vector_params->vector_fetch_2_mode = true;
     vector_params->vector_fetch_2_broadcast = 0b011;
-    vector_params->vector_fetch_2_dtype =
-        get_index_from_type_name<VU_INPUT_TYPES>(bias.dtype());
-
-    int vector_fetch_2_input_width =
-        OC_DIMENSION *
-        get_type_width<VU_INPUT_TYPES>(vector_params->vector_fetch_2_dtype);
-    vector_params->vector_fetch_2_burst_size = vector_fetch_2_input_width / 8;
-    vector_params->vector_fetch_2_num_beats =
-        vector_fetch_2_input_width / OC_PORT_WIDTH;
+    vector_params->vector_fetch_2_dtype = bias_dtype;
+    vector_params->vector_fetch_2_stride = OC_DIMENSION;
+    vector_params->vector_fetch_2_burst_size = bias_fetch_width / 8;
+    vector_params->vector_fetch_2_num_beats = bias_fetch_width / OC_PORT_WIDTH;
     vector_params->vector_fetch_2_packing_factor = packing_factor;
 
     for (int i = 0; i < 3; i++) {
@@ -370,21 +364,19 @@ void map_layer_norm(const codegen::Operation& param,
   vector_params->output_loops[1][2] = reduction_dim / OC_DIMENSION;
 
   // inputs x weights + bias
-  VectorInstructions inst3;
-  inst3.op_type = VectorInstructions::vector;
-  inst3.inst_loop_count = get_size(output) / OC_DIMENSION * packing_factor;
-  inst3.vector_op0_src0 = VectorInstructions::from_vector_fetch_0;
-  inst3.vector_op0_src1 = VectorInstructions::from_vector_fetch_1;
-  inst3.vector_op0 = VectorInstructions::op0_mul;
+  VectorInstructions inst5;
+  inst5.op_type = VectorInstructions::vector;
+  inst5.inst_loop_count = get_size(output) / OC_DIMENSION * packing_factor;
+  inst5.vector_op0_src0 = VectorInstructions::from_vector_fetch_0;
+  inst5.vector_op0_src1 = VectorInstructions::from_vector_fetch_1;
+  inst5.vector_op0 = VectorInstructions::op0_mul;
   if (has_bias) {
-    inst3.vector_op2_src1 = VectorInstructions::from_vector_fetch_2;
-    inst3.vector_op2 = VectorInstructions::op2_add;
+    inst5.vector_op2_src1 = VectorInstructions::from_vector_fetch_2;
+    inst5.vector_op2 = VectorInstructions::op2_add;
   }
-  inst3.vdest = VectorInstructions::to_output;
-
-  set_quantize_params(param, vector_params, inst3, vector_instruction_config);
-
-  vector_instruction_config->inst[0] = inst3;
+  inst5.vdest = VectorInstructions::to_output;
+  set_quantize_params(param, vector_params, inst5, vector_instruction_config);
+  vector_instruction_config->inst[0] = inst5;
 
   vector_instruction_config->num_inst = 1;
   vector_instruction_config->config_loop_count = 1;

@@ -147,11 +147,10 @@ SC_MODULE(VectorFetchUnit) {
 
       ac_int<LOOP_WIDTH, false> stride_y = Y0;
       ac_int<LOOP_WIDTH, false> stride_x = X0;
-      ac_int<16, false> stride_k = width * params.vector_fetch_0_packing_factor;
+      ac_int<LOOP_WIDTH, false> stride_k = params.vector_fetch_0_stride;
 
       if (params.has_transpose) {
         X1 = X1 * BUFSIZE / mu_width;
-        stride_k = stride_k * mu_width / width;
       }
 
       ac_int<16, false> Y = Y1 * Y0;
@@ -596,16 +595,17 @@ SC_MODULE(VectorFetchUnit) {
       ac_int<LOOP_WIDTH, false> K1 =
           params.vector_fetch_1_loops[1][params.vector_fetch_1_k_loop_idx[1]];
 
+      ac_int<16, false> stride_k = params.vector_fetch_1_stride;
+
       ac_int<16, false> X = X1 * X0;
-      ac_int<16, false> k_stride = width * params.vector_fetch_1_packing_factor;
-      ac_int<16, false> K = K2 * K1 * k_stride;
+      ac_int<16, false> K = K2 * K1 * stride_k;
 
       if (params.vector_fetch_1_broadcast[1]) {
         X = 1;
       }
 
       if (params.vector_fetch_1_broadcast[2]) {
-        K = k_stride;
+        K = stride_k;
         // If k is the inner most loop, we can reuse the data
         if (params.vector_fetch_1_k_loop_idx[1] == 2) {
           loop_ends[1][2] = 0;
@@ -635,7 +635,7 @@ SC_MODULE(VectorFetchUnit) {
 
                   ac_int<16, false> y = y1 * Y0 + y0;
                   ac_int<16, false> x = x1 * X0 + x0;
-                  ac_int<16, false> k = (k1 * K1 + k0) * k_stride;
+                  ac_int<16, false> k = (k1 * K1 + k0) * stride_k;
 
                   if (params.vector_fetch_1_broadcast[0]) {
                     y = 0;
@@ -722,7 +722,7 @@ SC_MODULE(VectorFetchUnit) {
         ac_int<MAX_RESPONSE_WIDTH, false> bits =
             vector_fetch_1_packed_bits.Pop();
 
-        for (ac_int<16, false> reuse = 0;; reuse++) {
+        for (ac_int<16, false> count = 0;; count++) {
           for (ac_int<4, false> i = 0;; i++) {
             Pack1D<VectorType, width> outputs;
             bool found = (unpack_vector_data<InputTypes, VectorType, width,
@@ -739,7 +739,7 @@ SC_MODULE(VectorFetchUnit) {
 
             if (i == params.vector_fetch_1_packing_factor - 1) break;
           }
-          if (reuse == innermost_loop_reuse) break;
+          if (count == innermost_loop_reuse) break;
         }
       }
     }
@@ -779,15 +779,15 @@ SC_MODULE(VectorFetchUnit) {
           params.vector_fetch_2_loops[1][params.vector_fetch_2_k_loop_idx[1]];
 
       ac_int<16, false> X = X1 * X0;
-      ac_int<16, false> k_stride = width * params.vector_fetch_2_packing_factor;
-      ac_int<16, false> K = K2 * K1 * k_stride;
+      ac_int<16, false> stride_k = params.vector_fetch_2_stride;
+      ac_int<16, false> K = K2 * K1 * stride_k;
 
       if (params.vector_fetch_2_broadcast[1]) {
         X = 1;
       }
 
       if (params.vector_fetch_2_broadcast[2]) {
-        K = k_stride;
+        K = stride_k;
         // If k is the inner most loop, we can reuse the data
         if (params.vector_fetch_2_k_loop_idx[1] == 2) {
           loop_ends[1][2] = 0;
@@ -817,7 +817,7 @@ SC_MODULE(VectorFetchUnit) {
 
                   ac_int<16, false> y = y1 * Y0 + y0;
                   ac_int<16, false> x = x1 * X0 + x0;
-                  ac_int<16, false> k = (k1 * K1 + k0) * k_stride;
+                  ac_int<16, false> k = (k1 * K1 + k0) * stride_k;
 
                   if (params.vector_fetch_2_broadcast[0]) {
                     y = 0;
@@ -901,7 +901,7 @@ SC_MODULE(VectorFetchUnit) {
       while (!vector_fetch_2_data_done.read()) {
         ac_int<MAX_RESPONSE_WIDTH, false> bits =
             vector_fetch_2_packed_bits.Pop();
-        for (ac_int<16, false> reuse = 0;; reuse++) {
+        for (ac_int<16, false> count = 0;; count++) {
           for (ac_int<4, false> i = 0;; i++) {
             Pack1D<VectorType, width> outputs;
             bool found = (unpack_vector_data<InputTypes, VectorType, width,
@@ -918,7 +918,7 @@ SC_MODULE(VectorFetchUnit) {
 
             if (i == params.vector_fetch_2_packing_factor - 1) break;
           }
-          if (reuse == innermost_loop_reuse) break;
+          if (count == innermost_loop_reuse) break;
         }
       }
     }

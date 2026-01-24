@@ -22,6 +22,10 @@ ifeq ($(SOC_SIM),1)
 COMMON_FLAGS += --cache_size $(CACHE_SIZE) --num_banks $(NUM_BANKS)
 endif
 
+ifeq ($(IM2COL),1)
+COMMON_FLAGS += --conv2d_im2col
+endif
+
 ################################################################################
 $(CODEGEN_DIR)/networks/resnet18/%/model.txt: voyager-compiler/test/test_codegen.py
 	mkdir -p $(dir $@)

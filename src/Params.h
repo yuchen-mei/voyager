@@ -589,7 +589,6 @@ struct VectorInstructions {
   bool vdequantize;
   ac_int<16, false> vector_dq_scale;
 
-  // Stage 0: add, sub, mul
   ac_int<3, false> vector_op0;
   static const unsigned int op0_nop = 0;
   static const unsigned int op0_add = 1;
@@ -598,14 +597,12 @@ struct VectorInstructions {
   static const unsigned int op0_poly = 4;
   static const unsigned int op0_mac = 5;
 
-  // Stage 1: exp, abs, activations
-  ac_int<2, false> vector_op1;
+  ac_int<3, false> vector_op1;
   static const unsigned int op1_nop = 0;
   static const unsigned int op1_abs = 1;
   static const unsigned int op1_exp = 2;
   static const unsigned int op1_relu = 3;
 
-  // Stage 2: add, mul, square
   ac_int<3, false> vector_op2;
   static const unsigned int op2_nop = 0;
   static const unsigned int op2_add = 1;
@@ -614,7 +611,7 @@ struct VectorInstructions {
   static const unsigned int op2_poly = 4;
   static const unsigned int op2_mac = 5;
 
-  ac_int<2, false> vector_op3;
+  ac_int<3, false> vector_op3;
   static const unsigned int op3_nop = 0;
   static const unsigned int op3_mul = 1;
   static const unsigned int op3_div = 2;
@@ -644,7 +641,7 @@ struct VectorInstructions {
   ac_int<16, false> immediate1;
   ac_int<16, false> immediate2;
 
-  static const unsigned int width = 137;
+  static const unsigned int width = 139;
 
 #ifndef NO_SYSC
   template <unsigned int Size>
@@ -857,6 +854,7 @@ struct VectorParams : BaseParams {
   ac_int<3, false> vector_fetch_0_k_loop_idx[2];
   ac_int<4, false> vector_fetch_0_dtype;
 
+  ac_int<8, false> vector_fetch_0_stride;
   ac_int<10, false> vector_fetch_0_burst_size;
   ac_int<4, false> vector_fetch_0_num_beats;
   ac_int<4, false> vector_fetch_0_packing_factor;
@@ -870,6 +868,7 @@ struct VectorParams : BaseParams {
   ac_int<3, false> vector_fetch_1_k_loop_idx[2];
   ac_int<4, false> vector_fetch_1_dtype;
 
+  ac_int<8, false> vector_fetch_1_stride;
   ac_int<10, false> vector_fetch_1_burst_size;
   ac_int<4, false> vector_fetch_1_num_beats;
   ac_int<4, false> vector_fetch_1_packing_factor;
@@ -883,6 +882,7 @@ struct VectorParams : BaseParams {
   ac_int<3, false> vector_fetch_2_k_loop_idx[2];
   ac_int<4, false> vector_fetch_2_dtype;
 
+  ac_int<8, false> vector_fetch_2_stride;
   ac_int<10, false> vector_fetch_2_burst_size;
   ac_int<4, false> vector_fetch_2_num_beats;
   ac_int<4, false> vector_fetch_2_packing_factor;
@@ -935,11 +935,11 @@ struct VectorParams : BaseParams {
 
   bool is_dwc;
 
-  // Each address generator has a 2-bit mode flag, 64-bit address, 6 x 11-bit
-  // loop boundaries, 6 x 3-bit loop indices,  a 4-bit data type, and a 18-bit
+  // Each address generator has a 2-bit mode flag, 64-bit address, 6 x loop
+  // boundaries, 6 x 3-bit loop indices,  a 4-bit data type, and a 26-bit
   // packing factor param
   static const unsigned int address_gen_width =
-      2 + ADDRESS_WIDTH + 6 * LOOP_WIDTH + 6 * 3 + 4 + 18;
+      2 + ADDRESS_WIDTH + 6 * LOOP_WIDTH + 6 * 3 + 4 + 26;
 
   static const unsigned int codebook_params_width =
       (NUM_CODEBOOK_ENTRIES - 1) * (MAX_DECODED_DTYPE_WIDTH + 1);
@@ -950,8 +950,8 @@ struct VectorParams : BaseParams {
   // slicing params + 32-bit pooling param + 18-bit reshape params + 4-bit head
   // size + 8 boolean flags + output scale offset and packing params + cookbook
   // params
-  static const unsigned int width = 4 * address_gen_width + 12 + 36 + 32 + 18 +
-                                    4 + 8 + ADDRESS_WIDTH - 18 +
+  static const unsigned int width = 4 * address_gen_width - 26 + 12 + 36 + 32 +
+                                    18 + 4 + 8 + ADDRESS_WIDTH +
                                     codebook_params_width + sparse_params_width;
 
 #ifndef NO_SYSC
@@ -975,6 +975,7 @@ struct VectorParams : BaseParams {
       m& vector_fetch_0_k_loop_idx[i];
     }
     m & vector_fetch_0_dtype;
+    m & vector_fetch_0_stride;
     m & vector_fetch_0_burst_size;
     m & vector_fetch_0_num_beats;
     m & vector_fetch_0_packing_factor;
@@ -997,6 +998,7 @@ struct VectorParams : BaseParams {
       m& vector_fetch_1_k_loop_idx[i];
     }
     m & vector_fetch_1_dtype;
+    m & vector_fetch_1_stride;
     m & vector_fetch_1_burst_size;
     m & vector_fetch_1_num_beats;
     m & vector_fetch_1_packing_factor;
@@ -1019,6 +1021,7 @@ struct VectorParams : BaseParams {
       m& vector_fetch_2_k_loop_idx[i];
     }
     m & vector_fetch_2_dtype;
+    m & vector_fetch_2_stride;
     m & vector_fetch_2_burst_size;
     m & vector_fetch_2_num_beats;
     m & vector_fetch_2_packing_factor;
@@ -1121,6 +1124,8 @@ struct VectorParams : BaseParams {
          << "]: " << params.vector_fetch_0_k_loop_idx[i] << std::endl;
     }
     os << "vector_fetch_0_dtype: " << params.vector_fetch_0_dtype << std::endl;
+    os << "vector_fetch_0_stride: " << params.vector_fetch_0_stride
+       << std::endl;
     os << "vector_fetch_0_burst_size: " << params.vector_fetch_0_burst_size
        << std::endl;
     os << "vector_fetch_0_num_beats: " << params.vector_fetch_0_num_beats
@@ -1152,6 +1157,8 @@ struct VectorParams : BaseParams {
          << "]: " << params.vector_fetch_1_k_loop_idx[i] << std::endl;
     }
     os << "vector_fetch_1_dtype: " << params.vector_fetch_1_dtype << std::endl;
+    os << "vector_fetch_1_stride: " << params.vector_fetch_1_stride
+       << std::endl;
     os << "vector_fetch_1_burst_size: " << params.vector_fetch_1_burst_size
        << std::endl;
     os << "vector_fetch_1_num_beats: " << params.vector_fetch_1_num_beats
@@ -1183,6 +1190,8 @@ struct VectorParams : BaseParams {
          << "]: " << params.vector_fetch_2_k_loop_idx[i] << std::endl;
     }
     os << "vector_fetch_2_dtype: " << params.vector_fetch_2_dtype << std::endl;
+    os << "vector_fetch_2_stride: " << params.vector_fetch_2_stride
+       << std::endl;
     os << "vector_fetch_2_burst_size: " << params.vector_fetch_2_burst_size
        << std::endl;
     os << "vector_fetch_2_num_beats: " << params.vector_fetch_2_num_beats

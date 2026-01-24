@@ -25,9 +25,9 @@ SC_MODULE(VectorAccumulator) {
 #endif
 
   // Number of feedback delay stages based on clock period
-  static constexpr int SUM_N = (clock_period < 5) ? 4 : 2;
+  static constexpr int SUM_N = (clock_period < 5) ? 1 : 2;
   static constexpr int SUM_LAST = SUM_N - 1;
-  static constexpr int MAX_N = (clock_period < 5) ? 2 : 1;
+  static constexpr int MAX_N = (clock_period < 5) ? 1 : 1;
   static constexpr int MAX_LAST = MAX_N - 1;
 
   static_assert(SUM_N > 0, "Pipeline size SUM_N must be greater than 0");
@@ -49,13 +49,11 @@ SC_MODULE(VectorAccumulator) {
 
     while (true) {
       VectorInstructions inst = instr.Pop();
-      decltype(inst.inst_loop_count) total_values = inst.inst_loop_count;
-      decltype(inst.inst_loop_count) counter = 0;
 
       if (inst.reduce_op == VectorInstructions::radd) {
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
-        while (counter++ < total_values) {
+        for (decltype(inst.inst_loop_count) count = 0;; count++) {
           Pack1D<T, width> acc_old[SUM_N];
 
 #pragma hls_unroll yes
@@ -94,11 +92,13 @@ SC_MODULE(VectorAccumulator) {
           } else {
             output_to_pipeline.Push(outputs);
           }
+
+          if (count == inst.inst_loop_count - 1) break;
         }
       } else if (inst.reduce_op == VectorInstructions::rmax) {
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
-        while (counter++ < total_values) {
+        for (decltype(inst.inst_loop_count) count = 0;; count++) {
           Pack1D<T, width> acc_old[MAX_N];
 
 #pragma hls_unroll yes
@@ -137,6 +137,8 @@ SC_MODULE(VectorAccumulator) {
           } else {
             output_to_pipeline.Push(outputs);
           }
+
+          if (count == inst.inst_loop_count - 1) break;
         }
       }
     }

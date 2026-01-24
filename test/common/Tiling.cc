@@ -598,7 +598,7 @@ Tiling get_pool2d_tiling(const codegen::OpOverload op) {
 
     x1 = X / x0;
     y1 = Y / y0;
-    k0 = K / VECTOR_UNIT_WIDTH;
+    k0 = K / ACCUMULATOR_WIDTH;
     actual_padding = 0;
   } else {
     const auto kernel_size = kwargs.at("kernel_size").int_list().values();
@@ -616,7 +616,7 @@ Tiling get_pool2d_tiling(const codegen::OpOverload op) {
     y1 = (Y + 2 * padding - y0) / stride + 1;
     // pytorch assumes padding on all direction, not all of the values are used
     actual_padding = (x1 - 1) * stride + x0 - X;
-    k0 = K / VECTOR_UNIT_WIDTH;
+    k0 = K / ACCUMULATOR_WIDTH;
   }
 
   return {

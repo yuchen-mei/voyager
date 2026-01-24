@@ -64,11 +64,12 @@ void set_vector_fetch_1(const codegen::Tensor& tensor,
         input_shape[i] == 1 && output_shape[i] != 1;
   }
 
-  vector_params->vector_fetch_1_dtype =
-      get_index_from_type_name<VU_INPUT_TYPES>(tensor.dtype());
-  const int dtype_width =
-      get_type_width<VU_INPUT_TYPES>(vector_params->vector_fetch_1_dtype);
-  int fetch_width = OC_DIMENSION * dtype_width;
+  const int dtype = get_index_from_type_name<VU_INPUT_TYPES>(tensor.dtype());
+  const int dtype_width = get_type_width<VU_INPUT_TYPES>(dtype);
+  const int fetch_width = OC_DIMENSION * dtype_width;
+
+  vector_params->vector_fetch_1_dtype = dtype;
+  vector_params->vector_fetch_1_stride = OC_DIMENSION;
   vector_params->vector_fetch_1_burst_size = fetch_width / 8;
   vector_params->vector_fetch_1_num_beats =
       (fetch_width + OC_PORT_WIDTH - 1) / OC_PORT_WIDTH;
@@ -106,11 +107,12 @@ void set_vector_fetch_2(const codegen::Tensor& tensor,
     vector_params->vector_fetch_2_broadcast[i] = input_shape[i] == 1;
   }
 
-  vector_params->vector_fetch_2_dtype =
-      get_index_from_type_name<VU_INPUT_TYPES>(tensor.dtype());
-  const int dtype_width =
-      get_type_width<VU_INPUT_TYPES>(vector_params->vector_fetch_2_dtype);
-  int fetch_width = OC_DIMENSION * dtype_width;
+  const int dtype = get_index_from_type_name<VU_INPUT_TYPES>(tensor.dtype());
+  const int dtype_width = get_type_width<VU_INPUT_TYPES>(dtype);
+  const int fetch_width = OC_DIMENSION * dtype_width;
+
+  vector_params->vector_fetch_2_dtype = dtype;
+  vector_params->vector_fetch_2_stride = OC_DIMENSION;
   vector_params->vector_fetch_2_burst_size = fetch_width / 8;
   vector_params->vector_fetch_2_num_beats =
       (fetch_width + OC_PORT_WIDTH - 1) / OC_PORT_WIDTH;
@@ -170,8 +172,6 @@ void map_vector_operations(const codegen::Operation& param,
   const auto input = op_list[0].kwargs().at("input").tensor();
   vector_params->vector_fetch_0_offset = get_address(input);
   vector_params->vector_fetch_0_mode = 2;
-  vector_params->vector_fetch_0_dtype =
-      get_index_from_type_name<VU_INPUT_TYPES>(input.dtype());
 
   // Use the original shape without permute/slice
   auto input_shape = get_shape(input, false);
@@ -357,17 +357,20 @@ void map_vector_operations(const codegen::Operation& param,
     tiling.loops[1][5] = BUFSIZE;
   }
 
+  int data_stride = OC_DIMENSION;
   int packing_factor = OC_DIMENSION / VECTOR_UNIT_WIDTH;
-  int numel = OC_DIMENSION;
 
   if (vector_params->has_transpose) {
+    data_stride = BUFSIZE;
     packing_factor = 1;
-    numel = BUFSIZE;
   }
 
-  const int dtype_width =
-      get_type_width<VU_INPUT_TYPES>(vector_params->vector_fetch_0_dtype);
-  const int fetch_width = numel * dtype_width;
+  const int dtype = get_index_from_type_name<VU_INPUT_TYPES>(input.dtype());
+  const int dtype_width = get_type_width<VU_INPUT_TYPES>(dtype);
+  const int fetch_width = data_stride * dtype_width;
+
+  vector_params->vector_fetch_0_dtype = dtype;
+  vector_params->vector_fetch_0_stride = OC_DIMENSION;
   vector_params->vector_fetch_0_burst_size = fetch_width / 8;
   vector_params->vector_fetch_0_num_beats =
       (fetch_width + OC_PORT_WIDTH - 1) / OC_PORT_WIDTH;

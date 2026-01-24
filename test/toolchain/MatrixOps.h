@@ -24,11 +24,11 @@ void set_vector_fetch_1(const codegen::Tensor& tensor, const Tiling& tiling,
   vector_params->vector_fetch_1_mode = true;
   vector_params->vector_fetch_1_broadcast = nonzero_dims == 1 ? 0b011 : 0b000;
 
-  vector_params->vector_fetch_1_dtype =
-      get_index_from_type_name<VU_INPUT_TYPES>(tensor.dtype());
-  const int dtype_width =
-      get_type_width<VU_INPUT_TYPES>(vector_params->vector_fetch_1_dtype);
-  int fetch_width = OC_DIMENSION * dtype_width;
+  const int dtype = get_index_from_type_name<VU_INPUT_TYPES>(tensor.dtype());
+  const int dtype_width = get_type_width<VU_INPUT_TYPES>(dtype);
+  const int fetch_width = OC_DIMENSION * dtype_width;
+
+  vector_params->vector_fetch_1_dtype = dtype;
   vector_params->vector_fetch_1_burst_size = fetch_width / 8;
   vector_params->vector_fetch_1_num_beats =
       (fetch_width + OC_PORT_WIDTH - 1) / OC_PORT_WIDTH;
@@ -75,11 +75,11 @@ void set_vector_fetch_2(const codegen::Tensor& tensor, const Tiling& tiling,
   vector_params->vector_fetch_2_mode = true;
   vector_params->vector_fetch_2_broadcast = nonzero_dims == 1 ? 0b011 : 0b000;
 
-  vector_params->vector_fetch_2_dtype =
-      get_index_from_type_name<VU_INPUT_TYPES>(tensor.dtype());
-  const int dtype_width =
-      get_type_width<VU_INPUT_TYPES>(vector_params->vector_fetch_2_dtype);
-  int fetch_width = OC_DIMENSION * dtype_width;
+  const int dtype = get_index_from_type_name<VU_INPUT_TYPES>(tensor.dtype());
+  const int dtype_width = get_type_width<VU_INPUT_TYPES>(dtype);
+  const int fetch_width = OC_DIMENSION * dtype_width;
+
+  vector_params->vector_fetch_2_dtype = dtype;
   vector_params->vector_fetch_2_burst_size = fetch_width / 8;
   vector_params->vector_fetch_2_num_beats =
       (fetch_width + OC_PORT_WIDTH - 1) / OC_PORT_WIDTH;

@@ -133,7 +133,8 @@ SC_MODULE(Accelerator) {
 #endif
 
   VectorUnit<VECTOR_DATATYPE, ACCUM_BUFFER_DATATYPE, SCALE_DATATYPE,
-             VECTOR_UNIT_WIDTH, OC_DIMENSION>
+             VECTOR_UNIT_WIDTH, REDUCER_WIDTH, ACCUMULATOR_WIDTH, OC_DIMENSION,
+             OC_PORT_WIDTH>
       CCS_INIT_S1(vector_unit);
 
   Connections::In<ac_int<64, false>> CCS_INIT_S1(vector_unit_params_in);

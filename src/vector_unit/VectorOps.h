@@ -59,13 +59,12 @@ Pack1D<T, width> vdiv(const Pack1D<T, width> op0, const Pack1D<T, width> op1) {
   return res;
 }
 
-template <typename T, typename Q, size_t width>
+template <typename T, size_t width>
 Pack1D<T, width> vreciprocal(const Pack1D<T, width> op0) {
   Pack1D<T, width> res;
 #pragma hls_unroll yes
   for (int i = 0; i < width; i++) {
-    T q = static_cast<Q>(op0[i]);
-    res[i] = ac_reciprocal_pwl<typename T::ac_float_rep, AC_RND>(q.float_val);
+    res[i] = op0[i].reciprocal();
   }
   return res;
 }
@@ -98,17 +97,6 @@ Pack1D<T, width> vexp(const Pack1D<T, width> op0) {
 #pragma hls_unroll yes
   for (int i = 0; i < width; i++) {
     res[i] = op0[i].exponential();
-  }
-  return res;
-}
-
-template <typename T, size_t width, int E, int M>
-Pack1D<T, width> vexp_quantized(const Pack1D<T, width> op0) {
-  Pack1D<T, width> res;
-#pragma hls_unroll yes
-  for (int i = 0; i < width; i++) {
-    T q = static_cast<StdFloat<E, M>>(op0[i]);
-    res[i] = q.exponential();
   }
   return res;
 }
