@@ -26,7 +26,7 @@ void map_layer_norm(const codegen::Operation& param,
   pad_shape_to_ndim(non_reduction_loops, 2);
   const int reduced_size = get_size(non_reduction_loops);
 
-  constexpr int packing_factor = OC_DIMENSION / VECTOR_UNIT_WIDTH;
+  constexpr int vu_unit_ratio = OC_DIMENSION / VECTOR_UNIT_WIDTH;
 
   int input_dtype = get_index_from_type_name<VU_INPUT_TYPES>(input.dtype());
   int input_dtype_width = get_type_width<VU_INPUT_TYPES>(input_dtype);
@@ -58,7 +58,7 @@ void map_layer_norm(const codegen::Operation& param,
   vector_params->vector_fetch_0_stride = OC_DIMENSION;
   vector_params->vector_fetch_0_burst_size = input_fetch_width / 8;
   vector_params->vector_fetch_0_num_beats = input_fetch_width / OC_PORT_WIDTH;
-  vector_params->vector_fetch_0_packing_factor = packing_factor;
+  vector_params->vector_fetch_0_packing_factor = vu_unit_ratio;
 
   for (int i = 0; i < 3; i++) {
     vector_params->vector_fetch_0_loops[0][i] = 1;
@@ -121,7 +121,7 @@ void map_layer_norm(const codegen::Operation& param,
   vector_params->vector_fetch_0_stride = OC_DIMENSION;
   vector_params->vector_fetch_0_burst_size = input_fetch_width / 8;
   vector_params->vector_fetch_0_num_beats = input_fetch_width / OC_PORT_WIDTH;
-  vector_params->vector_fetch_0_packing_factor = packing_factor;
+  vector_params->vector_fetch_0_packing_factor = vu_unit_ratio;
 
   for (int i = 0; i < 3; i++) {
     vector_params->vector_fetch_0_loops[0][i] = 1;
@@ -137,7 +137,7 @@ void map_layer_norm(const codegen::Operation& param,
   vector_params->vector_fetch_1_stride = OC_DIMENSION;
   vector_params->vector_fetch_1_burst_size = vector_fetch_width / 8;
   vector_params->vector_fetch_1_num_beats = vector_fetch_width / OC_PORT_WIDTH;
-  vector_params->vector_fetch_1_packing_factor = packing_factor;
+  vector_params->vector_fetch_1_packing_factor = vu_unit_ratio;
 
   vector_params->vector_fetch_1_broadcast = 0b100;
   for (int i = 0; i < 3; i++) {
@@ -176,7 +176,7 @@ void map_layer_norm(const codegen::Operation& param,
 
   VectorInstructions inst3;
   inst3.op_type = VectorInstructions::vector;
-  inst3.inst_loop_count = input_size / OC_DIMENSION * packing_factor;
+  inst3.inst_loop_count = input_size / VECTOR_UNIT_WIDTH;
   inst3.vector_op0_src0 = VectorInstructions::from_vector_fetch_0;
   inst3.vector_op0_src1 = VectorInstructions::from_vector_fetch_1;
   inst3.vector_op0 = VectorInstructions::op0_sub;
@@ -205,7 +205,7 @@ void map_layer_norm(const codegen::Operation& param,
   vector_params->vector_fetch_0_stride = OC_DIMENSION;
   vector_params->vector_fetch_0_burst_size = input_fetch_width / 8;
   vector_params->vector_fetch_0_num_beats = input_fetch_width / OC_PORT_WIDTH;
-  vector_params->vector_fetch_0_packing_factor = packing_factor;
+  vector_params->vector_fetch_0_packing_factor = vu_unit_ratio;
 
   for (int i = 0; i < 3; i++) {
     vector_params->vector_fetch_0_loops[0][i] = 1;
@@ -221,7 +221,7 @@ void map_layer_norm(const codegen::Operation& param,
   vector_params->vector_fetch_1_stride = OC_DIMENSION;
   vector_params->vector_fetch_1_burst_size = vector_fetch_width / 8;
   vector_params->vector_fetch_1_num_beats = vector_fetch_width / OC_PORT_WIDTH;
-  vector_params->vector_fetch_1_packing_factor = packing_factor;
+  vector_params->vector_fetch_1_packing_factor = vu_unit_ratio;
 
   vector_params->vector_fetch_1_broadcast = 0b100;
   for (int i = 0; i < 3; i++) {
@@ -238,7 +238,7 @@ void map_layer_norm(const codegen::Operation& param,
   vector_params->vector_fetch_2_stride = OC_DIMENSION;
   vector_params->vector_fetch_2_burst_size = vector_fetch_width / 8;
   vector_params->vector_fetch_2_num_beats = vector_fetch_width / OC_PORT_WIDTH;
-  vector_params->vector_fetch_2_packing_factor = packing_factor;
+  vector_params->vector_fetch_2_packing_factor = vu_unit_ratio;
 
   vector_params->vector_fetch_2_broadcast = 0b100;
   for (int i = 0; i < 3; i++) {
@@ -263,7 +263,7 @@ void map_layer_norm(const codegen::Operation& param,
   // Multiply inputs with the inverse sqrt of the variance
   VectorInstructions inst4;
   inst4.op_type = VectorInstructions::vector;
-  inst4.inst_loop_count = input_size / OC_DIMENSION * packing_factor;
+  inst4.inst_loop_count = input_size / VECTOR_UNIT_WIDTH;
   inst4.vector_op0_src0 = VectorInstructions::from_vector_fetch_0;
   inst4.vector_op0_src1 = VectorInstructions::from_vector_fetch_1;
   inst4.vector_op2_src1 = VectorInstructions::from_vector_fetch_2;
@@ -295,7 +295,7 @@ void map_layer_norm(const codegen::Operation& param,
   vector_params->vector_fetch_0_stride = OC_DIMENSION;
   vector_params->vector_fetch_0_burst_size = input_fetch_width / 8;
   vector_params->vector_fetch_0_num_beats = input_fetch_width / OC_PORT_WIDTH;
-  vector_params->vector_fetch_0_packing_factor = packing_factor;
+  vector_params->vector_fetch_0_packing_factor = vu_unit_ratio;
 
   for (int i = 0; i < 3; i++) {
     vector_params->vector_fetch_0_loops[0][i] = 1;
@@ -317,7 +317,7 @@ void map_layer_norm(const codegen::Operation& param,
   vector_params->vector_fetch_1_stride = OC_DIMENSION;
   vector_params->vector_fetch_1_burst_size = weight_fetch_width / 8;
   vector_params->vector_fetch_1_num_beats = weight_fetch_width / OC_PORT_WIDTH;
-  vector_params->vector_fetch_1_packing_factor = packing_factor;
+  vector_params->vector_fetch_1_packing_factor = vu_unit_ratio;
 
   for (int i = 0; i < 3; i++) {
     vector_params->vector_fetch_1_loops[0][i] = 1;
@@ -341,7 +341,7 @@ void map_layer_norm(const codegen::Operation& param,
     vector_params->vector_fetch_2_stride = OC_DIMENSION;
     vector_params->vector_fetch_2_burst_size = bias_fetch_width / 8;
     vector_params->vector_fetch_2_num_beats = bias_fetch_width / OC_PORT_WIDTH;
-    vector_params->vector_fetch_2_packing_factor = packing_factor;
+    vector_params->vector_fetch_2_packing_factor = vu_unit_ratio;
 
     for (int i = 0; i < 3; i++) {
       vector_params->vector_fetch_2_loops[0][i] = 1;
@@ -366,7 +366,7 @@ void map_layer_norm(const codegen::Operation& param,
   // inputs x weights + bias
   VectorInstructions inst5;
   inst5.op_type = VectorInstructions::vector;
-  inst5.inst_loop_count = get_size(output) / OC_DIMENSION * packing_factor;
+  inst5.inst_loop_count = input_size / VECTOR_UNIT_WIDTH;
   inst5.vector_op0_src0 = VectorInstructions::from_vector_fetch_0;
   inst5.vector_op0_src1 = VectorInstructions::from_vector_fetch_1;
   inst5.vector_op0 = VectorInstructions::op0_mul;

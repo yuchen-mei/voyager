@@ -648,13 +648,16 @@ void map_vector_operations(const codegen::Operation& param,
 
       float* array = read_constant_param(code);
 
+      auto& codebook_cfg = vector_instruction_config->codebook_config;
+
+      codebook_cfg.enable = true;
       for (int i = 0; i < size; i++) {
-        vector_params->output_code[i] = array[i] * 2;
+        codebook_cfg.output_code[i] = array[i] * 2;
       }
 
-      delete[] array;
+      vector_params->is_codebook_quantization = true;
 
-      vector_params->use_output_codebook = true;
+      delete[] array;
     }
 
     stage++;

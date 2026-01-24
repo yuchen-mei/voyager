@@ -823,8 +823,8 @@ struct VectorParams : BaseParams {
       padding[i] = 0;
     }
 
-    head_size_lg2 = 32;
     transpose_for_scores = false;
+    head_size_lg2 = 32;
 
     quantize_output_mx = false;
     mx_scale_offset = 0;
@@ -834,11 +834,7 @@ struct VectorParams : BaseParams {
     csr_indices_offset = 0;
     csr_indptr_offset = 0;
 
-    use_output_codebook = false;
-    for (int i = 0; i < NUM_CODEBOOK_ENTRIES - 1; i++) {
-      output_code[i] = 0;
-    }
-
+    is_codebook_quantization = false;
     is_dwc = false;
   }
 #endif
@@ -853,7 +849,6 @@ struct VectorParams : BaseParams {
   ac_int<3, false> vector_fetch_0_y_loop_idx[2];
   ac_int<3, false> vector_fetch_0_k_loop_idx[2];
   ac_int<4, false> vector_fetch_0_dtype;
-
   ac_int<8, false> vector_fetch_0_stride;
   ac_int<10, false> vector_fetch_0_burst_size;
   ac_int<4, false> vector_fetch_0_num_beats;
@@ -867,7 +862,6 @@ struct VectorParams : BaseParams {
   ac_int<3, false> vector_fetch_1_y_loop_idx[2];
   ac_int<3, false> vector_fetch_1_k_loop_idx[2];
   ac_int<4, false> vector_fetch_1_dtype;
-
   ac_int<8, false> vector_fetch_1_stride;
   ac_int<10, false> vector_fetch_1_burst_size;
   ac_int<4, false> vector_fetch_1_num_beats;
@@ -881,7 +875,6 @@ struct VectorParams : BaseParams {
   ac_int<3, false> vector_fetch_2_y_loop_idx[2];
   ac_int<3, false> vector_fetch_2_k_loop_idx[2];
   ac_int<4, false> vector_fetch_2_dtype;
-
   ac_int<8, false> vector_fetch_2_stride;
   ac_int<10, false> vector_fetch_2_burst_size;
   ac_int<4, false> vector_fetch_2_num_beats;
@@ -917,8 +910,8 @@ struct VectorParams : BaseParams {
   ac_int<8, false> padding[2];
 
   // Transformer head permutation
-  ac_int<4, false> head_size_lg2;
   bool transpose_for_scores;
+  ac_int<4, false> head_size_lg2;
 
   bool quantize_output_mx;
   ac_int<ADDRESS_WIDTH, false> mx_scale_offset;
@@ -929,30 +922,20 @@ struct VectorParams : BaseParams {
   ac_int<ADDRESS_WIDTH, false> csr_indices_offset;
   ac_int<ADDRESS_WIDTH, false> csr_indptr_offset;
 
-  bool use_output_codebook;
-  ac_int<MAX_DECODED_DTYPE_WIDTH + 1, true>
-      output_code[NUM_CODEBOOK_ENTRIES - 1];
-
+  bool is_codebook_quantization;
   bool is_dwc;
 
   // Each address generator has a 2-bit mode flag, 64-bit address, 6 x loop
-  // boundaries, 6 x 3-bit loop indices,  a 4-bit data type, and a 26-bit
-  // packing factor param
+  // boundaries, 6 x 3-bit loop indices, a 4-bit data type, and a 26-bit
+  // fetch param
   static const unsigned int address_gen_width =
       2 + ADDRESS_WIDTH + 6 * LOOP_WIDTH + 6 * 3 + 4 + 26;
 
-  static const unsigned int codebook_params_width =
-      (NUM_CODEBOOK_ENTRIES - 1) * (MAX_DECODED_DTYPE_WIDTH + 1);
-
-  static const unsigned int sparse_params_width = 3 * ADDRESS_WIDTH + 1;
-
-  // There are 4 address generators in total + 12-bit broadcasting flag + 36-bit
-  // slicing params + 32-bit pooling param + 18-bit reshape params + 4-bit head
-  // size + 8 boolean flags + output scale offset and packing params + cookbook
-  // params
-  static const unsigned int width = 4 * address_gen_width - 26 + 12 + 36 + 32 +
-                                    18 + 4 + 8 + ADDRESS_WIDTH +
-                                    codebook_params_width + sparse_params_width;
+  // 4 address generators - output nonexistent fields + 12-bit broadcasting flag
+  // + 36-bit slicing params + 18-bit permute params + 32-bit pooling param +
+  // 4-bit head size + 9 boolean flags + 4 offsets (scale and sparse)
+  static const unsigned int width = 4 * address_gen_width - 26 + 12 + 36 + 18 +
+                                    32 + 4 + 9 + 4 * ADDRESS_WIDTH;
 
 #ifndef NO_SYSC
   template <unsigned int Size>
@@ -1072,8 +1055,8 @@ struct VectorParams : BaseParams {
     }
 
     // Transformer head permutation flags
-    m & head_size_lg2;
     m & transpose_for_scores;
+    m & head_size_lg2;
 
     m & quantize_output_mx;
     m & mx_scale_offset;
@@ -1084,11 +1067,7 @@ struct VectorParams : BaseParams {
     m & csr_indices_offset;
     m & csr_indptr_offset;
 
-    m & use_output_codebook;
-    for (int i = 0; i < NUM_CODEBOOK_ENTRIES - 1; i++) {
-      m& output_code[i];
-    }
-
+    m & is_codebook_quantization;
     m & is_dwc;
   }
 
@@ -1247,8 +1226,8 @@ struct VectorParams : BaseParams {
       os << "padding[" << i << "]: " << params.padding[i] << std::endl;
     }
 
-    os << "head_size_lg2: " << params.head_size_lg2 << std::endl;
     os << "transpose_for_scores: " << params.transpose_for_scores << std::endl;
+    os << "head_size_lg2: " << params.head_size_lg2 << std::endl;
 
     os << "quantize_output_mx: " << params.quantize_output_mx << std::endl;
     os << "mx_scale_offset: " << params.mx_scale_offset << std::endl;
@@ -1258,11 +1237,8 @@ struct VectorParams : BaseParams {
     os << "csr_indices_offset: " << params.csr_indices_offset << std::endl;
     os << "csr_indptr_offset: " << params.csr_indptr_offset << std::endl;
 
-    os << "use_output_codebook: " << params.use_output_codebook << std::endl;
-    for (int i = 0; i < NUM_CODEBOOK_ENTRIES - 1; i++) {
-      os << "output_code[" << i << "]: " << params.output_code[i] << std::endl;
-    }
-
+    os << "is_codebook_quantization: " << params.is_codebook_quantization
+       << std::endl;
     os << "is_dwc: " << params.is_dwc << std::endl;
 
     return os;
@@ -1394,8 +1370,8 @@ struct VectorParams : BaseParams {
       if (lhs.padding[i] != rhs.padding[i]) return false;
     }
 
-    if (lhs.head_size_lg2 != rhs.head_size_lg2) return false;
     if (lhs.transpose_for_scores != rhs.transpose_for_scores) return false;
+    if (lhs.head_size_lg2 != rhs.head_size_lg2) return false;
 
     if (lhs.quantize_output_mx != rhs.quantize_output_mx) return false;
     if (lhs.mx_scale_offset != rhs.mx_scale_offset) return false;
@@ -1405,10 +1381,8 @@ struct VectorParams : BaseParams {
     if (lhs.csr_indices_offset != rhs.csr_indices_offset) return false;
     if (lhs.csr_indptr_offset != rhs.csr_indptr_offset) return false;
 
-    if (lhs.use_output_codebook != rhs.use_output_codebook) return false;
-    for (int i = 0; i < NUM_CODEBOOK_ENTRIES - 1; i++) {
-      if (lhs.output_code[i] != rhs.output_code[i]) return false;
-    }
+    if (lhs.is_codebook_quantization != rhs.is_codebook_quantization)
+      return false;
     if (lhs.is_dwc != rhs.is_dwc) return false;
 
     // If all members are equal, return true
@@ -1540,6 +1514,58 @@ struct OutlierFilterConfig {
   }
 };
 
+struct CodebookQuantizationConfig {
+#ifndef __SYNTHESIS__
+  CodebookQuantizationConfig() {
+    enable = false;
+    for (int i = 0; i < NUM_CODEBOOK_ENTRIES - 1; i++) {
+      output_code[i] = 0;
+    }
+  }
+#endif
+
+  static const int num_entries = NUM_CODEBOOK_ENTRIES - 1;
+
+  bool enable;
+  ac_int<MAX_DECODED_DTYPE_WIDTH + 1, true> output_code[num_entries];
+
+  static const unsigned int width =
+      1 + (num_entries) * (MAX_DECODED_DTYPE_WIDTH + 1);
+
+#ifndef NO_SYSC
+  template <unsigned int Size>
+  void Marshall(Marshaller<Size>& m) {
+    m & enable;
+    for (int i = 0; i < num_entries; i++) {
+      m& output_code[i];
+    }
+  }
+
+  // TODO
+  inline friend void sc_trace(sc_trace_file* tf,
+                              const CodebookQuantizationConfig& config,
+                              const std::string& name) {}
+#endif
+
+  inline friend std::ostream& operator<<(
+      std::ostream& os, const CodebookQuantizationConfig& config) {
+    os << "enable: " << config.enable << std::endl;
+    for (int i = 0; i < CodebookQuantizationConfig::num_entries; i++) {
+      os << "output_code[" << i << "]: " << config.output_code[i] << std::endl;
+    }
+    return os;
+  }
+
+  inline friend bool operator==(const CodebookQuantizationConfig& lhs,
+                                const CodebookQuantizationConfig& rhs) {
+    if (lhs.enable != rhs.enable) return false;
+    for (int i = 0; i < CodebookQuantizationConfig::num_entries; i++) {
+      if (lhs.output_code[i] != rhs.output_code[i]) return false;
+    }
+    return true;
+  }
+};
+
 struct VectorInstructionConfig : BaseParams {
 #ifndef __SYNTHESIS__
   VectorInstructionConfig() {
@@ -1551,12 +1577,13 @@ struct VectorInstructionConfig : BaseParams {
   VectorInstructions inst[8];
   ac_int<4, false> num_inst;
   ac_int<16, false> config_loop_count;
-  ApproxUnitConfig approx;
+  ApproxUnitConfig approx_config;
   OutlierFilterConfig outlier_filter;
+  CodebookQuantizationConfig codebook_config;
 
-  static const unsigned int width = VectorInstructions::width * 8 + 4 + 16 +
-                                    ApproxUnitConfig::width +
-                                    OutlierFilterConfig::width;
+  static const unsigned int width =
+      VectorInstructions::width * 8 + 4 + 16 + ApproxUnitConfig::width +
+      OutlierFilterConfig::width + CodebookQuantizationConfig::width;
 
 #ifndef NO_SYSC
   template <unsigned int Size>
@@ -1635,19 +1662,24 @@ struct VectorInstructionConfig : BaseParams {
     m & config_loop_count;
 
     for (int i = 0; i < NUM_MAXES; i++) {
-      m & approx.maxes[i];
+      m & approx_config.maxes[i];
     }
     for (int i = 0; i < NUM_RANGES; i++) {
       for (int j = 0; j < NUM_COEFFS; j++) {
-        m & approx.ranges[i][j];
+        m & approx_config.ranges[i][j];
       }
     }
-    m & approx.clamp_min;
-    m & approx.clamp_max;
+    m & approx_config.clamp_min;
+    m & approx_config.clamp_max;
 
     m & outlier_filter.outlier_threshold;
     m & outlier_filter.dense_input_shape[0];
     m & outlier_filter.dense_input_shape[1];
+
+    m & codebook_config.enable;
+    for (int i = 0; i < NUM_CODEBOOK_ENTRIES - 1; i++) {
+      m & codebook_config.output_code[i];
+    }
   }
 
   inline friend void sc_trace(sc_trace_file* tf,
@@ -1676,8 +1708,9 @@ struct VectorInstructionConfig : BaseParams {
     if (lhs.num_inst != rhs.num_inst ||
         lhs.config_loop_count != rhs.config_loop_count)
       return false;
-    if (!(lhs.approx == rhs.approx)) return false;
-
+    if (!(lhs.approx_config == rhs.approx_config)) return false;
+    if (!(lhs.outlier_filter == rhs.outlier_filter)) return false;
+    if (!(lhs.codebook_config == rhs.codebook_config)) return false;
     return true;
   }
 };

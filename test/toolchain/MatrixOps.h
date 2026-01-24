@@ -19,7 +19,6 @@ void set_vector_fetch_1(const codegen::Tensor& tensor, const Tiling& tiling,
     if (dim != 1) nonzero_dims++;
   }
 
-  const auto memory = tensor.memory();
   vector_params->vector_fetch_1_offset = get_address(tensor);
   vector_params->vector_fetch_1_mode = true;
   vector_params->vector_fetch_1_broadcast = nonzero_dims == 1 ? 0b011 : 0b000;
@@ -71,7 +70,6 @@ void set_vector_fetch_2(const codegen::Tensor& tensor, const Tiling& tiling,
     if (dim != 1) nonzero_dims++;
   }
 
-  const auto memory = tensor.memory();
   vector_params->vector_fetch_2_offset = get_address(tensor);
   vector_params->vector_fetch_2_mode = true;
   vector_params->vector_fetch_2_broadcast = nonzero_dims == 1 ? 0b011 : 0b000;
@@ -890,13 +888,16 @@ void map_matrix_operation(const Operation& operation,
 
         float* array = read_constant_param(code);
 
+        auto& codebook_cfg = vector_instruction_config->codebook_config;
+
+        codebook_cfg.enable = true;
         for (int i = 0; i < size; i++) {
-          vector_params->output_code[i] = array[i] * 2;
+          codebook_cfg.output_code[i] = array[i] * 2;
         }
 
-        delete[] array;
+        vector_params->is_codebook_quantization = true;
 
-        vector_params->use_output_codebook = true;
+        delete[] array;
       }
     } else if (op.kwargs().contains("other") || opcode == "quantize") {
       std::string other_key = opcode == "quantize" ? "scale" : "other";

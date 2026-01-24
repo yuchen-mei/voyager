@@ -92,21 +92,21 @@ unsigned int get_stage3_op(const std::string& opcode) {
 void load_approx_params(const std::string& opcode,
                         VectorInstructionConfig* vector_instruction_config,
                         const std::map<std::string, float>& kwargs) {
-  auto& approx = vector_instruction_config->approx;
+  auto& config = vector_instruction_config->approx_config;
 
 // Macro updated to use braces for all loops
 #define LOAD_ACTIVATION_CONSTANTS(NAME)            \
   do {                                             \
     for (int i = 0; i < NUM_MAXES; i++) {          \
-      approx.maxes[i] = NAME##_MAXES[i];           \
+      config.maxes[i] = NAME##_MAXES[i];           \
     }                                              \
     for (int i = 0; i < NUM_RANGES; i++) {         \
       for (int j = 0; j < NUM_COEFFS; j++) {       \
-        approx.ranges[i][j] = NAME##_RANGES[i][j]; \
+        config.ranges[i][j] = NAME##_RANGES[i][j]; \
       }                                            \
     }                                              \
-    approx.clamp_min = NAME##_CLAMP_MIN;           \
-    approx.clamp_max = NAME##_CLAMP_MAX;           \
+    config.clamp_min = NAME##_CLAMP_MIN;           \
+    config.clamp_max = NAME##_CLAMP_MAX;           \
   } while (0)
 
   // Standard Activations
@@ -456,13 +456,16 @@ void set_quantize_params(const codegen::Operation& param,
 
       float* array = read_constant_param(code);
 
+      auto& codebook_cfg = vector_instruction_config->codebook_config;
+
+      codebook_cfg.enable = true;
       for (int i = 0; i < size; i++) {
-        vector_params->output_code[i] = array[i] * 2;
+        codebook_cfg.output_code[i] = array[i] * 2;
       }
 
-      delete[] array;
+      vector_params->is_codebook_quantization = true;
 
-      vector_params->use_output_codebook = true;
+      delete[] array;
     }
   }
 }

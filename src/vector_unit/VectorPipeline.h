@@ -24,6 +24,7 @@ SC_MODULE(VectorPipeline) {
 
   Connections::In<VectorInstructions> instr;
   Connections::In<ApproxUnitConfig> approx_unit_config;
+  Connections::In<CodebookQuantizationConfig> codebook_config;
 
   Connections::In<Pack1D<BufferType, vu_width>> matrix_unit_output;
 #if DOUBLE_BUFFERED_ACCUM_BUFFER
@@ -322,6 +323,11 @@ SC_MODULE(VectorPipeline) {
           }
         }
 
+        if (inst.vdequantize) {
+          op0_src0 = vdequantize<VectorType, VectorType, vu_width>(
+              op0_src0, inst.vector_dq_scale);
+        }
+
         if (inst.vector_op0 == VectorInstructions::op0_poly) {
 #pragma hls_unroll yes
           for (int i = 0; i < vu_width; i++) {
@@ -332,11 +338,6 @@ SC_MODULE(VectorPipeline) {
             op2_src1[i] = c1;
             op3_src1[i] = c0;
           }
-        }
-
-        if (inst.vdequantize) {
-          op0_src0 = vdequantize<VectorType, VectorType, vu_width>(
-              op0_src0, inst.vector_dq_scale);
         }
 
         auto payloads = Pack1D<VectorPack, 4>::create(
@@ -611,6 +612,7 @@ SC_MODULE(VectorPipeline) {
 
   void run_stage_3() {
     stage_3_inst.ResetRead();
+    codebook_config.Reset();
     mx_scale.Reset();
     vector_unit_output.Reset();
 #if MX_SPLIT_MODE
@@ -632,6 +634,20 @@ SC_MODULE(VectorPipeline) {
 #if MX_SPLIT_MODE
       constexpr int ratio = mu_width / vu_width;
       ScaleType scale;
+#endif
+
+      auto codebook_cfg = codebook_config.Pop();
+
+#if SUPPORT_CODEBOOK_QUANT
+      VectorType midpoints[NUM_CODEBOOK_ENTRIES];
+      if (codebook_cfg.enable) {
+#pragma hls_unroll yes
+        for (int i = 1; i < NUM_CODEBOOK_ENTRIES; i++) {
+          midpoints[i] = typename VectorType::ac_float_rep(
+              codebook_cfg.output_code[i - 1]);
+          midpoints[i].adjust_exponent(-1);
+        }
+      }
 #endif
 
 #pragma hls_pipeline_init_interval 1
@@ -676,6 +692,12 @@ SC_MODULE(VectorPipeline) {
         VectorPack stage3_output;
         if (op3 != VectorInstructions::op3_nop) {
           stage3_output = vmul<VectorType, vu_width>(op3_src0, op3_src1);
+#if SUPPORT_CODEBOOK_QUANT
+          if (codebook_cfg.enable) {
+            stage3_output = vcodebook_quantize<VectorType, vu_width>(
+                stage3_output, midpoints);
+          }
+#endif
         } else {
           stage3_output = op3_src0;
         }

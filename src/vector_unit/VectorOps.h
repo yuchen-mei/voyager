@@ -433,3 +433,15 @@ ac_int<4, false> find_codebook_index(T x, const T B[16]) {
 
   return low;  // 0..15
 }
+
+template <typename T, size_t width>
+Pack1D<T, width> vcodebook_quantize(const Pack1D<T, width> op0,
+                                    const T midpoints[16]) {
+  Pack1D<T, width> outputs;
+#pragma hls_unroll yes
+  for (int i = 0; i < width; i++) {
+    auto index = find_codebook_index(outputs[i], midpoints);
+    outputs[i].set_bits(index);
+  }
+  return outputs;
+}

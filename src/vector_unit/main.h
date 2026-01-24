@@ -56,13 +56,16 @@ SC_MODULE(VectorUnit) {
 
   // Instruction channels
   Connections::Combinational<VectorInstructions> CCS_INIT_S1(pipeline_instr);
-  Connections::Combinational<VectorInstructions> CCS_INIT_S1(accum_instr);
+  Connections::Combinational<VectorInstructions> CCS_INIT_S1(accumulator_instr);
   Connections::Combinational<VectorInstructions> CCS_INIT_S1(reducer_instr);
+
+  Connections::Combinational<ApproxUnitConfig> CCS_INIT_S1(approx_unit_config);
+  Connections::Combinational<CodebookQuantizationConfig> CCS_INIT_S1(
+      codebook_config);
 
   Connections::Combinational<VectorParams> CCS_INIT_S1(vector_fetch_params);
   Connections::Combinational<VectorParams> CCS_INIT_S1(
       output_controller_params);
-  Connections::Combinational<VectorParams> CCS_INIT_S1(send_output_params);
 
   // Vector fetch ports
   Connections::Out<MemoryRequest> CCS_INIT_S1(vector_fetch_0_req);
@@ -79,9 +82,6 @@ SC_MODULE(VectorUnit) {
   Connections::In<ac_int<port_width, false>> CCS_INIT_S1(vector_fetch_2_resp);
   Connections::Combinational<Pack1D<VectorType, vec_unit_width>> CCS_INIT_S1(
       vector_fetch_2_data);
-
-  // Vector Pipeline
-  Connections::Combinational<ApproxUnitConfig> CCS_INIT_S1(approx_unit_config);
 
   // 1. Pipeline Interfaces (Standard Wide Width)
   Connections::Combinational<Pack1D<VectorType, vec_unit_width>>
@@ -213,6 +213,7 @@ SC_MODULE(VectorUnit) {
     pipeline.rstn(rstn);
     pipeline.instr(pipeline_instr);
     pipeline.approx_unit_config(approx_unit_config);
+    pipeline.codebook_config(codebook_config);
     pipeline.matrix_unit_output(matrix_unit_output_n);
 #if DOUBLE_BUFFERED_ACCUM_BUFFER
     pipeline.accumulation_buffer_output(accumulation_buffer_output);
@@ -250,7 +251,7 @@ SC_MODULE(VectorUnit) {
 
     accumulator.clk(clk);
     accumulator.rstn(rstn);
-    accumulator.instr(accum_instr);
+    accumulator.instr(accumulator_instr);
     accumulator.input(accum_in_n);
     accumulator.output_to_pipeline(accum_to_pipeline_n);
     accumulator.output_to_memory(accum_to_memory_n);
@@ -322,18 +323,17 @@ SC_MODULE(VectorUnit) {
   void send_instructions() {
     vector_instruction.ResetRead();
     pipeline_instr.ResetWrite();
-    accum_instr.ResetWrite();
+    accumulator_instr.ResetWrite();
     reducer_instr.ResetWrite();
     approx_unit_config.ResetWrite();
+    codebook_config.ResetWrite();
     output_instruction.ResetWrite();
 #if SUPPORT_SPMM
     outlier_filter_config.ResetWrite();
 #endif
-
     vector_params.ResetRead();
     vector_fetch_params.ResetWrite();
     output_controller_params.ResetWrite();
-    send_output_params.ResetWrite();
 
     start.Reset();
 
@@ -347,25 +347,25 @@ SC_MODULE(VectorUnit) {
 
       vector_fetch_params.Push(params);
       output_controller_params.Push(params);
-      send_output_params.Push(params);
       output_instruction.Push(instruction_config);
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
       for (decltype(instruction_config.config_loop_count) i = 0;; i++) {
-        for (decltype(instruction_config.num_inst) j = 0;; j++) {
+        for (int j = 0; j < 8; j++) {
           VectorInstructions inst = instruction_config.inst[j];
 
           if (inst.op_type == VectorInstructions::vector) {
             pipeline_instr.Push(inst);
-            approx_unit_config.Push(instruction_config.approx);
+            approx_unit_config.Push(instruction_config.approx_config);
+            codebook_config.Push(instruction_config.codebook_config);
 #if SUPPORT_SPMM
             if (params.has_sparse_output) {
               outlier_filter_config.Push(instruction_config.outlier_filter);
             }
 #endif
           } else if (inst.op_type == VectorInstructions::accumulation) {
-            accum_instr.Push(inst);
+            accumulator_instr.Push(inst);
           } else if (inst.op_type == VectorInstructions::reduction) {
             reducer_instr.Push(inst);
           }
@@ -379,7 +379,6 @@ SC_MODULE(VectorUnit) {
 
   void send_outputs() {
     output_instruction.ResetRead();
-    send_output_params.ResetRead();
     pipeline_to_memory_w.ResetRead();
     reducer_to_memory_w.ResetRead();
     accum_to_memory_w.ResetRead();
@@ -388,7 +387,6 @@ SC_MODULE(VectorUnit) {
     wait();
 
     while (1) {
-      VectorParams params = send_output_params.Pop();
       VectorInstructionConfig instruction_config = output_instruction.Pop();
 
       VectorInstructions output_inst;
@@ -403,38 +401,20 @@ SC_MODULE(VectorUnit) {
       }
 
       auto op_type = output_inst.op_type;
-
       ac_int<32, false> num_outputs =
           output_inst.inst_loop_count * instruction_config.config_loop_count;
+
       if (op_type == VectorInstructions::vector) {
         num_outputs = num_outputs / (mu_width / vec_unit_width);
       } else if (op_type == VectorInstructions::accumulation) {
         num_outputs = num_outputs / (mu_width / vec_accum_width);
-      } else if (op_type == VectorInstructions::reduction) {
+      } else if (op_type == VectorInstructions::reduction &&
+                 !output_inst.rduplicate) {
         num_outputs = num_outputs / (mu_width / vec_reducer_width);
       }
 
-#if VECTOR_UNIT_WIDTH != OC_DIMENSION
-      if (op_type != VectorInstructions::reduction || !output_inst.rduplicate) {
-        constexpr int factor = mu_width / vec_unit_width;
-        num_outputs = num_outputs / factor;
-      }
-#endif
-
-#if SUPPORT_CODEBOOK_QUANT
-      VectorType midpoints[NUM_CODEBOOK_ENTRIES];
-      if (params.use_output_codebook) {
-#pragma hls_unroll yes
-        for (int i = 1; i < NUM_CODEBOOK_ENTRIES; i++) {
-          midpoints[i] =
-              typename VectorType::ac_float_rep(params.output_code[i - 1]);
-          midpoints[i].adjust_exponent(-1);
-        }
-      }
-#endif
-
 #pragma hls_pipeline_init_interval 1
-#pragma hls_pipeline_stall_mode bubble
+#pragma hls_pipeline_stall_mode flush
       for (ac_int<32, false> count = 0;; count++) {
         auto outputs = Pack1D<VectorType, vec_unit_width>::zero();
 
@@ -445,15 +425,7 @@ SC_MODULE(VectorUnit) {
         } else if (op_type == VectorInstructions::reduction) {
           outputs = reducer_to_memory_w.Pop();
         }
-#if SUPPORT_CODEBOOK_QUANT
-        if (params.use_output_codebook) {
-#pragma hls_unroll yes
-          for (int i = 0; i < vec_unit_width; i++) {
-            auto index = find_codebook_index(outputs[i], midpoints);
-            outputs[i].set_bits(index);
-          }
-        }
-#endif
+
         vector_unit_output.Push(outputs);
 
         if (count == num_outputs - 1) break;

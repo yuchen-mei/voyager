@@ -151,7 +151,7 @@ SC_MODULE(OutputController) {
 
         bool found = (send_output_data<OutputTypes, width, VectorType,
                                        OC_PORT_WIDTH, OutputTypes...>(
-                          params.output_dtype, params.use_output_codebook,
+                          params.output_dtype, params.is_codebook_quantization,
                           outputs, vector_output_data) ||
                       ...);
 #ifndef __SYNTHESIS__

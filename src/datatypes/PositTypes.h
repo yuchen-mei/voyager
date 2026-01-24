@@ -150,6 +150,12 @@ class Posit {
   ac_int<nbits, false> bits_rep() { return bits; }
   void set_bits(int i) { bits = i; }
 
+  static Posit from_bits(int i) {
+    Posit r;
+    r.bits = i;
+    return r;
+  }
+
   static Posit zero() {
     Posit<nbits, es> r;
     r.bits = 0;

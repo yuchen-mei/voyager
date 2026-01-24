@@ -179,18 +179,6 @@ void map_softmax(const codegen::Operation& param,
   vector_instruction_config->num_inst = 2;
   vector_instruction_config->config_loop_count = 1;
 
-  // Copy coefficients from ApproximationConstants.h
-  for (int i = 0; i < NUM_MAXES; i++) {
-    vector_instruction_config->approx.maxes[i] = EXP_MAXES[i];
-  }
-  for (int i = 0; i < NUM_RANGES; i++) {
-    for (int j = 0; j < NUM_COEFFS; j++) {
-      vector_instruction_config->approx.ranges[i][j] = EXP_RANGES[i][j];
-    }
-  }
-  vector_instruction_config->approx.clamp_min = EXP_CLAMP_MIN;
-  vector_instruction_config->approx.clamp_max = EXP_CLAMP_MAX;
-
   mapped_params.push_back(vector_params);
   mapped_params.push_back(vector_instruction_config);
 
@@ -276,25 +264,11 @@ void map_softmax(const codegen::Operation& param,
   inst4.vector_op2 = VectorInstructions::op2_mul;
   inst4.vdest = VectorInstructions::to_output;
   set_dequantize_scale(input, inst4);
-
   set_quantize_params(param, vector_params, inst4, vector_instruction_config);
-
   vector_instruction_config->inst[0] = inst4;
 
   vector_instruction_config->num_inst = 1;
   vector_instruction_config->config_loop_count = 1;
-
-  // Copy coefficients from ApproximationConstants.h
-  for (int i = 0; i < NUM_MAXES; i++) {
-    vector_instruction_config->approx.maxes[i] = EXP_MAXES[i];
-  }
-  for (int i = 0; i < NUM_RANGES; i++) {
-    for (int j = 0; j < NUM_COEFFS; j++) {
-      vector_instruction_config->approx.ranges[i][j] = EXP_RANGES[i][j];
-    }
-  }
-  vector_instruction_config->approx.clamp_min = EXP_CLAMP_MIN;
-  vector_instruction_config->approx.clamp_max = EXP_CLAMP_MAX;
 
   mapped_params.push_back(vector_params);
   mapped_params.push_back(vector_instruction_config);
