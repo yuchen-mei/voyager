@@ -453,7 +453,7 @@ Pack1D<T, width> vcodebook_quantize(const Pack1D<T, width> op0,
   Pack1D<T, width> outputs;
 #pragma hls_unroll yes
   for (int i = 0; i < width; i++) {
-    auto index = find_codebook_index(outputs[i], midpoints);
+    auto index = find_codebook_index(op0[i], midpoints);
     outputs[i].set_bits(index);
   }
   return outputs;

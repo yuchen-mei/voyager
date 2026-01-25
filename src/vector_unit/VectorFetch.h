@@ -45,6 +45,8 @@ SC_MODULE(VectorFetchUnit) {
       vector_fetch_1_resp);
   Connections::Combinational<ac_int<MAX_RESPONSE_WIDTH, false>> CCS_INIT_S1(
       vector_fetch_1_packed_bits);
+  Connections::Combinational<Pack1D<VectorType, BUFSIZE>> CCS_INIT_S1(
+      vector_fetch_1_packed_data);
   Connections::Out<Pack1D<VectorType, width>> CCS_INIT_S1(vector_fetch_1_data);
   sc_fifo<bool> vector_fetch_1_packer_done;
   sc_fifo<bool> vector_fetch_1_data_done;
@@ -349,6 +351,7 @@ SC_MODULE(VectorFetchUnit) {
     vector_fetch_0_packer_params.ResetRead();
     vector_fetch_0_resp.Reset();
     vector_fetch_0_packed_bits.ResetWrite();
+    vector_fetch_1_packed_data.ResetWrite();
 
     wait();
 
@@ -369,7 +372,26 @@ SC_MODULE(VectorFetchUnit) {
           if (i == params.vector_fetch_0_num_beats - 1) break;
         }
 
-        vector_fetch_0_packed_bits.Push(packed_bits);
+        if (params.has_transpose) {
+          // For transpose mode, directly push packed bits
+          Pack1D<VectorType, BUFSIZE> outputs;
+          bool found =
+              (unpack_vector_data<InputTypes, VectorType, BUFSIZE,
+                                  MAX_RESPONSE_WIDTH, InputTypes...>(
+                   params.vector_fetch_0_dtype, packed_bits, outputs, 0) ||
+               ...);
+
+#ifndef __SYNTHESIS__
+          if (!found) {
+            std::cerr << "Error: vector fetch 0 input dtype '"
+                      << params.vector_fetch_0_dtype << "' is not valid.\n";
+          }
+#endif
+
+          vector_fetch_1_packed_data.Push(outputs);
+        } else {
+          vector_fetch_0_packed_bits.Push(packed_bits);
+        }
       }
     }
   }
@@ -377,6 +399,7 @@ SC_MODULE(VectorFetchUnit) {
   void feed_data_0() {
     vector_fetch_0_data_params.ResetRead();
     vector_fetch_0_packed_bits.ResetRead();
+    vector_fetch_1_packed_data.ResetRead();
     vector_fetch_0_data.Reset();
 
 #if DOUBLE_BUFFERED_ACCUM_BUFFER
@@ -392,27 +415,6 @@ SC_MODULE(VectorFetchUnit) {
     while (true) {
       VectorParams params = vector_fetch_0_data_params.Pop();
 
-      ac_int<LOOP_WIDTH, false> loop_counters[2][3];
-      ac_int<LOOP_WIDTH, false> loop_ends[2][3];
-
-#pragma hls_unroll yes
-      for (int i = 0; i < 2; i++) {
-#pragma hls_unroll yes
-        for (int j = 0; j < 3; j++) {
-          loop_ends[i][j] = params.vector_fetch_0_loops[i][j] - 1;
-        }
-      }
-
-      ac_int<LOOP_WIDTH, false> Y0 =
-          params.vector_fetch_0_loops[1][params.vector_fetch_0_y_loop_idx[1]] -
-          1;
-      ac_int<LOOP_WIDTH, false> X0 =
-          params.vector_fetch_0_loops[1][params.vector_fetch_0_x_loop_idx[1]] -
-          1;
-      ac_int<LOOP_WIDTH, false> K1 =
-          params.vector_fetch_0_loops[1][params.vector_fetch_0_k_loop_idx[1]] -
-          1;
-
       if (params.has_transpose) {
         VectorType buffer[BUFSIZE][mu_width];
 
@@ -420,43 +422,25 @@ SC_MODULE(VectorFetchUnit) {
         assert(params.vector_fetch_0_loops[1][2] == mu_width);
 #endif
 
-        ac_int<32, false> total_values = params.vector_fetch_0_loops[0][0] *
-                                         params.vector_fetch_0_loops[0][1] *
-                                         params.vector_fetch_0_loops[0][2] *
-                                         params.vector_fetch_0_loops[1][0] *
-                                         params.vector_fetch_0_loops[1][1];
-        ac_int<32, false> counter = 0;
+        ac_int<32, false> loop_bound = params.vector_fetch_0_loops[0][0] *
+                                       params.vector_fetch_0_loops[0][1] *
+                                       params.vector_fetch_0_loops[0][2] *
+                                       params.vector_fetch_0_loops[1][0] *
+                                       params.vector_fetch_0_loops[1][1];
 
-      TRANSPOSE_OUTER:
-        while (counter++ < total_values) {
+        for (ac_int<32, false> count = 0;; count++) {
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
-        TRANSPOSE_READ:
           for (int col = 0; col < mu_width; col++) {
-            auto bits = vector_fetch_0_packed_bits.Pop();
-
-            Pack1D<VectorType, BUFSIZE> outputs;
-            bool found = (unpack_vector_data<InputTypes, VectorType, BUFSIZE,
-                                             MAX_RESPONSE_WIDTH, InputTypes...>(
-                              params.vector_fetch_0_dtype, bits, outputs, 0) ||
-                          ...);
-
-#ifndef __SYNTHESIS__
-            if (!found) {
-              std::cerr << "Error: vector fetch 0 input dtype '"
-                        << params.vector_fetch_0_dtype << "' is not valid.\n";
-            }
-#endif
-
+            auto data = vector_fetch_1_packed_data.Pop();
 #pragma hls_unroll yes
             for (int row = 0; row < BUFSIZE; row++) {
-              buffer[row][col] = outputs[row];
+              buffer[row][col] = data[row];
             }
           }
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
-        TRANSPOSE_WRITE:
           for (int row = 0; row < BUFSIZE; row++) {
             Pack1D<VectorType, mu_width> transposed;
 #pragma hls_unroll yes
@@ -473,56 +457,10 @@ SC_MODULE(VectorFetchUnit) {
               vector_fetch_0_data.Push(unpacked);
             }
           }
+
+          if (count == loop_bound - 1) break;
         }
-      }
-#if DOUBLE_BUFFERED_ACCUM_BUFFER
-      else if (params.vector_fetch_0_mode == 3) {
-#pragma hls_pipeline_init_interval 1
-#pragma hls_pipeline_stall_mode flush
-        for (loop_counters[0][0] = 0;; loop_counters[0][0]++) {
-          for (loop_counters[0][1] = 0;; loop_counters[0][1]++) {
-            for (loop_counters[0][2] = 0;; loop_counters[0][2]++) {
-              for (loop_counters[1][0] = 0;; loop_counters[1][0]++) {
-                for (loop_counters[1][1] = 0;; loop_counters[1][1]++) {
-                  for (loop_counters[1][2] = 0;; loop_counters[1][2]++) {
-                    auto read_data =
-                        accumulation_buffer_read_data[accumulation_buffer_bank]
-                            .Pop();
-                    for (int i = 0; i < mu_width / width; i++) {
-                      Pack1D<BufferType, width> output_data;
-#pragma hls_unroll yes
-                      for (int j = 0; j < width; j++) {
-                        output_data[j] = read_data[i * width + j];
-                      }
-                      accumulation_buffer_output.Push(output_data);
-                    }
-
-                    ac_int<LOOP_WIDTH, false> x0 =
-                        loop_counters[1][params.vector_fetch_0_x_loop_idx[1]];
-                    ac_int<LOOP_WIDTH, false> y0 =
-                        loop_counters[1][params.vector_fetch_0_y_loop_idx[1]];
-                    ac_int<LOOP_WIDTH, false> k1 =
-                        loop_counters[1][params.vector_fetch_0_k_loop_idx[1]];
-
-                    if (k1 == K1 && y0 == Y0 && x0 == X0) {
-                      accumulation_buffer_bank = !accumulation_buffer_bank;
-                    }
-
-                    if (loop_counters[1][2] == loop_ends[1][2]) break;
-                  }
-                  if (loop_counters[1][1] == loop_ends[1][1]) break;
-                }
-                if (loop_counters[1][0] == loop_ends[1][0]) break;
-              }
-              if (loop_counters[0][2] == loop_ends[0][2]) break;
-            }
-            if (loop_counters[0][1] == loop_ends[0][1]) break;
-          }
-          if (loop_counters[0][0] == loop_ends[0][0]) break;
-        }
-      }
-#endif
-      else {
+      } else if (params.vector_fetch_0_mode != 3) {
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
         while (true) {
@@ -559,6 +497,70 @@ SC_MODULE(VectorFetchUnit) {
           }
         }
       }
+#if DOUBLE_BUFFERED_ACCUM_BUFFER
+      else {
+        ac_int<LOOP_WIDTH, false> loop_counters[2][3];
+        ac_int<LOOP_WIDTH, false> loop_ends[2][3];
+
+#pragma hls_unroll yes
+        for (int i = 0; i < 2; i++) {
+#pragma hls_unroll yes
+          for (int j = 0; j < 3; j++) {
+            loop_ends[i][j] = params.vector_fetch_0_loops[i][j] - 1;
+          }
+        }
+
+        ac_int<LOOP_WIDTH, false> y0_max =
+            loop_ends[1][params.vector_fetch_0_y_loop_idx[1]];
+        ac_int<LOOP_WIDTH, false> x0_max =
+            loop_ends[1][params.vector_fetch_0_x_loop_idx[1]];
+        ac_int<LOOP_WIDTH, false> k1_max =
+            loop_ends[1][params.vector_fetch_0_k_loop_idx[1]];
+
+#pragma hls_pipeline_init_interval 1
+#pragma hls_pipeline_stall_mode flush
+        for (loop_counters[0][0] = 0;; loop_counters[0][0]++) {
+          for (loop_counters[0][1] = 0;; loop_counters[0][1]++) {
+            for (loop_counters[0][2] = 0;; loop_counters[0][2]++) {
+              for (loop_counters[1][0] = 0;; loop_counters[1][0]++) {
+                for (loop_counters[1][1] = 0;; loop_counters[1][1]++) {
+                  for (loop_counters[1][2] = 0;; loop_counters[1][2]++) {
+                    auto read_data =
+                        accumulation_buffer_read_data[accumulation_buffer_bank]
+                            .Pop();
+                    for (int i = 0; i < mu_width / width; i++) {
+                      Pack1D<BufferType, width> output_data;
+#pragma hls_unroll yes
+                      for (int j = 0; j < width; j++) {
+                        output_data[j] = read_data[i * width + j];
+                      }
+                      accumulation_buffer_output.Push(output_data);
+                    }
+
+                    ac_int<LOOP_WIDTH, false> x0 =
+                        loop_counters[1][params.vector_fetch_0_x_loop_idx[1]];
+                    ac_int<LOOP_WIDTH, false> y0 =
+                        loop_counters[1][params.vector_fetch_0_y_loop_idx[1]];
+                    ac_int<LOOP_WIDTH, false> k1 =
+                        loop_counters[1][params.vector_fetch_0_k_loop_idx[1]];
+
+                    if (k1 == k1_max && y0 == y0_max && x0 == x0_max) {
+                      accumulation_buffer_bank = !accumulation_buffer_bank;
+                    }
+                    if (loop_counters[1][2] == loop_ends[1][2]) break;
+                  }
+                  if (loop_counters[1][1] == loop_ends[1][1]) break;
+                }
+                if (loop_counters[1][0] == loop_ends[1][0]) break;
+              }
+              if (loop_counters[0][2] == loop_ends[0][2]) break;
+            }
+            if (loop_counters[0][1] == loop_ends[0][1]) break;
+          }
+          if (loop_counters[0][0] == loop_ends[0][0]) break;
+        }
+      }
+#endif
     }
   }
 

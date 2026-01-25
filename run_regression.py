@@ -593,6 +593,8 @@ def run_accuracy(model, dataset, num_processes, output_folder):
             "--weight",
             "int8,qs=microscaling,bs=" + str(block_size),
             "--bf16",
+            "--calibration_steps",
+            "10",
         ]
     elif env_vars["DATATYPE"] == "MXNF4":
         quantization_args = [
