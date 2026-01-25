@@ -621,7 +621,7 @@ def run_accuracy(model, dataset, num_processes, output_folder):
                 model,
                 "--model_name_or_path",
                 model_path,
-                "--transpose_weight",
+                "--transform_layout",
                 "--hardware_unrolling",
                 f"{ic_unroll},{oc_unroll}",
                 *quantization_args,
