@@ -387,6 +387,89 @@ void set_dequantize_scale(const codegen::Tensor& tensor,
   }
 }
 
+void set_codebook_config(const codegen::OpOverload& op,
+                         VectorParams* vector_params,
+                         VectorInstructionConfig* vector_instruction_config) {
+  const auto kwargs = op.kwargs();
+
+  if (!kwargs.contains("output_code")) {
+    return;
+  }
+
+  const auto code = kwargs.at("output_code").tensor();
+  const int size = get_size(code);
+
+  float* array = read_constant_param(code);
+
+  auto& config = vector_instruction_config->codebook_config;
+
+  config.enable = true;
+  for (int i = 0; i < size; i++) {
+    config.output_code[i] = array[i];
+  }
+
+  vector_params->is_codebook_quantization = true;
+
+  delete[] array;
+}
+
+void set_quantize_mx_params(
+    const codegen::Operation& param, VectorParams* vector_params,
+    VectorInstructions& inst,
+    VectorInstructionConfig* vector_instruction_config) {
+  const auto op_list = get_op_list(param);
+  const auto op = op_list.back();
+  const auto kwargs = op.kwargs();
+  const std::string opcode = op.target();
+
+  if (opcode != "quantize_mx" && opcode != "quantize_mx_outlier") {
+    return;
+  }
+
+  int block_size = kwargs.at("block_size").int_value();
+  float quant_max = kwargs.at("quant_max").float_value();
+  bool force_scale_power_of_two =
+      kwargs.at("force_scale_power_of_two").bool_value();
+
+  assert(block_size == IC_DIMENSION);
+
+  inst.vector_op3 = VectorInstructions::op3_quantize_mx;
+
+  if (force_scale_power_of_two) {
+    inst.immediate2 = floor(log2(quant_max));
+  } else {
+    VECTOR_DATATYPE scale = quant_max;
+    inst.immediate2 = scale.bits_rep();
+  }
+
+  const auto outputs = get_op_outputs(param);
+  const int num_outputs = outputs.size();
+
+  vector_params->quantize_output_mx = true;
+  vector_params->mx_scale_offset = get_address(outputs[num_outputs - 2]);
+
+  if (opcode == "quantize_mx_outlier") {
+    inst.vector_op3 = VectorInstructions::op3_quantize_mx_outlier;
+    vector_params->has_sparse_output = true;
+    vector_params->csr_data_offset = get_address(outputs[0]);
+    vector_params->csr_indices_offset = get_address(outputs[1]);
+    vector_params->csr_indptr_offset = get_address(outputs[2]);
+
+    auto& config = vector_instruction_config->outlier_filter;
+
+    VECTOR_DATATYPE threshold = kwargs.at("threshold").float_value();
+    config.outlier_threshold = threshold.bits_rep();
+
+    const auto quantize_input = kwargs.at("input").tensor();
+    const auto quantize_shape = get_shape(quantize_input);
+    config.dense_input_shape[1] = quantize_shape.back() / VECTOR_UNIT_WIDTH;
+    config.dense_input_shape[0] =
+        get_size(quantize_input) / quantize_shape.back();
+  }
+
+  set_codebook_config(op, vector_params, vector_instruction_config);
+}
+
 void set_quantize_params(const codegen::Operation& param,
                          VectorParams* vector_params, VectorInstructions& inst,
                          VectorInstructionConfig* vector_instruction_config) {
@@ -409,64 +492,8 @@ void set_quantize_params(const codegen::Operation& param,
 
     delete[] array;
   } else if (opcode == "quantize_mx" || opcode == "quantize_mx_outlier") {
-    int block_size = kwargs.at("block_size").int_value();
-    float quant_max = kwargs.at("quant_max").float_value();
-    bool force_scale_power_of_two =
-        kwargs.at("force_scale_power_of_two").bool_value();
-
-    assert(block_size == IC_DIMENSION);
-
-    inst.vector_op3 = VectorInstructions::op3_quantize_mx;
-
-    if (force_scale_power_of_two) {
-      inst.immediate2 = floor(log2(quant_max));
-    } else {
-      VECTOR_DATATYPE scale = quant_max;
-      inst.immediate2 = scale.bits_rep();
-    }
-
-    const auto outputs = get_op_outputs(param);
-    const int num_outputs = outputs.size();
-
-    vector_params->quantize_output_mx = true;
-    vector_params->mx_scale_offset = get_address(outputs[num_outputs - 2]);
-
-    if (opcode == "quantize_mx_outlier") {
-      inst.vector_op3 = VectorInstructions::op3_quantize_mx_outlier;
-      vector_params->has_sparse_output = true;
-      vector_params->csr_data_offset = get_address(outputs[0]);
-      vector_params->csr_indices_offset = get_address(outputs[1]);
-      vector_params->csr_indptr_offset = get_address(outputs[2]);
-
-      auto& config = vector_instruction_config->outlier_filter;
-
-      VECTOR_DATATYPE threshold = kwargs.at("threshold").float_value();
-      config.outlier_threshold = threshold.bits_rep();
-
-      const auto quantize_input = kwargs.at("input").tensor();
-      const auto quantize_shape = get_shape(quantize_input);
-      config.dense_input_shape[1] = quantize_shape.back() / VECTOR_UNIT_WIDTH;
-      config.dense_input_shape[0] =
-          get_size(quantize_input) / quantize_shape.back();
-    }
-
-    if (kwargs.contains("output_code")) {
-      const auto code = kwargs.at("output_code").tensor();
-      const int size = get_size(code);
-
-      float* array = read_constant_param(code);
-
-      auto& codebook_cfg = vector_instruction_config->codebook_config;
-
-      codebook_cfg.enable = true;
-      for (int i = 0; i < size; i++) {
-        codebook_cfg.output_code[i] = array[i] * 2;
-      }
-
-      vector_params->is_codebook_quantization = true;
-
-      delete[] array;
-    }
+    set_quantize_mx_params(param, vector_params, inst,
+                           vector_instruction_config);
   }
 }
 

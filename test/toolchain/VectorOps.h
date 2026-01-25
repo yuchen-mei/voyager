@@ -543,40 +543,8 @@ void map_vector_operations(const codegen::Operation& param,
       inst.vector_op0_src0 = VectorInstructions::from_immediate_0;
       inst.vector_op0_src1 = VectorInstructions::from_vector_fetch_0;
     } else if (opcode == "quantize_mx" || opcode == "quantize_mx_outlier") {
-      float quant_max = op.kwargs().at("quant_max").float_value();
-      bool force_scale_power_of_two =
-          op.kwargs().at("force_scale_power_of_two").bool_value();
-
-      if (force_scale_power_of_two) {
-        inst.immediate2 = floor(log2(quant_max));
-      } else {
-        VECTOR_DATATYPE scale = quant_max;
-        inst.immediate2 = scale.bits_rep();
-      }
-
-      const auto outputs = get_op_outputs(param);
-      const int num_outputs = outputs.size();
-
-      vector_params->quantize_output_mx = true;
-      vector_params->mx_scale_offset = get_address(outputs[num_outputs - 2]);
-
-      if (opcode == "quantize_mx_outlier") {
-        vector_params->has_sparse_output = true;
-        vector_params->csr_data_offset = get_address(outputs[0]);
-        vector_params->csr_indices_offset = get_address(outputs[1]);
-        vector_params->csr_indptr_offset = get_address(outputs[2]);
-
-        auto& config = vector_instruction_config->outlier_filter;
-
-        VECTOR_DATATYPE threshold = op.kwargs().at("threshold").float_value();
-        config.outlier_threshold = threshold.bits_rep();
-
-        const auto quantize_input = op.kwargs().at("input").tensor();
-        const auto quantize_shape = get_shape(quantize_input);
-        config.dense_input_shape[1] = quantize_shape.back() / VECTOR_UNIT_WIDTH;
-        config.dense_input_shape[0] =
-            get_size(quantize_input) / quantize_shape.back();
-      }
+      set_quantize_mx_params(param, vector_params, inst,
+                             vector_instruction_config);
     } else if (op.kwargs().contains("other") || opcode == "quantize") {
       std::string other_key = opcode == "quantize" ? "scale" : "other";
       const auto other = op.kwargs().at(other_key);
@@ -641,24 +609,9 @@ void map_vector_operations(const codegen::Operation& param,
       }
     }
 
-    // For both quantize and quantize_mx, set output codebook if provided
-    if (op.kwargs().contains("output_code")) {
-      const auto code = op.kwargs().at("output_code").tensor();
-      const int size = get_size(code);
-
-      float* array = read_constant_param(code);
-
-      auto& codebook_cfg = vector_instruction_config->codebook_config;
-
-      codebook_cfg.enable = true;
-      for (int i = 0; i < size; i++) {
-        codebook_cfg.output_code[i] = array[i] * 2;
-      }
-
-      vector_params->is_codebook_quantization = true;
-
-      delete[] array;
-    }
+    // We also need to set the codebook config in case quantizing a tensor
+    // using pre-computed scales
+    set_codebook_config(op, vector_params, vector_instruction_config);
 
     stage++;
   }

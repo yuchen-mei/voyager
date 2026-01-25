@@ -184,15 +184,15 @@ SC_MODULE(VectorPipeline) {
       for (decltype(inst.inst_loop_count) i = 0;; i++) {
         VectorPack op0_src0, op0_src1, op2_src1, op3_src1;
 
-        Pack1D<BufferType, vu_width> raw_dq_input;
-        bool dq_active = false;
-        bool dq_is_src0 = false;
+        Pack1D<BufferType, vu_width> raw_input;
+        bool input_valid = false;
+        bool input_is_src0 = false;
 
         if (inst.vector_op0_src0 == VectorInstructions::from_matrix_unit ||
             inst.vector_op0_src1 == VectorInstructions::from_matrix_unit) {
-          raw_dq_input = matrix_unit_output.Pop();
-          dq_active = true;
-          dq_is_src0 =
+          raw_input = matrix_unit_output.Pop();
+          input_valid = true;
+          input_is_src0 =
               (inst.vector_op0_src0 == VectorInstructions::from_matrix_unit);
         }
 #if DOUBLE_BUFFERED_ACCUM_BUFFER
@@ -200,9 +200,9 @@ SC_MODULE(VectorPipeline) {
                      VectorInstructions::from_accum_buffer ||
                  inst.vector_op0_src1 ==
                      VectorInstructions::from_accum_buffer) {
-          raw_dq_input = accumulation_buffer_output.Pop();
-          dq_active = true;
-          dq_is_src0 =
+          raw_input = accumulation_buffer_output.Pop();
+          input_valid = true;
+          input_is_src0 =
               (inst.vector_op0_src0 == VectorInstructions::from_accum_buffer);
         }
 #endif
@@ -211,32 +211,32 @@ SC_MODULE(VectorPipeline) {
                      VectorInstructions::from_matrix_vector_unit ||
                  inst.vector_op0_src1 ==
                      VectorInstructions::from_matrix_vector_unit) {
-          raw_dq_input = matrix_vector_unit_output.Pop();
-          dq_active = true;
-          dq_is_src0 = (inst.vector_op0_src0 ==
-                        VectorInstructions::from_matrix_vector_unit);
+          raw_input = matrix_vector_unit_output.Pop();
+          input_valid = true;
+          input_is_src0 = (inst.vector_op0_src0 ==
+                           VectorInstructions::from_matrix_vector_unit);
         }
 #endif
 #if SUPPORT_DWC
         else if (inst.vector_op0_src0 == VectorInstructions::from_dwc_unit ||
                  inst.vector_op0_src1 == VectorInstructions::from_dwc_unit) {
-          raw_dq_input = dwc_unit_in.Pop();
-          dq_active = true;
-          dq_is_src0 =
+          raw_input = dwc_unit_in.Pop();
+          input_valid = true;
+          input_is_src0 =
               (inst.vector_op0_src0 == VectorInstructions::from_dwc_unit);
         }
 #endif
-        if (dq_active) {
-          VectorPack processed_dq;
+        if (input_valid) {
+          VectorPack casted;
 #pragma hls_unroll yes
           for (int i = 0; i < vu_width; i++) {
-            processed_dq[i] = raw_dq_input[i];
+            casted[i] = raw_input[i];
           }
 
-          if (dq_is_src0) {
-            op0_src0 = processed_dq;
+          if (input_is_src0) {
+            op0_src0 = casted;
           } else {
-            op0_src1 = processed_dq;
+            op0_src1 = casted;
           }
         }
 #if SUPPORT_SPMM
@@ -310,16 +310,13 @@ SC_MODULE(VectorPipeline) {
 
         if (inst.vector_op0_src0 == VectorInstructions::from_immediate_0 ||
             inst.vector_op0_src1 == VectorInstructions::from_immediate_0) {
-          VectorPack temp;
-#pragma hls_unroll yes
-          for (int i = 0; i < vu_width; i++) {
-            temp[i].set_bits(inst.immediate0);
-          }
+          VectorType value = VectorType::from_bits(inst.immediate0);
+          VectorPack immediate_vec = VectorPack::fill(value);
 
           if (inst.vector_op0_src0 == VectorInstructions::from_immediate_0) {
-            op0_src0 = temp;
+            op0_src0 = immediate_vec;
           } else {
-            op0_src1 = temp;
+            op0_src1 = immediate_vec;
           }
         }
 
@@ -359,8 +356,12 @@ SC_MODULE(VectorPipeline) {
     while (1) {
       VectorInstructions inst = stage_0_inst.Pop();
       auto op0 = inst.vector_op0;
+
       bool is_poly = (op0 == VectorInstructions::op0_poly);
       bool is_mac = (op0 == VectorInstructions::op0_mac);
+      bool is_sub = (op0 == VectorInstructions::op0_sub);
+      bool chain_mul = is_poly || is_mac;
+
       VectorType immediate = VectorType::from_bits(inst.immediate0);
 
 #pragma hls_pipeline_init_interval 1
@@ -369,30 +370,26 @@ SC_MODULE(VectorPipeline) {
         auto payloads = stage_0_input.Pop();
         auto op0_src0 = payloads[0];
         auto op0_src1 = payloads[1];
+        auto op0_src2 = payloads[2];
 
-        if (op0 == VectorInstructions::op0_sub) {
-#pragma hls_unroll yes
-          for (int i = 0; i < vu_width; i++) {
-            op0_src1[i] = op0_src1[i].negate();
-          }
-        }
-
-        // op0_mac: op0_src0 + op0_src1 * immediate0
-        // op0_vpoly: op0_src0 * op0_src1 + op2_src1
+        // poly: op0_src2 + op0_src0 * op0_src1
+        // mac: op0_src0 + immediate * op0_src1
+        // add or mul: op0_src0 +/* op0_src1
 
         VectorPack mul_lhs = is_mac ? VectorPack::fill(immediate) : op0_src0;
         VectorPack mul_rhs = op0_src1;
         VectorPack mul_result = vmul<VectorType, vu_width>(mul_lhs, mul_rhs);
 
-        VectorPack add_lhs = is_poly ? mul_result : op0_src0;
+        VectorPack op0_src1_neg = vneg<VectorType, vu_width>(op0_src1);
+
+        VectorPack add_lhs = is_poly ? op0_src2 : op0_src0;
         VectorPack add_rhs =
-            is_poly ? payloads[2] : (is_mac ? mul_result : op0_src1);
+            chain_mul ? mul_result : (is_sub ? op0_src1_neg : op0_src1);
         VectorPack add_result = vadd<VectorType, vu_width>(add_lhs, add_rhs);
 
         // Stage 0: add, sub, mult
         VectorPack stage0_output;
-        if (op0 == VectorInstructions::op0_add ||
-            op0 == VectorInstructions::op0_sub || is_poly || is_mac) {
+        if (op0 == VectorInstructions::op0_add || is_sub || is_poly || is_mac) {
           stage0_output = add_result;
         } else if (op0 == VectorInstructions::op0_mul) {
           stage0_output = mul_result;
@@ -401,7 +398,7 @@ SC_MODULE(VectorPipeline) {
         }
 
         // For polynomial ops, inputs need to be multiplied again
-        VectorPack payload2 = is_poly ? op0_src0 : payloads[2];
+        VectorPack payload2 = is_poly ? op0_src0 : op0_src2;
 
         auto payloads_next = Pack1D<VectorPack, 3>::create(
             {stage0_output, payload2, payloads[3]});
@@ -486,43 +483,44 @@ SC_MODULE(VectorPipeline) {
       auto op2 = inst.vector_op2;
       auto op3 = inst.vector_op3;
       auto vdest = inst.vdest;
+
       bool is_poly = (op2 == VectorInstructions::op2_poly);
       bool is_mac = (op2 == VectorInstructions::op2_mac);
+      bool is_sqr = (op2 == VectorInstructions::op2_sqr);
+      bool chain_mul = is_poly || is_mac;
+
+      bool use_immediate =
+          (inst.vector_op2_src1 == VectorInstructions::from_immediate_1);
+
       VectorType immediate = VectorType::from_bits(inst.immediate1);
+      VectorPack immediate_vec = VectorPack::fill(immediate);
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
       for (decltype(inst.inst_loop_count) i = 0;; i++) {
         auto payloads = stage_2_input.Pop();
         auto op2_src0 = payloads[0];
-        auto op2_src1 = payloads[1];
+        auto op2_src1 = use_immediate ? immediate_vec : payloads[1];
+        auto op2_src2 = payloads[2];
 
-        if (op2 == VectorInstructions::op2_sqr) {
-          op2_src1 = op2_src0;
-        }
+        // poly: op2_src2 + op2_src0 * op2_src1
+        // mac: op2_src0 + immediate * op2_src1
+        // sqr: op2_src0 * op2_src0
+        // add or mul: op2_src0 +/* op2_src1
 
-        if (inst.vector_op2_src1 == VectorInstructions::from_immediate_1) {
-#pragma hls_unroll yes
-          for (int i = 0; i < vu_width; i++) {
-            op2_src1[i].set_bits(inst.immediate1);
-          }
-        }
-
-        VectorPack mul_lhs = is_mac ? VectorPack::fill(immediate) : op2_src0;
-        VectorPack mul_rhs = op2_src1;
+        VectorPack mul_lhs = is_mac ? immediate_vec : op2_src0;
+        VectorPack mul_rhs = is_sqr ? op2_src0 : op2_src1;
         VectorPack mul_result = vmul<VectorType, vu_width>(mul_lhs, mul_rhs);
 
-        VectorPack add_lhs = is_poly ? mul_result : op2_src0;
-        VectorPack add_rhs =
-            is_poly ? payloads[2] : (is_mac ? mul_result : op2_src1);
+        VectorPack add_lhs = is_poly ? op2_src2 : op2_src0;
+        VectorPack add_rhs = chain_mul ? mul_result : op2_src1;
         VectorPack add_result = vadd<VectorType, vu_width>(add_lhs, add_rhs);
 
         // Stage 2: add, mult, square
         VectorPack stage2_output;
         if (op2 == VectorInstructions::op2_add || is_poly || is_mac) {
           stage2_output = add_result;
-        } else if (op2 == VectorInstructions::op2_mul ||
-                   op2 == VectorInstructions::op2_sqr) {
+        } else if (op2 == VectorInstructions::op2_mul || is_sqr) {
           stage2_output = mul_result;
         } else {
           stage2_output = op2_src0;
@@ -531,7 +529,7 @@ SC_MODULE(VectorPipeline) {
         // Write outputs
         if (vdest == VectorInstructions::to_output) {
           auto payloads_next =
-              Pack1D<VectorPack, 2>::create({stage2_output, payloads[2]});
+              Pack1D<VectorPack, 2>::create({stage2_output, op2_src2});
 #if SUPPORT_SPMM
           if (op3 == VectorInstructions::op3_quantize_mx_outlier) {
             outlier_filter_input.Push(stage2_output);
@@ -631,71 +629,57 @@ SC_MODULE(VectorPipeline) {
       bool is_mx_op = (op3 == VectorInstructions::op3_quantize_mx ||
                        op3 == VectorInstructions::op3_quantize_mx_outlier);
 
+      bool use_immediate =
+          (inst.vector_op3_src1 == VectorInstructions::from_immediate_2);
+
+      VectorType immediate = VectorType::from_bits(inst.immediate2);
+      VectorPack immediate_vec = VectorPack::fill(immediate);
+
 #if MX_SPLIT_MODE
       constexpr int ratio = mu_width / vu_width;
-      ScaleType scale;
+      VectorType current_mx_scale;
 #endif
 
       auto codebook_cfg = codebook_config.Pop();
-
-#if SUPPORT_CODEBOOK_QUANT
-      VectorType midpoints[NUM_CODEBOOK_ENTRIES];
-      if (codebook_cfg.enable) {
-#pragma hls_unroll yes
-        for (int i = 1; i < NUM_CODEBOOK_ENTRIES; i++) {
-          midpoints[i] = typename VectorType::ac_float_rep(
-              codebook_cfg.output_code[i - 1]);
-          midpoints[i].adjust_exponent(-1);
-        }
-      }
-#endif
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
       for (decltype(inst.inst_loop_count) i = 0;; i++) {
         auto payloads = stage_3_input.Pop();
         auto op3_src0 = payloads[0];
-        auto op3_src1 = payloads[1];
-
-        if (inst.vector_op3_src1 == VectorInstructions::from_immediate_2) {
-#pragma hls_unroll yes
-          for (int i = 0; i < vu_width; i++) {
-            op3_src1[i].set_bits(inst.immediate2);
-          }
-        }
+        auto op3_src1 = use_immediate ? immediate_vec : payloads[1];
 
 #if SUPPORT_MX
         if (is_mx_op) {
 #if MX_SPLIT_MODE
           if (i % ratio == 0) {
             VectorType amax = stage_3_amax.Pop();
-            scale = calculate_mx_scale<VectorType, ScaleType>(amax, qparam);
+            auto [float_scale, scale] =
+                calculate_mx_scale<VectorType, ScaleType>(amax, qparam);
             mx_scale.Push(scale);
+            current_mx_scale = float_scale;
           }
+          op3_src1 = VectorPack::fill(current_mx_scale);
 #else
-          ScaleType scale = calculate_mx_scale<VectorType, ScaleType, vu_width>(
-              op3_src0, qparam);
+          auto [float_scale, scale] =
+              calculate_mx_scale<VectorType, ScaleType, vu_width>(op3_src0,
+                                                                  qparam);
           mx_scale.Push(scale);
+          op3_src1 = VectorPack::fill(float_scale);
 #endif
-
-#pragma hls_unroll yes
-          for (int i = 0; i < vu_width; i++) {
-            op3_src1[i] = scale;
-          }
         }
 #endif
         if (op3 == VectorInstructions::op3_div || is_mx_op) {
           op3_src1 = vreciprocal<VectorType, vu_width>(op3_src1);
         }
 
-        // Stage 3: quantize
         VectorPack stage3_output;
         if (op3 != VectorInstructions::op3_nop) {
           stage3_output = vmul<VectorType, vu_width>(op3_src0, op3_src1);
 #if SUPPORT_CODEBOOK_QUANT
           if (codebook_cfg.enable) {
             stage3_output = vcodebook_quantize<VectorType, vu_width>(
-                stage3_output, midpoints);
+                stage3_output, codebook_cfg.output_code);
           }
 #endif
         } else {

@@ -1527,10 +1527,9 @@ struct CodebookQuantizationConfig {
   static const int num_entries = NUM_CODEBOOK_ENTRIES - 1;
 
   bool enable;
-  ac_int<MAX_DECODED_DTYPE_WIDTH + 1, true> output_code[num_entries];
+  VECTOR_DATATYPE output_code[num_entries];
 
-  static const unsigned int width =
-      1 + (num_entries) * (MAX_DECODED_DTYPE_WIDTH + 1);
+  static const unsigned int width = 1 + num_entries * VECTOR_DATATYPE::width;
 
 #ifndef NO_SYSC
   template <unsigned int Size>
@@ -1549,10 +1548,12 @@ struct CodebookQuantizationConfig {
 
   inline friend std::ostream& operator<<(
       std::ostream& os, const CodebookQuantizationConfig& config) {
+#ifndef __SYNTHESIS__
     os << "enable: " << config.enable << std::endl;
     for (int i = 0; i < CodebookQuantizationConfig::num_entries; i++) {
       os << "output_code[" << i << "]: " << config.output_code[i] << std::endl;
     }
+#endif
     return os;
   }
 
