@@ -147,8 +147,8 @@ struct MatrixParams : BaseParams {
   ac_int<4, false> weight_num_beats;
   ac_int<4, false> weight_pack_factor_lg2;
 
-  ac_int<DECODED_INPUT_DTYPE_WIDTH, false> input_code[NUM_CODEBOOK_ENTRIES];
-  ac_int<DECODED_WEIGHT_DTYPE_WIDTH, false> weight_code[NUM_CODEBOOK_ENTRIES];
+  ac_int<SA_INPUT_TYPE::width, false> input_code[NUM_CODEBOOK_ENTRIES];
+  ac_int<SA_WEIGHT_TYPE::width, false> weight_code[NUM_CODEBOOK_ENTRIES];
 
   ac_int<4, false> input_code_zero_idx;
 
@@ -188,9 +188,8 @@ struct MatrixParams : BaseParams {
       12 * 1 /* Bools */ + 32 /* input shapes */;
 
   static const unsigned int extra_width =
-      2 * DTYPE_INDEX_WIDTH + 36 +
-      NUM_CODEBOOK_ENTRIES * DECODED_INPUT_DTYPE_WIDTH +
-      NUM_CODEBOOK_ENTRIES * DECODED_WEIGHT_DTYPE_WIDTH + 4;
+      2 * DTYPE_INDEX_WIDTH + 36 + NUM_CODEBOOK_ENTRIES * SA_INPUT_TYPE::width +
+      NUM_CODEBOOK_ENTRIES * SA_WEIGHT_TYPE::width + 4;
 
 #if SUPPORT_SPMM
   static const unsigned int spmm_extra_width = 3 * ADDRESS_WIDTH + 1;
