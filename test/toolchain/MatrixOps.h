@@ -231,9 +231,9 @@ void map_matrix_operation(const Operation& operation,
   if (is_dwc) {
     dwc_params = new DwCParams;
 
-    const auto& kwargs = matrix_op.kwargs();
-    const auto& bias = kwargs.at("bias").tensor();
-    const auto& output = get_op_outputs(param).back();
+    const auto kwargs = matrix_op.kwargs();
+    const auto bias = kwargs.at("bias").tensor();
+    const auto output = get_op_outputs(param).back();
 
     dwc_params->input_offset = get_address(input);
     dwc_params->weight_offset = get_address(weight);
