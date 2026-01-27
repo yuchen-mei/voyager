@@ -22,7 +22,7 @@ ifeq ($(SOC_SIM),1)
 COMMON_FLAGS += --cache_size $(CACHE_SIZE) --num_banks $(NUM_BANKS)
 endif
 
-ifeq ($(IM2COL),1)
+ifeq ($(CONV2D_IM2COL),1)
 COMMON_FLAGS += --conv2d_im2col
 endif
 
