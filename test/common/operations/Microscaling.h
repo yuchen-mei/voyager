@@ -38,16 +38,16 @@ Vector* calculate_mx_qparam(std::any input_tensor, std::vector<int> shape,
   Vector* scales = new Vector[result_size];
 
   for (int i = 0; i < result_size; i++) {
-    Scale scale;
+    Vector scale;
     if (force_scale_power_of_two) {
       static const int emax = floor(log2(quant_max));
       int power_of_two = floor(log2(amax_arr[i])) - emax;
       scale = pow(2, power_of_two);
     } else {
-      scale = amax_arr[i] / Vector(quant_max);
+      scale = amax_arr[i] * Vector(quant_max).reciprocal();
     }
 
-    scales[i] = scale.is_zero() ? Scale::one() : scale;
+    scales[i] = scale.is_zero() ? Vector::one() : scale;
   }
 
   return scales;

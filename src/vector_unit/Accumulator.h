@@ -49,13 +49,11 @@ SC_MODULE(VectorAccumulator) {
 
     while (true) {
       VectorInstructions inst = instr.Pop();
-      decltype(inst.inst_loop_count) total_values = inst.inst_loop_count;
-      decltype(inst.inst_loop_count) counter = 0;
 
       if (inst.reduce_op == VectorInstructions::radd) {
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
-        while (counter++ < total_values) {
+        for (decltype(inst.inst_loop_count) count = 0;; count++) {
           Pack1D<T, width> acc_old[SUM_N];
 
 #pragma hls_unroll yes
@@ -86,7 +84,7 @@ SC_MODULE(VectorAccumulator) {
             for (int j = 0; j < SUM_N; j++) {
               col[j] = acc_old[j][i];
             }
-            outputs[i] = tree_sum(col);
+            outputs[i] = fused_add_tree(col);
           }
 
           if (inst.rdest == VectorInstructions::to_memory) {
@@ -94,11 +92,13 @@ SC_MODULE(VectorAccumulator) {
           } else {
             output_to_pipeline.Push(outputs);
           }
+
+          if (count == inst.inst_loop_count - 1) break;
         }
       } else if (inst.reduce_op == VectorInstructions::rmax) {
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
-        while (counter++ < total_values) {
+        for (decltype(inst.inst_loop_count) count = 0;; count++) {
           Pack1D<T, width> acc_old[MAX_N];
 
 #pragma hls_unroll yes
@@ -129,7 +129,7 @@ SC_MODULE(VectorAccumulator) {
             for (int j = 0; j < MAX_N; j++) {
               col[j] = acc_old[j][i];
             }
-            outputs[i] = tree_max(col);
+            outputs[i] = max_tree(col);
           }
 
           if (inst.rdest == VectorInstructions::to_memory) {
@@ -137,6 +137,8 @@ SC_MODULE(VectorAccumulator) {
           } else {
             output_to_pipeline.Push(outputs);
           }
+
+          if (count == inst.inst_loop_count - 1) break;
         }
       }
     }

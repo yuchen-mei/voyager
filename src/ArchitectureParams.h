@@ -139,9 +139,11 @@ using F9 = StdFloat<3, 5>;
 
 #define IC_PORT_WIDTH (IC_DIMENSION * 4)
 #define OC_PORT_WIDTH (OC_DIMENSION * 4)
-#define VECTOR_UNIT_WIDTH OC_DIMENSION
 #define MV_UNIT_WIDTH (OC_DIMENSION * 2)
 #define SPMM_UNIT_WIDTH OC_DIMENSION
+#define VECTOR_UNIT_WIDTH OC_DIMENSION
+#define REDUCER_WIDTH (OC_DIMENSION / 2)
+#define ACCUMULATOR_WIDTH (OC_DIMENSION / 2)
 
 #define SUPPORT_MX true
 #define SUPPORT_CODEBOOK_QUANT true
@@ -199,6 +201,14 @@ using F9 = StdFloat<3, 5>;
 #define VECTOR_UNIT_WIDTH OC_DIMENSION
 #endif
 
+#ifndef REDUCER_WIDTH
+#define REDUCER_WIDTH OC_DIMENSION
+#endif
+
+#ifndef ACCUMULATOR_WIDTH
+#define ACCUMULATOR_WIDTH OC_DIMENSION
+#endif
+
 // ================================================================
 // Default Datatypes
 // ================================================================
@@ -246,19 +256,6 @@ using F9 = StdFloat<3, 5>;
 #ifndef SUPPORT_CODEBOOK_QUANT
 #define SUPPORT_CODEBOOK_QUANT false
 #endif
-
-#ifndef DECODED_INPUT_DTYPE_WIDTH
-#define DECODED_INPUT_DTYPE_WIDTH SA_INPUT_TYPE::width
-#endif
-
-#ifndef DECODED_WEIGHT_DTYPE_WIDTH
-#define DECODED_WEIGHT_DTYPE_WIDTH SA_WEIGHT_TYPE::width
-#endif
-
-#define MAX_DECODED_DTYPE_WIDTH                           \
-  (DECODED_INPUT_DTYPE_WIDTH > DECODED_WEIGHT_DTYPE_WIDTH \
-       ? DECODED_INPUT_DTYPE_WIDTH                        \
-       : DECODED_WEIGHT_DTYPE_WIDTH)
 
 #ifndef NUM_CODEBOOK_ENTRIES
 #define NUM_CODEBOOK_ENTRIES 16

@@ -3,8 +3,6 @@
 #include <mc_connections.h>
 #include <systemc.h>
 
-#include "Repeater.h"
-
 template <typename T, int width>
 SC_MODULE(VectorReducer) {
   sc_in<bool> clk;
@@ -13,79 +11,46 @@ SC_MODULE(VectorReducer) {
   Connections::In<VectorInstructions> instr;
   Connections::In<Pack1D<T, width>> input;
 
-  Connections::Out<Pack1D<T, width>> output_to_stage0;
-  Connections::Out<Pack1D<T, width>> output_to_stage2;
+  Connections::Out<Pack1D<T, width>> output_to_pipeline;
   Connections::Out<Pack1D<T, width>> output_to_memory;
 
-  Repeater<Pack1D<T, width>> CCS_INIT_S1(repeater_0);
-  Connections::Combinational<ac_int<16, false>> repeat_count_0;
-  Connections::Combinational<Pack1D<T, width>> repeat_input_0;
-
-  Repeater<Pack1D<T, width>> CCS_INIT_S1(repeater_1);
-  Connections::Combinational<ac_int<16, false>> repeat_count_1;
-  Connections::Combinational<Pack1D<T, width>> repeat_input_1;
-
-#if VECTOR_UNIT_WIDTH != OC_DIMENSION
-  Repeater<Pack1D<T, width>> CCS_INIT_S1(repeater_2);
-  Connections::Combinational<ac_int<16, false>> repeat_count_2;
-  Connections::Combinational<Pack1D<T, width>> repeat_input_2;
-#endif
+  Connections::Combinational<VectorInstructions> repeat_inst;
+  Connections::Combinational<Pack1D<T, width>> repeat_data;
 
   static constexpr int N = 2;
   static constexpr int LAST = N - 1;
+  static constexpr int ratio = VECTOR_UNIT_WIDTH / REDUCER_WIDTH;
 
   static_assert(N > 0, "Pipeline size N must be greater than 0");
 
   SC_CTOR(VectorReducer) {
-    repeater_0.clk(clk);
-    repeater_0.rstn(rstn);
-    repeater_0.data_in(repeat_input_0);
-    repeater_0.count(repeat_count_0);
-    repeater_0.data_out(output_to_stage0);
-
-    repeater_1.clk(clk);
-    repeater_1.rstn(rstn);
-    repeater_1.data_in(repeat_input_1);
-    repeater_1.count(repeat_count_1);
-    repeater_1.data_out(output_to_stage2);
-
-#if VECTOR_UNIT_WIDTH != OC_DIMENSION
-    repeater_2.clk(clk);
-    repeater_2.rstn(rstn);
-    repeater_2.data_in(repeat_input_2);
-    repeater_2.count(repeat_count_2);
-    repeater_2.data_out(output_to_memory);
-#endif
-
     SC_THREAD(run);
+    sensitive << clk.pos();
+    async_reset_signal_is(rstn, false);
+
+    SC_THREAD(repeat_output);
     sensitive << clk.pos();
     async_reset_signal_is(rstn, false);
   }
 
   void run() {
     instr.Reset();
+    repeat_inst.ResetWrite();
     input.Reset();
-    repeat_count_0.ResetWrite();
-    repeat_input_0.ResetWrite();
-    repeat_count_1.ResetWrite();
-    repeat_input_1.ResetWrite();
-#if VECTOR_UNIT_WIDTH != OC_DIMENSION
-    repeat_count_2.ResetWrite();
-    repeat_input_2.ResetWrite();
-#else
-    output_to_memory.Reset();
-#endif
+    repeat_data.ResetWrite();
+    output_to_pipeline.Reset();
 
     wait();
 
     while (true) {
       VectorInstructions inst = instr.Pop();
 
-      const bool is_sum_reduction = inst.reduce_op == VectorInstructions::radd;
-      const T fill_value = is_sum_reduction ? T::zero() : T::min();
+      if (inst.rdest == VectorInstructions::to_memory) {
+        repeat_inst.Push(inst);
+      }
 
-      ac_int<16, false> repeat_times =
-          inst.rduplicate ? OC_DIMENSION / width : 1;
+      bool is_sum_op = (inst.reduce_op == VectorInstructions::radd);
+      T fill_value = is_sum_op ? T::zero() : T::min();
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
@@ -97,15 +62,10 @@ SC_MODULE(VectorReducer) {
 
           for (decltype(inst.reduce_count) j = 0;; j++) {
             Pack1D<T, width> reduce_input = input.Pop();
-
-            T acc;
-            if (is_sum_reduction) {
-              T sum = tree_sum(reduce_input);
-              acc = acc_old[LAST] + sum;
-            } else {
-              T max = tree_max(reduce_input);
-              acc = std::max(acc_old[LAST], max);
-            }
+            T sum = fused_add_tree(reduce_input);
+            T max = max_tree(reduce_input);
+            T acc = is_sum_op ? (acc_old[LAST] + sum)
+                              : std::max(acc_old[LAST], max);
 
 #pragma hls_unroll yes
             for (int k = LAST; k > 0; k--) {
@@ -117,12 +77,7 @@ SC_MODULE(VectorReducer) {
             if (j == inst.reduce_count - 1) break;
           }
 
-          T output;
-          if (is_sum_reduction) {
-            output = tree_sum(acc_old);
-          } else {
-            output = tree_max(acc_old);
-          }
+          T output = is_sum_op ? fused_add_tree(acc_old) : max_tree(acc_old);
 
           if (inst.rsqrt) {
             output = output.sqrt();
@@ -133,8 +88,7 @@ SC_MODULE(VectorReducer) {
           }
 
           if (inst.rscale) {
-            T scale;
-            scale.set_bits(inst.immediate1);
+            T scale = T::from_bits(inst.immediate1);
             output = output * scale;
           }
 
@@ -146,19 +100,36 @@ SC_MODULE(VectorReducer) {
           }
         }
 
-        if (inst.rdest == VectorInstructions::to_op0) {
-          repeat_count_0.Push(inst.immediate0);
-          repeat_input_0.Push(res);
-        } else if (inst.rdest == VectorInstructions::to_op2) {
-          repeat_count_1.Push(inst.immediate0);
-          repeat_input_1.Push(res);
-        } else if (inst.rdest == VectorInstructions::to_memory) {
-#if VECTOR_UNIT_WIDTH != OC_DIMENSION
-          repeat_count_2.Push(repeat_times);
-          repeat_input_2.Push(res);
-#else
-          output_to_memory.Push(res);
-#endif
+        if (inst.rdest == VectorInstructions::to_memory) {
+          repeat_data.Push(res);
+        } else {
+          output_to_pipeline.Push(res);
+        }
+
+        if (count == inst.inst_loop_count - 1) break;
+      }
+    }
+  }
+
+  void repeat_output() {
+    repeat_inst.ResetRead();
+    repeat_data.ResetRead();
+    output_to_memory.Reset();
+
+    wait();
+
+    while (true) {
+      VectorInstructions inst = repeat_inst.Pop();
+      ac_int<16, false> repeat = inst.rduplicate ? ratio : 1;
+
+#pragma hls_pipeline_init_interval 1
+#pragma hls_pipeline_stall_mode flush
+      for (decltype(inst.inst_loop_count) count = 0;; count++) {
+        Pack1D<T, width> data = repeat_data.Pop();
+
+        for (ac_int<16, false> i = 0;; i++) {
+          output_to_memory.Push(data);
+          if (i == repeat - 1) break;
         }
 
         if (count == inst.inst_loop_count - 1) break;

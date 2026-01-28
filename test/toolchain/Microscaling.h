@@ -7,14 +7,15 @@ void map_microscaling(const codegen::Operation& param,
   const auto op_list = get_op_list(param);
   const auto quantize_mx_op = op_list[0];
 
-  const auto input = quantize_mx_op.kwargs().at("input").tensor();
-  const auto output = get_op_outputs(param).back();
-
-  const int axis = quantize_mx_op.kwargs().at("axes").int_list().values()[0];
-  const int block_size = quantize_mx_op.kwargs().at("block_size").int_value();
-  const float quant_max = quantize_mx_op.kwargs().at("quant_max").float_value();
+  const auto kwargs = quantize_mx_op.kwargs();
+  const auto input = kwargs.at("input").tensor();
+  const int axis = kwargs.at("axes").int_list().values()[0];
+  const int block_size = kwargs.at("block_size").int_value();
+  const float quant_max = kwargs.at("quant_max").float_value();
   const bool force_scale_power_of_two =
-      quantize_mx_op.kwargs().at("force_scale_power_of_two").bool_value();
+      kwargs.at("force_scale_power_of_two").bool_value();
+
+  const auto output = get_op_outputs(param).back();
 
   // Microscaling on the last dimension can be handled by vector operations
   auto input_shape = get_shape(input);
@@ -27,16 +28,16 @@ void map_microscaling(const codegen::Operation& param,
   VectorInstructionConfig* vector_instruction_config =
       new VectorInstructionConfig;
 
+  int input_dtype = get_index_from_type_name<VU_INPUT_TYPES>(input.dtype());
+  int input_dtype_width = get_type_width<VU_INPUT_TYPES>(input_dtype);
+  int input_fetch_width = ACCUMULATOR_WIDTH * input_dtype_width;
+
   vector_params->vector_fetch_0_offset = get_address(input);
   vector_params->vector_fetch_0_mode = 1;
-  vector_params->vector_fetch_0_dtype =
-      get_index_from_type_name<VU_INPUT_TYPES>(input.dtype());
-
-  int input_width =
-      VECTOR_UNIT_WIDTH *
-      get_type_width<VU_INPUT_TYPES>(vector_params->vector_fetch_0_dtype);
-  vector_params->vector_fetch_0_burst_size = input_width / 8;
-  vector_params->vector_fetch_0_num_beats = input_width / OC_PORT_WIDTH;
+  vector_params->vector_fetch_0_dtype = input_dtype;
+  vector_params->vector_fetch_0_stride = ACCUMULATOR_WIDTH;
+  vector_params->vector_fetch_0_burst_size = input_fetch_width / 8;
+  vector_params->vector_fetch_0_num_beats = input_fetch_width / OC_PORT_WIDTH;
   vector_params->vector_fetch_0_packing_factor = 1;
 
   input_shape = squeeze_shape(input_shape);
@@ -46,7 +47,7 @@ void map_microscaling(const codegen::Operation& param,
   vector_params->vector_fetch_0_loops[0][0] = input_shape[0];
   vector_params->vector_fetch_0_loops[0][1] = input_shape[1] / block_size;
   vector_params->vector_fetch_0_loops[0][2] =
-      input_shape[2] / VECTOR_UNIT_WIDTH;
+      input_shape[2] / ACCUMULATOR_WIDTH;
   vector_params->vector_fetch_0_loops[1][0] = 1;
   vector_params->vector_fetch_0_loops[1][1] = block_size;
   vector_params->vector_fetch_0_loops[1][2] = 1;
@@ -76,29 +77,31 @@ void map_microscaling(const codegen::Operation& param,
   vector_params->output_dtype =
       get_index_from_type_name<OUTPUT_DATATYPES>(output.dtype());
 
+  int loop_count = get_size(input) / ACCUMULATOR_WIDTH;
+
   // perform max accumulation
-  VectorInstructions vinst0;
-  vinst0.op_type = VectorInstructions::accumulation;
-  vinst0.inst_loop_count = get_size(input) / block_size / VECTOR_UNIT_WIDTH;
-  vinst0.reduce_op = VectorInstructions::rmax;
-  vinst0.reduce_count = block_size;
-  vinst0.rdest = VectorInstructions::to_memory;
-  vector_instruction_config->inst[0] = vinst0;
+  VectorInstructions inst0;
+  inst0.op_type = VectorInstructions::accumulation;
+  inst0.inst_loop_count = loop_count / block_size;
+  inst0.reduce_op = VectorInstructions::rmax;
+  inst0.reduce_count = block_size;
+  inst0.rdest = VectorInstructions::to_memory;
+  vector_instruction_config->inst[0] = inst0;
 
   // feed accumulator
-  VectorInstructions vinst1;
-  vinst1.op_type = VectorInstructions::vector;
-  vinst1.inst_loop_count = get_size(input) / VECTOR_UNIT_WIDTH;
-  vinst1.vector_op0_src0 = VectorInstructions::from_vector_fetch_0;
-  vinst1.vector_op0_src1 = VectorInstructions::from_immediate_0;
+  VectorInstructions inst1;
+  inst1.op_type = VectorInstructions::vector;
+  inst1.inst_loop_count = loop_count;
+  inst1.vector_op0_src0 = VectorInstructions::from_vector_fetch_0;
+  inst1.vector_op0_src1 = VectorInstructions::from_immediate_0;
   VECTOR_DATATYPE immediate = force_scale_power_of_two
                                   ? 1.0 / pow(2, floor(log2(quant_max)))
                                   : 1.0 / quant_max;
-  vinst1.immediate0 = immediate.bits_rep();
-  vinst1.vector_op0 = VectorInstructions::vmult;
-  vinst1.vector_op1 = VectorInstructions::vabs;
-  vinst1.vdest = VectorInstructions::to_accumulate;
-  vector_instruction_config->inst[1] = vinst1;
+  inst1.immediate0 = immediate.bits_rep();
+  inst1.vector_op0 = VectorInstructions::op0_mul;
+  inst1.vector_op1 = VectorInstructions::op1_abs;
+  inst1.vdest = VectorInstructions::to_accumulate;
+  vector_instruction_config->inst[1] = inst1;
 
   vector_instruction_config->num_inst = 2;
   vector_instruction_config->config_loop_count = 1;

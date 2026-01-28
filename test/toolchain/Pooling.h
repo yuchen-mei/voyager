@@ -21,18 +21,16 @@ void map_pool2d(const codegen::Operation& param,
   const auto tiling = get_pool2d_tiling(pooling_op);
 
   // input
+  int input_dtype = get_index_from_type_name<VU_INPUT_TYPES>(input.dtype());
+  int input_dtype_width = get_type_width<VU_INPUT_TYPES>(input_dtype);
+  int input_fetch_width = ACCUMULATOR_WIDTH * input_dtype_width;
+
   vector_params->vector_fetch_0_offset = get_address(input);
   vector_params->vector_fetch_0_mode = 1;
-  vector_params->vector_fetch_0_dtype =
-      get_index_from_type_name<VU_INPUT_TYPES>(input.dtype());
-
-  int packing_factor = OC_DIMENSION / VECTOR_UNIT_WIDTH;
-  int vector_fetch_0_input_width =
-      VECTOR_UNIT_WIDTH *
-      get_type_width<VU_INPUT_TYPES>(vector_params->vector_fetch_0_dtype);
-  vector_params->vector_fetch_0_burst_size = vector_fetch_0_input_width / 8;
-  vector_params->vector_fetch_0_num_beats =
-      vector_fetch_0_input_width / OC_PORT_WIDTH;
+  vector_params->vector_fetch_0_dtype = input_dtype;
+  vector_params->vector_fetch_0_stride = ACCUMULATOR_WIDTH;
+  vector_params->vector_fetch_0_burst_size = input_fetch_width / 8;
+  vector_params->vector_fetch_0_num_beats = input_fetch_width / OC_PORT_WIDTH;
   vector_params->vector_fetch_0_packing_factor = 1;
 
   for (int i = 0; i < 2; i++) {
@@ -78,37 +76,37 @@ void map_pool2d(const codegen::Operation& param,
 
   const int inst_loop_count = tiling.loops[0][tiling.y_loop_idx[0]] *
                               tiling.loops[0][tiling.x_loop_idx[0]] *
-                              output_dim / OC_DIMENSION;
+                              output_dim / ACCUMULATOR_WIDTH;
 
   bool is_max_pool = pooling_op.target().find("max") != std::string::npos;
   vector_params->is_maxpool = is_max_pool;
 
   // perform max/sum accumulation
-  VectorInstructions vinst0;
-  vinst0.op_type = VectorInstructions::accumulation;
-  vinst0.inst_loop_count = inst_loop_count * packing_factor;
-  vinst0.reduce_count = reduce_count;
-  vinst0.reduce_op =
+  VectorInstructions inst0;
+  inst0.op_type = VectorInstructions::accumulation;
+  inst0.inst_loop_count = inst_loop_count;
+  inst0.reduce_count = reduce_count;
+  inst0.reduce_op =
       is_max_pool ? VectorInstructions::rmax : VectorInstructions::radd;
-  vinst0.rdest = VectorInstructions::to_memory;
-  vector_instruction_config->inst[0] = vinst0;
+  inst0.rdest = VectorInstructions::to_memory;
+  vector_instruction_config->inst[0] = inst0;
 
   // feed accumulator
-  VectorInstructions vinst1;
-  vinst1.op_type = VectorInstructions::vector;
-  vinst1.inst_loop_count = inst_loop_count * reduce_count * packing_factor;
-  vinst1.vector_op0_src0 = VectorInstructions::from_vector_fetch_0;
-  vinst1.vdest = VectorInstructions::to_accumulate;
+  VectorInstructions inst1;
+  inst1.op_type = VectorInstructions::vector;
+  inst1.inst_loop_count = inst_loop_count * reduce_count;
+  inst1.vector_op0_src0 = VectorInstructions::from_vector_fetch_0;
+  inst1.vdest = VectorInstructions::to_accumulate;
 
   if (!is_max_pool) {
-    vinst1.vector_op2 = VectorInstructions::vmult;
-    vinst1.vector_op2_src1 = VectorInstructions::from_immediate_1;
+    inst1.vector_op2 = VectorInstructions::op2_mul;
+    inst1.vector_op2_src1 = VectorInstructions::from_immediate_1;
     int kernel_size = tiling.loops[1][tiling.x_loop_idx[1]];
     VECTOR_DATATYPE scale = 1.0 / (kernel_size * kernel_size);
-    vinst1.immediate1 = scale.bits_rep();
+    inst1.immediate1 = scale.bits_rep();
   }
 
-  vector_instruction_config->inst[1] = vinst1;
+  vector_instruction_config->inst[1] = inst1;
 
   vector_instruction_config->num_inst = 2;
   vector_instruction_config->config_loop_count = 1;

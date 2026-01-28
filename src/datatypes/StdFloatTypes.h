@@ -60,6 +60,12 @@ class StdFloat {
 
   void set_bits(int i) { float_val.d = i; }
 
+  static StdFloat from_bits(int i) {
+    StdFloat r;
+    r.float_val.d = i;
+    return r;
+  }
+
   bool is_zero() const { return float_val == ac_float_rep::zero(); }
 
   static StdFloat zero() {
@@ -89,12 +95,13 @@ class StdFloat {
     return ac_math::ac_exp_pwl<ac_float_rep>(float_val);
   }
 
+#pragma hls_design ccore
   StdFloat reciprocal() const {
     return ac_math::ac_reciprocal_pwl<ac_float_rep, AC_RND>(float_val);
   }
 
   StdFloat sqrt() const {
-    return float_val.template sqrt<AC_RND_CONV, false>();
+    return float_val.template sqrt<Q, !ieee_compliance>();
   }
 
   StdFloat inv_sqrt() const { return sqrt().reciprocal(); }

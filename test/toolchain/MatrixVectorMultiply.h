@@ -19,28 +19,25 @@ void map_matrix_vector_multiply(const codegen::Operation& param,
   int output_dim = weight_shape[0];
   int reduction_dim = weight_shape[1];
 
+  int packing_factor = OC_DIMENSION / VECTOR_UNIT_WIDTH;
+
   VectorParams* vector_params = new VectorParams;
   VectorInstructionConfig* vector_instruction_config =
       new VectorInstructionConfig;
-
-  // round output_dim up to a multiple of DIMENSION
-  output_dim = (output_dim + VECTOR_UNIT_WIDTH - 1) / VECTOR_UNIT_WIDTH *
-               VECTOR_UNIT_WIDTH;
 
   // input is a vector of size reduction_dim
   vector_params->vector_fetch_0_offset = get_address(input);
   vector_params->vector_fetch_0_mode = 2;
   vector_params->vector_fetch_0_broadcast = 0b010000;
-  vector_params->vector_fetch_0_dtype =
-      get_index_from_type_name<VU_INPUT_TYPES>(input.dtype());
 
-  int packing_factor = OC_DIMENSION / VECTOR_UNIT_WIDTH;
-  int vector_fetch_0_input_width =
-      OC_DIMENSION *
-      get_type_width<VU_INPUT_TYPES>(vector_params->vector_fetch_0_dtype);
-  vector_params->vector_fetch_0_burst_size = vector_fetch_0_input_width / 8;
-  vector_params->vector_fetch_0_num_beats =
-      vector_fetch_0_input_width / OC_PORT_WIDTH;
+  int input_dtype = get_index_from_type_name<VU_INPUT_TYPES>(input.dtype());
+  int input_dtype_width = get_type_width<VU_INPUT_TYPES>(input_dtype);
+  int input_fetch_width = OC_DIMENSION * input_dtype_width;
+
+  vector_params->vector_fetch_0_dtype = input_dtype;
+  vector_params->vector_fetch_0_stride = OC_DIMENSION;
+  vector_params->vector_fetch_0_burst_size = input_fetch_width / 8;
+  vector_params->vector_fetch_0_num_beats = input_fetch_width / OC_PORT_WIDTH;
   vector_params->vector_fetch_0_packing_factor = packing_factor;
 
   for (int i = 0; i < 3; i++) {
@@ -53,15 +50,15 @@ void map_matrix_vector_multiply(const codegen::Operation& param,
   // weight is a matrix of output_dim x reduction_dim
   vector_params->vector_fetch_1_offset = get_address(weight);
   vector_params->vector_fetch_1_mode = true;
-  vector_params->vector_fetch_1_dtype =
-      get_index_from_type_name<VU_INPUT_TYPES>(weight.dtype());
 
-  int vector_fetch_1_input_width =
-      OC_DIMENSION *
-      get_type_width<VU_INPUT_TYPES>(vector_params->vector_fetch_1_dtype);
-  vector_params->vector_fetch_1_burst_size = vector_fetch_1_input_width / 8;
-  vector_params->vector_fetch_1_num_beats =
-      vector_fetch_1_input_width / OC_PORT_WIDTH;
+  int weight_dtype = get_index_from_type_name<VU_INPUT_TYPES>(weight.dtype());
+  int weight_dtype_width = get_type_width<VU_INPUT_TYPES>(weight_dtype);
+  int weight_fetch_width = OC_DIMENSION * weight_dtype_width;
+
+  vector_params->vector_fetch_1_dtype = weight_dtype;
+  vector_params->vector_fetch_1_stride = OC_DIMENSION;
+  vector_params->vector_fetch_1_burst_size = weight_fetch_width / 8;
+  vector_params->vector_fetch_1_num_beats = weight_fetch_width / OC_PORT_WIDTH;
   vector_params->vector_fetch_1_packing_factor = packing_factor;
 
   for (int i = 0; i < 3; i++) {
@@ -83,15 +80,16 @@ void map_matrix_vector_multiply(const codegen::Operation& param,
     vector_params->vector_fetch_2_offset = get_address(bias);
     vector_params->vector_fetch_2_mode = true;
     vector_params->vector_fetch_2_broadcast = 0b011;
-    vector_params->vector_fetch_2_dtype =
-        get_index_from_type_name<VU_INPUT_TYPES>(bias.dtype());
 
-    int vector_fetch_2_input_width =
-        OC_DIMENSION *
-        get_type_width<VU_INPUT_TYPES>(vector_params->vector_fetch_2_dtype);
-    vector_params->vector_fetch_2_burst_size = vector_fetch_2_input_width / 8;
-    vector_params->vector_fetch_2_num_beats =
-        vector_fetch_2_input_width / OC_PORT_WIDTH;
+    const int bias_dtype =
+        get_index_from_type_name<VU_INPUT_TYPES>(bias.dtype());
+    const int bias_dtype_width = get_type_width<VU_INPUT_TYPES>(bias_dtype);
+    const int bias_fetch_width = OC_DIMENSION * bias_dtype_width;
+
+    vector_params->vector_fetch_2_dtype = bias_dtype;
+    vector_params->vector_fetch_2_stride = OC_DIMENSION;
+    vector_params->vector_fetch_2_burst_size = bias_fetch_width / 8;
+    vector_params->vector_fetch_2_num_beats = bias_fetch_width / OC_PORT_WIDTH;
     vector_params->vector_fetch_2_packing_factor = packing_factor;
 
     for (int i = 0; i < 3; i++) {
@@ -126,37 +124,38 @@ void map_matrix_vector_multiply(const codegen::Operation& param,
     vector_params->output_k_loop_idx[i] = 2;
   }
 
-  // inst0 - start reduction engine
-  VectorInstructions vinst0;
-  vinst0.op_type = VectorInstructions::reduction;
-  vinst0.reduce_count = reduction_dim / VECTOR_UNIT_WIDTH;
-  vinst0.reduce_op = VectorInstructions::radd;
-  vinst0.rdest =
-      has_bias ? VectorInstructions::to_op0 : VectorInstructions::to_memory;
-  vinst0.immediate0 = 1;
-  vector_instruction_config->inst[0] = vinst0;
+  // Start reduction engine
+  VectorInstructions inst0;
+  inst0.op_type = VectorInstructions::reduction;
+  inst0.inst_loop_count = VECTOR_UNIT_WIDTH / REDUCER_WIDTH;
+  inst0.reduce_count = reduction_dim / REDUCER_WIDTH;
+  inst0.reduce_op = VectorInstructions::radd;
+  inst0.rdest = has_bias ? VectorInstructions::to_pipeline
+                         : VectorInstructions::to_memory;
+  vector_instruction_config->inst[0] = inst0;
 
-  // inst1 - input x weight, send to reduce
-  // reduction_dim / DIMENSION to do the complete reduction, DIMENSION to fill
-  // up the entire vector (this is now output_dim dimension)
-  VectorInstructions vinst1;
-  vinst1.op_type = VectorInstructions::vector;
-  vinst1.inst_loop_count = reduction_dim;
-  vinst1.vector_op0_src0 = VectorInstructions::from_vector_fetch_0;
-  vinst1.vector_op0_src1 = VectorInstructions::from_vector_fetch_1;
-  vinst1.vector_op0 = VectorInstructions::vmult;
-  vinst1.vdest = VectorInstructions::to_reduce;
-  vector_instruction_config->inst[1] = vinst1;
+  // Multiply input vector with weight matrix. Reducer takes
+  // reduction_dim / OC_DIMENSION cycles to do the complete reduction,
+  // and OC_DIMENSION cycles to fill up the entire vector
+  VectorInstructions inst1;
+  inst1.op_type = VectorInstructions::vector;
+  inst1.inst_loop_count = reduction_dim;
+  inst1.vector_op0_src0 = VectorInstructions::from_vector_fetch_0;
+  inst1.vector_op0_src1 = VectorInstructions::from_vector_fetch_1;
+  inst1.vector_op0 = VectorInstructions::op0_mul;
+  inst1.vdest = VectorInstructions::to_reduce;
+  vector_instruction_config->inst[1] = inst1;
 
   // inst2 - add bias, write out
   if (has_bias) {
-    VectorInstructions vinst2;
-    vinst2.op_type = VectorInstructions::vector;
-    vinst2.vector_op0_src0 = VectorInstructions::from_reduction_0;
-    vinst2.vector_op2_src1 = VectorInstructions::from_vector_fetch_2;
-    vinst2.vector_op2 = VectorInstructions::vadd;
-    vinst2.vdest = VectorInstructions::to_output;
-    vector_instruction_config->inst[2] = vinst2;
+    VectorInstructions inst2;
+    inst2.op_type = VectorInstructions::vector;
+    inst2.inst_loop_count = 1;
+    inst2.vector_op0_src0 = VectorInstructions::from_vector_reducer;
+    inst2.vector_op2_src1 = VectorInstructions::from_vector_fetch_2;
+    inst2.vector_op2 = VectorInstructions::op2_add;
+    inst2.vdest = VectorInstructions::to_output;
+    vector_instruction_config->inst[2] = inst2;
   }
 
   vector_instruction_config->num_inst = has_bias ? 3 : 2;

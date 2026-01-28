@@ -4,6 +4,7 @@
 #include "../ArchitectureParams.h"
 #include "../TypeToBits.h"
 #include "ApproximationUnit.h"
+#include "ac_std_float_add_tree.h"
 
 using namespace ac_math;
 
@@ -40,11 +41,11 @@ Pack1D<T, width> vmul(const Pack1D<T, width> op0, const Pack1D<T, width> op1) {
 }
 
 #pragma hls_design ccore
-template <typename T>
-T div(T op0, T op1) {
+template <typename T1, typename T2>
+T1 div(T1 op0, T2 op1) {
   // Handle division by zero
   if (op1.is_zero()) {
-    return T::zero();  // or some other error handling
+    return T1::zero();  // or some other error handling
   }
   return op0 / op1;
 }
@@ -55,6 +56,48 @@ Pack1D<T, width> vdiv(const Pack1D<T, width> op0, const Pack1D<T, width> op1) {
 #pragma hls_unroll yes
   for (int i = 0; i < width; i++) {
     res[i] = div(op0[i], op1[i]);
+  }
+  return res;
+}
+
+template <typename T, size_t width>
+Pack1D<T, width> vneg(const Pack1D<T, width> op0) {
+  Pack1D<T, width> res;
+#pragma hls_unroll yes
+  for (int i = 0; i < width; i++) {
+    res[i] = op0[i].negate();
+  }
+  return res;
+}
+
+template <typename T, size_t width>
+Pack1D<T, width> vreciprocal(const Pack1D<T, width> op0) {
+  Pack1D<T, width> res;
+#pragma hls_unroll yes
+  for (int i = 0; i < width; i++) {
+    res[i] = op0[i].reciprocal();
+  }
+  return res;
+}
+
+#pragma hls_design ccore
+template <typename Input, typename Output>
+Output dequantize(Input input, Output scale) {
+  return (Output)input * scale;
+}
+
+template <typename Input, typename Output, int width>
+Pack1D<Output, width> vdequantize(const Pack1D<Input, width>& op0,
+                                  ac_int<Output::width, false> scale_bits) {
+  Output scale = Output::from_bits(scale_bits);
+  if (scale.is_zero()) {
+    scale = Output::one();
+  }
+
+  Pack1D<Output, width> res;
+#pragma hls_unroll yes
+  for (int i = 0; i < width; i++) {
+    res[i] = dequantize(op0[i], scale);
   }
   return res;
 }
@@ -138,22 +181,9 @@ Pack1D<T, width> vpoly(const Pack1D<T, width>& op0, const T maxes[NUM_MAXES],
 template <int N>
 struct sum_s {
   template <typename T>
-  static T sum(Pack1D<T, N> a) {
-    Pack1D<T, N / 2> a0;
-    Pack1D<T, N - N / 2> a1;
-
-#pragma hls_unroll yes
-    for (int i = 0; i < N / 2; i++) {
-      a0[i] = a[i];
-    }
-
-#pragma hls_unroll yes
-    for (int i = 0; i < N - N / 2; i++) {
-      a1[i] = a[i + N / 2];
-    }
-
-    T m0 = sum_s<N / 2>::sum(a0);
-    T m1 = sum_s<N - N / 2>::sum(a1);
+  static T sum(T* a) {
+    T m0 = sum_s<N / 2>::sum(a);
+    T m1 = sum_s<N - N / 2>::sum(a + N / 2);
     return m0 + m1;
   }
 };
@@ -162,104 +192,73 @@ struct sum_s {
 template <>
 struct sum_s<1> {
   template <typename T>
-  static T sum(Pack1D<T, 1> a) {
+  static T sum(T* a) {
     return a[0];
   }
 };
 
 #pragma hls_design ccore
 template <typename T, size_t N>
-T tree_sum(Pack1D<T, N> a) {
-  return sum_s<N>::sum(a);
+T add_tree(Pack1D<T, N> a) {
+  return sum_s<N>::sum(a.value);
 }
 
-template <int N>
-struct max_s {
-  template <typename T>
-  static T max(Pack1D<T, N> a) {
-    Pack1D<T, N / 2> a0;
-    Pack1D<T, N - N / 2> a1;
+// Use ac_math library's fadd_tree save both area and latency
+#pragma hls_design ccore
+template <int E, int M, size_t N>
+StdFloat<M, E> fused_add_tree(Pack1D<StdFloat<M, E>, N> a) {
+  using std_flt = typename StdFloat<M, E>::ac_float_rep;
+
+  std_flt in[N];
+  std_flt acc;
 
 #pragma hls_unroll yes
-    for (int i = 0; i < N / 2; i++) {
-      a0[i] = a[i];
-    }
-
-#pragma hls_unroll yes
-    for (int i = 0; i < N - N / 2; i++) {
-      a1[i] = a[i + N / 2];
-    }
-
-    T m0 = max_s<N / 2>::max(a0);
-    T m1 = max_s<N - N / 2>::max(a1);
-    return std::max(m0, m1);
+  for (int i = 0; i < N; i++) {
+    in[i] = a[i].float_val;
   }
-};
 
-// terminate template recursion
-template <>
-struct max_s<1> {
-  template <typename T>
-  static T max(Pack1D<T, 1> a) {
-    return a[0];
-  }
-};
+  ac_math::fadd_tree(in, acc);
+
+  return acc;
+}
 
 #pragma hls_design ccore
 template <typename T, size_t N>
-T tree_max(Pack1D<T, N> a) {
-  return max_s<N>::max(a);
-}
-
-#pragma hls_design ccore
-template <typename Input, typename Output>
-Output dequantize(Input input, Output scale) {
-  return (Output)input * scale;
-}
-
-template <typename Input, typename Output, int width>
-void vdequantize(const Pack1D<Input, width>& op0, Pack1D<Output, width>& res,
-                 ac_int<Output::width, false> scale_bits) {
-  Output scale;
-  scale.set_bits(scale_bits);
-  if (scale.is_zero()) {
-    scale = Output::one();
-  }
-
-#pragma hls_unroll yes
-  for (int i = 0; i < width; i++) {
-    res[i] = dequantize(op0[i], scale);
-  }
+T max_tree(Pack1D<T, N> a) {
+  return ac_math::max<N>(a.value);
 }
 
 template <typename VectorType, typename ScaleType>
-ScaleType compute_scale(const VectorType amax, ac_int<16> qparam) {
+std::tuple<VectorType, ScaleType> calculate_mx_scale(const VectorType amax,
+                                                     const ac_int<16> qparam) {
   ScaleType scale;
+  VectorType float_scale;
 
   if constexpr (ScaleType::width == ScaleType::e_width) {
     auto max_exp = amax.unbiased_exponent();
-
-    ac_int<VectorType::e_width, true> scaled_exp;
-    if (max_exp == 0) {
-      scaled_exp = 127;
+    if (max_exp == 0 || max_exp == 0xFF) {
+      scale = ScaleType::one();
     } else {
-      scaled_exp = max_exp - qparam;
+      scale.set_bits(max_exp - qparam);
     }
-
-    scale.set_bits(scaled_exp);
+    float_scale = scale;
   } else {
-    VectorType quant_max;
-    quant_max.set_bits(qparam);
-    scale = amax / quant_max;
+    VectorType quant_max = VectorType::from_bits(qparam);
+    float_scale = amax * quant_max.reciprocal();
+    if (float_scale.is_zero()) {
+      float_scale = VectorType::one();
+    }
+    scale = float_scale;
   }
 
-  return scale.is_zero() ? ScaleType::one() : scale;
+  return std::make_tuple(float_scale, scale);
 }
 
 template <typename VectorType, typename ScaleType, int width>
-ScaleType calculate_mx_scale(const Pack1D<VectorType, width>& op0,
-                             ac_int<16> qparam) {
+std::tuple<VectorType, ScaleType> calculate_mx_scale(
+    const Pack1D<VectorType, width>& op0, const ac_int<16> qparam) {
   ScaleType scale;
+  VectorType float_scale;
 
   if constexpr (ScaleType::width == ScaleType::e_width) {
     using exp_t = ac_int<VectorType::e_width, false>;
@@ -270,32 +269,28 @@ ScaleType calculate_mx_scale(const Pack1D<VectorType, width>& op0,
       exponents[i] = op0[i].unbiased_exponent();
     }
 
-    exp_t max_exp = tree_max(exponents);
+    exp_t max_exp = max_tree(exponents);
 
-    ac_int<VectorType::e_width, true> scaled_exp;
-    if (max_exp == 0) {
-      scaled_exp = 127;
+    if (max_exp == 0 || max_exp == 0xFF) {
+      scale = ScaleType::one();
     } else {
-      scaled_exp = max_exp - qparam;
+      scale.set_bits(max_exp - qparam);
     }
 
-    scale.set_bits(scaled_exp);
+    float_scale = scale;
   } else {
-    Pack1D<VectorType, width> temp;
-#pragma hls_unroll yes
-    for (int i = 0; i < width; i++) {
-      temp[i] = op0[i].abs();
+    Pack1D<VectorType, width> abs = vabs(op0);
+    VectorType max_val = max_tree(abs);
+
+    VectorType quant_max = VectorType::from_bits(qparam);
+    float_scale = max_val * quant_max.reciprocal();
+    if (float_scale.is_zero()) {
+      float_scale = VectorType::one();
     }
-
-    VectorType max_val = tree_max(temp);
-
-    VectorType quant_max;
-    quant_max.set_bits(qparam);
-
-    scale = max_val / quant_max;
+    scale = float_scale;
   }
 
-  return scale.is_zero() ? ScaleType::one() : scale;
+  return std::make_tuple(float_scale, scale);
 }
 
 template <typename... Ts>
@@ -321,9 +316,8 @@ bool unpack_vector_data(ac_int<DTYPE_INDEX_WIDTH, false> dtype,
 
 #pragma hls_unroll yes
   for (int i = 0; i < N; i++) {
-    T data;
-    data.set_bits(bits.template slc<T::width>(offset + i * T::width));
-    outputs[i] = data;
+    outputs[i] =
+        T::from_bits(bits.template slc<T::width>(offset + i * T::width));
   }
 
   return true;
@@ -389,13 +383,13 @@ bool send_output_address(
 
 #pragma hls_design ccore
 template <typename T>
-ac_int<4, false> find_codebook_index(T x, const T B[16]) {
+ac_int<4, false> find_codebook_index(T x, const T B[15]) {
   ac_int<4, false> low = 0;
   ac_int<5, false> high = 16;
 
   // Stage 1
   ac_int<4, false> mid1 = 8;
-  if (x <= B[mid1]) {
+  if (x <= B[mid1 - 1]) {
     high = mid1;
   } else {
     low = mid1;
@@ -403,7 +397,7 @@ ac_int<4, false> find_codebook_index(T x, const T B[16]) {
 
   // Stage 2
   ac_int<4, false> mid2 = (low + high) >> 1;
-  if (x <= B[mid2]) {
+  if (x <= B[mid2 - 1]) {
     high = mid2;
   } else {
     low = mid2;
@@ -411,7 +405,7 @@ ac_int<4, false> find_codebook_index(T x, const T B[16]) {
 
   // Stage 3
   ac_int<4, false> mid3 = (low + high) >> 1;
-  if (x <= B[mid3]) {
+  if (x <= B[mid3 - 1]) {
     high = mid3;
   } else {
     low = mid3;
@@ -419,11 +413,23 @@ ac_int<4, false> find_codebook_index(T x, const T B[16]) {
 
   // Stage 4
   ac_int<4, false> mid4 = (low + high) >> 1;
-  if (x <= B[mid4]) {
+  if (x <= B[mid4 - 1]) {
     high = mid4;
   } else {
     low = mid4;
   }
 
-  return low;  // 0..15
+  return low;
+}
+
+template <typename T, size_t width>
+Pack1D<T, width> vcodebook_quantize(const Pack1D<T, width> op0,
+                                    const T midpoints[15]) {
+  Pack1D<T, width> outputs;
+#pragma hls_unroll yes
+  for (int i = 0; i < width; i++) {
+    auto index = find_codebook_index(op0[i], midpoints);
+    outputs[i].set_bits(index);
+  }
+  return outputs;
 }

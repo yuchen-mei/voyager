@@ -19,16 +19,16 @@ void set_vector_fetch_1(const codegen::Tensor& tensor, const Tiling& tiling,
     if (dim != 1) nonzero_dims++;
   }
 
-  const auto memory = tensor.memory();
   vector_params->vector_fetch_1_offset = get_address(tensor);
   vector_params->vector_fetch_1_mode = true;
   vector_params->vector_fetch_1_broadcast = nonzero_dims == 1 ? 0b011 : 0b000;
 
-  vector_params->vector_fetch_1_dtype =
-      get_index_from_type_name<VU_INPUT_TYPES>(tensor.dtype());
-  const int dtype_width =
-      get_type_width<VU_INPUT_TYPES>(vector_params->vector_fetch_1_dtype);
-  int fetch_width = OC_DIMENSION * dtype_width;
+  const int dtype = get_index_from_type_name<VU_INPUT_TYPES>(tensor.dtype());
+  const int dtype_width = get_type_width<VU_INPUT_TYPES>(dtype);
+  const int fetch_width = OC_DIMENSION * dtype_width;
+
+  vector_params->vector_fetch_1_dtype = dtype;
+  vector_params->vector_fetch_1_stride = OC_DIMENSION;
   vector_params->vector_fetch_1_burst_size = fetch_width / 8;
   vector_params->vector_fetch_1_num_beats =
       (fetch_width + OC_PORT_WIDTH - 1) / OC_PORT_WIDTH;
@@ -61,10 +61,6 @@ void set_vector_fetch_1(const codegen::Tensor& tensor, const Tiling& tiling,
       loop_index++;
     }
   }
-
-  float scale_val = get_tensor_scalar_scale(tensor);
-  DataTypes::bfloat16 scale = scale_val != 0 ? scale_val : 1.0;
-  vector_params->vector_fetch_1_dq_scale = scale.bits_rep();
 }
 
 void set_vector_fetch_2(const codegen::Tensor& tensor, const Tiling& tiling,
@@ -74,16 +70,16 @@ void set_vector_fetch_2(const codegen::Tensor& tensor, const Tiling& tiling,
     if (dim != 1) nonzero_dims++;
   }
 
-  const auto memory = tensor.memory();
   vector_params->vector_fetch_2_offset = get_address(tensor);
   vector_params->vector_fetch_2_mode = true;
   vector_params->vector_fetch_2_broadcast = nonzero_dims == 1 ? 0b011 : 0b000;
 
-  vector_params->vector_fetch_2_dtype =
-      get_index_from_type_name<VU_INPUT_TYPES>(tensor.dtype());
-  const int dtype_width =
-      get_type_width<VU_INPUT_TYPES>(vector_params->vector_fetch_2_dtype);
-  int fetch_width = OC_DIMENSION * dtype_width;
+  const int dtype = get_index_from_type_name<VU_INPUT_TYPES>(tensor.dtype());
+  const int dtype_width = get_type_width<VU_INPUT_TYPES>(dtype);
+  const int fetch_width = OC_DIMENSION * dtype_width;
+
+  vector_params->vector_fetch_2_dtype = dtype;
+  vector_params->vector_fetch_2_stride = OC_DIMENSION;
   vector_params->vector_fetch_2_burst_size = fetch_width / 8;
   vector_params->vector_fetch_2_num_beats =
       (fetch_width + OC_PORT_WIDTH - 1) / OC_PORT_WIDTH;
@@ -116,18 +112,14 @@ void set_vector_fetch_2(const codegen::Tensor& tensor, const Tiling& tiling,
       loop_index++;
     }
   }
-
-  float scale_val = get_tensor_scalar_scale(tensor);
-  DataTypes::bfloat16 scale = scale_val != 0 ? scale_val : 1.0;
-  vector_params->vector_fetch_2_dq_scale = scale.bits_rep();
 }
 
 void set_immediate(const float scalar, const int stage,
                    const std::string opcode, VectorInstructions& inst) {
   VECTOR_DATATYPE immediate = scalar;
 
-  if (opcode == "div" || opcode == "div_") {
-    immediate = 1.0 / immediate;
+  if (opcode == "div" || opcode == "div_" || opcode == "quantize") {
+    immediate = 1.0 / scalar;
   }
 
   if (stage == 0) {
@@ -138,6 +130,7 @@ void set_immediate(const float scalar, const int stage,
     inst.immediate1 = immediate.bits_rep();
   } else {
     inst.vector_op3_src1 = VectorInstructions::from_immediate_2;
+    inst.vector_op3 = VectorInstructions::op3_mul;
     inst.immediate2 = immediate.bits_rep();
   }
 }
@@ -238,9 +231,9 @@ void map_matrix_operation(const Operation& operation,
   if (is_dwc) {
     dwc_params = new DwCParams;
 
-    const auto& kwargs = matrix_op.kwargs();
-    const auto& bias = kwargs.at("bias").tensor();
-    const auto& output = get_op_outputs(param).back();
+    const auto kwargs = matrix_op.kwargs();
+    const auto bias = kwargs.at("bias").tensor();
+    const auto output = get_op_outputs(param).back();
 
     dwc_params->input_offset = get_address(input);
     dwc_params->weight_offset = get_address(weight);
@@ -757,6 +750,7 @@ void map_matrix_operation(const Operation& operation,
                          tiling.loops[0][tiling.weight_loop_idx[0]] *
                          tiling.loops[1][tiling.weight_loop_idx[1]] *
                          packing_factor;
+  inst.vdest = VectorInstructions::to_output;
 
   if (is_dwc) {
     inst.inst_loop_count =
@@ -766,32 +760,17 @@ void map_matrix_operation(const Operation& operation,
     inst.vector_op0_src0 = VectorInstructions::from_matrix_vector_unit;
   } else {
 #if DOUBLE_BUFFERED_ACCUM_BUFFER
-    inst.vector_op0_src0 = VectorInstructions::from_accumulation_buffer;
+    inst.vector_op0_src0 = VectorInstructions::from_accum_buffer;
     matrix_params->write_output_to_accum_buffer = true;
 #else
     inst.vector_op0_src0 = VectorInstructions::from_matrix_unit;
 #endif
   }
 
-  inst.vdest = VectorInstructions::to_output;
-
-  auto mapping = get_vector_instruction_mapping();
   int stage = 0;
-
   for (int i = 1; i < op_list.size(); i++) {
     const auto op = op_list[i];
     const std::string opcode = op.target();
-
-    // Grab kwargs that are relevant for some activation functions
-    std::map<std::string, VECTOR_DATATYPE> activation_kwargs;
-    if (unary_ops_with_kwargs.find(op.target()) !=
-        unary_ops_with_kwargs.end()) {
-      for (const auto& [key, value] : op.kwargs()) {
-        if (key != "input") {
-          activation_kwargs[key] = VECTOR_DATATYPE(value.float_value());
-        }
-      }
-    }
 
     // Dequantization doesn't take a stage in the pipeline
     if (opcode == "dequantize") {
@@ -805,357 +784,71 @@ void map_matrix_operation(const Operation& operation,
       inst.vector_dq_scale = immediate.bits_rep();
 
       delete[] array;
-
       continue;
     }
 
-    // Find the stage of the operation
-    for (; stage < vector_unit_stages.size(); stage++) {
-      // Only the last stage has a true divider
-      if (opcode == "div" && stage != 3) {
-        const auto other = op.kwargs().at("other").tensor();
-        if (get_size(other) > 1) {
+    if (poly_ops.count(opcode)) {
+      if (stage != 0) {
+        throw std::runtime_error(
+            "Polynomial approximation must be the first vector operation!\n");
+      }
+
+      // Grab kwargs that are relevant for some activation functions
+      std::map<std::string, float> kwargs;
+
+      for (const auto& [key, value] : op.kwargs()) {
+        if (value.has_float_value()) {
+          kwargs[key] = value.float_value();
+        }
+      }
+
+      load_approx_params(opcode, vector_instruction_config, kwargs);
+      inst.vector_op0 = VectorInstructions::op0_poly;
+      inst.vector_op2 = VectorInstructions::op2_poly;
+
+      stage = 3;
+      continue;
+    }
+
+    for (; stage < vector_unit_ops.size(); stage++) {
+      // Stage 0 and 2 can only perform per-tensor quantization
+      if (opcode == "quantize") {
+        const auto scale = op.kwargs().at("scale").tensor();
+        const int size = get_size(scale);
+        if (stage != 3 && size > 1) {
           continue;
         }
       }
 
-      if (vector_unit_stages[stage].find(opcode) !=
-          vector_unit_stages[stage].end()) {
+      if (vector_unit_ops[stage].count(opcode)) {
         break;
       }
     }
 
-    if (stage == vector_unit_stages.size()) {
+    if (stage == vector_unit_ops.size()) {
       throw std::runtime_error("Vector operation not supported!\n");
     }
 
     spdlog::debug("stage {} target: {}\n", stage, opcode);
 
-    unsigned int vop = mapping[opcode];
-    if (stage == 0) {
-      inst.vector_op0 = opcode == "div" ? VectorInstructions::vmult : vop;
-    } else if (stage == 1) {
-      inst.vector_op1 = vop;
-    } else if (stage == 2) {
-      inst.vector_op2 = opcode == "div" ? VectorInstructions::vmult : vop;
-    } else if (stage == 3) {
-      inst.vector_op3 = vop;
+    switch (stage) {
+      case 0:
+        inst.vector_op0 = get_stage0_op(opcode);
+        break;
+      case 1:
+        inst.vector_op1 = get_stage1_op(opcode);
+        break;
+      case 2:
+        inst.vector_op2 = get_stage2_op(opcode);
+        break;
+      case 3:
+        inst.vector_op3 = get_stage3_op(opcode);
+        break;
     }
 
     if (opcode == "quantize_mx" || opcode == "quantize_mx_outlier") {
-      float quant_max = op.kwargs().at("quant_max").float_value();
-      bool force_scale_power_of_two =
-          op.kwargs().at("force_scale_power_of_two").bool_value();
-
-      if (force_scale_power_of_two) {
-        inst.immediate2 = floor(log2(quant_max));
-      } else {
-        VECTOR_DATATYPE scale = quant_max;
-        inst.immediate2 = scale.bits_rep();
-      }
-
-      const auto outputs = get_op_outputs(param);
-      const int num_outputs = outputs.size();
-
-      vector_params->quantize_output_mx = true;
-      vector_params->mx_scale_offset = get_address(outputs[num_outputs - 2]);
-
-      if (opcode == "quantize_mx_outlier") {
-        vector_params->has_sparse_output = true;
-        vector_params->csr_data_offset = get_address(outputs[0]);
-        vector_params->csr_indices_offset = get_address(outputs[1]);
-        vector_params->csr_indptr_offset = get_address(outputs[2]);
-
-        auto& config = vector_instruction_config->outlier_filter;
-
-        VECTOR_DATATYPE threshold = op.kwargs().at("threshold").float_value();
-        config.outlier_threshold = threshold.bits_rep();
-
-        const auto quantize_input = op.kwargs().at("input").tensor();
-        const auto quantize_shape = get_shape(quantize_input);
-        config.dense_input_shape[1] = quantize_shape.back() / VECTOR_UNIT_WIDTH;
-        config.dense_input_shape[0] =
-            get_size(quantize_input) / quantize_shape.back();
-      }
-
-      if (op.kwargs().contains("output_code")) {
-        const auto code = op.kwargs().at("output_code").tensor();
-        const int size = get_size(code);
-
-        float* array = read_constant_param(code);
-
-        for (int i = 0; i < size; i++) {
-          vector_params->output_code[i] = array[i] * 2;
-        }
-
-        delete[] array;
-
-        vector_params->use_output_codebook = true;
-      }
-      // Copy coefficients from ApproximationConstants.h
-    } else if (opcode == "gelu" || opcode == "gelu_") {
-      for (int i = 0; i < NUM_MAXES; i++) {
-        vector_instruction_config->approx.maxes[i] = GELU_MAXES[i];
-      }
-      for (int i = 0; i < NUM_RANGES; i++) {
-        for (int j = 0; j < NUM_COEFFS; j++) {
-          vector_instruction_config->approx.ranges[i][j] = GELU_RANGES[i][j];
-        }
-      }
-      vector_instruction_config->approx.clamp_min = GELU_CLAMP_MIN;
-      vector_instruction_config->approx.clamp_max = GELU_CLAMP_MAX;
-    } else if (opcode == "silu" || opcode == "silu_") {
-      for (int i = 0; i < NUM_MAXES; i++) {
-        vector_instruction_config->approx.maxes[i] = SILU_MAXES[i];
-      }
-      for (int i = 0; i < NUM_RANGES; i++) {
-        for (int j = 0; j < NUM_COEFFS; j++) {
-          vector_instruction_config->approx.ranges[i][j] = SILU_RANGES[i][j];
-        }
-      }
-      vector_instruction_config->approx.clamp_min = SILU_CLAMP_MIN;
-      vector_instruction_config->approx.clamp_max = SILU_CLAMP_MAX;
-    } else if (opcode == "elu" || opcode == "elu_") {
-      for (int i = 0; i < NUM_MAXES; i++) {
-        vector_instruction_config->approx.maxes[i] = ELU_MAXES[i];
-      }
-      for (int i = 0; i < NUM_RANGES; i++) {
-        for (int j = 0; j < NUM_COEFFS; j++) {
-          vector_instruction_config->approx.ranges[i][j] = ELU_RANGES[i][j];
-        }
-      }
-      vector_instruction_config->approx.clamp_min = ELU_CLAMP_MIN;
-      vector_instruction_config->approx.clamp_max = ELU_CLAMP_MAX;
-    } else if (opcode == "log_sigmoid" || opcode == "log_sigmoid_") {
-      for (int i = 0; i < NUM_MAXES; i++) {
-        vector_instruction_config->approx.maxes[i] = LOGSIGMOID_MAXES[i];
-      }
-      for (int i = 0; i < NUM_RANGES; i++) {
-        for (int j = 0; j < NUM_COEFFS; j++) {
-          vector_instruction_config->approx.ranges[i][j] =
-              LOGSIGMOID_RANGES[i][j];
-        }
-      }
-      vector_instruction_config->approx.clamp_min = LOGSIGMOID_CLAMP_MIN;
-      vector_instruction_config->approx.clamp_max = LOGSIGMOID_CLAMP_MAX;
-    } else if (opcode == "tanh" || opcode == "tanh_") {
-      for (int i = 0; i < NUM_MAXES; i++) {
-        vector_instruction_config->approx.maxes[i] = TANH_MAXES[i];
-      }
-      for (int i = 0; i < NUM_RANGES; i++) {
-        for (int j = 0; j < NUM_COEFFS; j++) {
-          vector_instruction_config->approx.ranges[i][j] = TANH_RANGES[i][j];
-        }
-      }
-      vector_instruction_config->approx.clamp_min = TANH_CLAMP_MIN;
-      vector_instruction_config->approx.clamp_max = TANH_CLAMP_MAX;
-    } else if (opcode == "tanh_1" || opcode == "tanh_1_") {
-      for (int i = 0; i < NUM_MAXES; i++) {
-        vector_instruction_config->approx.maxes[i] = TANHSHRINK_MAXES[i];
-      }
-      for (int i = 0; i < NUM_RANGES; i++) {
-        for (int j = 0; j < NUM_COEFFS; j++) {
-          vector_instruction_config->approx.ranges[i][j] =
-              TANHSHRINK_RANGES[i][j];
-        }
-      }
-      vector_instruction_config->approx.clamp_min = TANHSHRINK_CLAMP_MIN;
-      vector_instruction_config->approx.clamp_max = TANHSHRINK_CLAMP_MAX;
-    } else if (opcode == "softplus" || opcode == "softplus_") {
-      for (int i = 0; i < NUM_MAXES; i++) {
-        vector_instruction_config->approx.maxes[i] = SOFTPLUS_MAXES[i];
-      }
-      for (int i = 0; i < NUM_RANGES; i++) {
-        for (int j = 0; j < NUM_COEFFS; j++) {
-          vector_instruction_config->approx.ranges[i][j] =
-              SOFTPLUS_RANGES[i][j];
-        }
-      }
-      vector_instruction_config->approx.clamp_min = SOFTPLUS_CLAMP_MIN;
-      vector_instruction_config->approx.clamp_max = SOFTPLUS_CLAMP_MAX;
-    } else if (opcode == "mish" || opcode == "mish_") {
-      for (int i = 0; i < NUM_MAXES; i++) {
-        vector_instruction_config->approx.maxes[i] = MISH_MAXES[i];
-      }
-      for (int i = 0; i < NUM_RANGES; i++) {
-        for (int j = 0; j < NUM_COEFFS; j++) {
-          vector_instruction_config->approx.ranges[i][j] = MISH_RANGES[i][j];
-        }
-      }
-      vector_instruction_config->approx.clamp_min = MISH_CLAMP_MIN;
-      vector_instruction_config->approx.clamp_max = MISH_CLAMP_MAX;
-    } else if (opcode == "selu" || opcode == "selu_") {
-      for (int i = 0; i < NUM_MAXES; i++) {
-        vector_instruction_config->approx.maxes[i] = SELU_MAXES[i];
-      }
-      for (int i = 0; i < NUM_RANGES; i++) {
-        for (int j = 0; j < NUM_COEFFS; j++) {
-          vector_instruction_config->approx.ranges[i][j] = SELU_RANGES[i][j];
-        }
-      }
-      vector_instruction_config->approx.clamp_min = SELU_CLAMP_MIN;
-      vector_instruction_config->approx.clamp_max = SELU_CLAMP_MAX;
-    } else if (opcode == "celu" || opcode == "celu_") {
-      for (int i = 0; i < NUM_MAXES; i++) {
-        vector_instruction_config->approx.maxes[i] = CELU_MAXES[i];
-      }
-      for (int i = 0; i < NUM_RANGES; i++) {
-        for (int j = 0; j < NUM_COEFFS; j++) {
-          vector_instruction_config->approx.ranges[i][j] = CELU_RANGES[i][j];
-        }
-      }
-      vector_instruction_config->approx.clamp_min = CELU_CLAMP_MIN;
-      vector_instruction_config->approx.clamp_max = CELU_CLAMP_MAX;
-    } else if (opcode == "sigmoid" || opcode == "sigmoid_") {
-      for (int i = 0; i < NUM_MAXES; i++) {
-        vector_instruction_config->approx.maxes[i] = SIGMOID_MAXES[i];
-      }
-      for (int i = 0; i < NUM_RANGES; i++) {
-        for (int j = 0; j < NUM_COEFFS; j++) {
-          vector_instruction_config->approx.ranges[i][j] = SIGMOID_RANGES[i][j];
-        }
-      }
-      vector_instruction_config->approx.clamp_min = SIGMOID_CLAMP_MIN;
-      vector_instruction_config->approx.clamp_max = SIGMOID_CLAMP_MAX;
-    } else if (opcode == "hardsigmoid" || opcode == "hardsigmoid_") {
-      for (int i = 0; i < NUM_MAXES; i++) {
-        vector_instruction_config->approx.maxes[i] = HARDSIGMOID_MAXES[i];
-      }
-      for (int i = 0; i < NUM_RANGES; i++) {
-        for (int j = 0; j < NUM_COEFFS; j++) {
-          vector_instruction_config->approx.ranges[i][j] =
-              HARDSIGMOID_RANGES[i][j];
-        }
-      }
-      vector_instruction_config->approx.clamp_min = HARDSIGMOID_CLAMP_MIN;
-      vector_instruction_config->approx.clamp_max = HARDSIGMOID_CLAMP_MAX;
-    } else if (opcode == "hardswish" || opcode == "hardswish_") {
-      for (int i = 0; i < NUM_MAXES; i++) {
-        vector_instruction_config->approx.maxes[i] = HARDSWISH_MAXES[i];
-      }
-      for (int i = 0; i < NUM_RANGES; i++) {
-        for (int j = 0; j < NUM_COEFFS; j++) {
-          vector_instruction_config->approx.ranges[i][j] =
-              HARDSWISH_RANGES[i][j];
-        }
-      }
-      vector_instruction_config->approx.clamp_min = HARDSWISH_CLAMP_MIN;
-      vector_instruction_config->approx.clamp_max = HARDSWISH_CLAMP_MAX;
-
-      // Start of activation functions with kwargs
-    } else if (opcode == "hardshrink" || opcode == "hardshrink_") {
-      const VECTOR_DATATYPE lambda = activation_kwargs.at("lambd");
-      const VECTOR_DATATYPE HARDSHRINK_MAXES[NUM_MAXES] = {
-          -lambda, 0.0, 0.0, 0.0, 0.0, lambda};
-      for (int i = 0; i < NUM_MAXES; i++) {
-        vector_instruction_config->approx.maxes[i] = HARDSHRINK_MAXES[i];
-      }
-      for (int i = 0; i < NUM_RANGES; i++) {
-        for (int j = 0; j < NUM_COEFFS; j++) {
-          vector_instruction_config->approx.ranges[i][j] =
-              HARDSHRINK_RANGES[i][j];
-        }
-      }
-      vector_instruction_config->approx.clamp_min = HARDSHRINK_CLAMP_MIN;
-      vector_instruction_config->approx.clamp_max = HARDSHRINK_CLAMP_MAX;
-    } else if (opcode == "hardtanh" || opcode == "hardtanh_") {
-      const VECTOR_DATATYPE min_val = activation_kwargs.at("min_val");
-      const VECTOR_DATATYPE max_val = activation_kwargs.at("max_val");
-      const VECTOR_DATATYPE HARDTANH_MAXES[NUM_MAXES] = {
-          min_val, max_val, max_val, max_val, max_val, max_val};
-      const VECTOR_DATATYPE HARDTANH_RANGES[NUM_RANGES][NUM_COEFFS] = {
-          {min_val, 0.0, 0.0}, {0.0, 1.0, 0.0}, {0.0, 1.0, 0.0},
-          {0.0, 1.0, 0.0},     {0.0, 1.0, 0.0}, {0.0, 1.0, 0.0},
-          {max_val, 0.0, 0.0}};
-      for (int i = 0; i < NUM_MAXES; i++) {
-        vector_instruction_config->approx.maxes[i] = HARDTANH_MAXES[i];
-      }
-      for (int i = 0; i < NUM_RANGES; i++) {
-        for (int j = 0; j < NUM_COEFFS; j++) {
-          vector_instruction_config->approx.ranges[i][j] =
-              HARDTANH_RANGES[i][j];
-        }
-      }
-      vector_instruction_config->approx.clamp_min = HARDTANH_CLAMP_MIN;
-      vector_instruction_config->approx.clamp_max = HARDTANH_CLAMP_MAX;
-    } else if (opcode == "leaky_relu" || opcode == "leaky_relu_") {
-      const VECTOR_DATATYPE negative_slope =
-          activation_kwargs.at("negative_slope");
-      const VECTOR_DATATYPE LEAKYRELU_RANGES[NUM_RANGES][NUM_COEFFS] = {
-          {0.0, negative_slope, 0.0},
-          {0.0, 0.0, 0.0},
-          {0.0, 0.0, 0.0},
-          {0.0, 0.0, 0.0},
-          {0.0, 0.0, 0.0},
-          {0.0, 0.0, 0.0},
-          {0.0, 1.0, 0.0}};
-      for (int i = 0; i < NUM_MAXES; i++) {
-        vector_instruction_config->approx.maxes[i] = LEAKYRELU_MAXES[i];
-      }
-      for (int i = 0; i < NUM_RANGES; i++) {
-        for (int j = 0; j < NUM_COEFFS; j++) {
-          vector_instruction_config->approx.ranges[i][j] =
-              LEAKYRELU_RANGES[i][j];
-        }
-      }
-      vector_instruction_config->approx.clamp_min = LEAKYRELU_CLAMP_MIN;
-      vector_instruction_config->approx.clamp_max = LEAKYRELU_CLAMP_MAX;
-    } else if (opcode == "rrelu" || opcode == "rrelu_") {
-      const VECTOR_DATATYPE lower = activation_kwargs.at("lower");
-      const VECTOR_DATATYPE upper = activation_kwargs.at("upper");
-      const VECTOR_DATATYPE alpha = (lower + upper) / VECTOR_DATATYPE(2);
-      const VECTOR_DATATYPE RRELU_RANGES[NUM_RANGES][NUM_COEFFS] = {
-          {0.0, alpha, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0},
-          {0.0, 0.0, 0.0},   {0.0, 0.0, 0.0}, {0.0, 1.0, 0.0}};
-      for (int i = 0; i < NUM_MAXES; i++) {
-        vector_instruction_config->approx.maxes[i] = RRELU_MAXES[i];
-      }
-      for (int i = 0; i < NUM_RANGES; i++) {
-        for (int j = 0; j < NUM_COEFFS; j++) {
-          vector_instruction_config->approx.ranges[i][j] = RRELU_RANGES[i][j];
-        }
-      }
-      vector_instruction_config->approx.clamp_min = RRELU_CLAMP_MIN;
-      vector_instruction_config->approx.clamp_max = RRELU_CLAMP_MAX;
-    } else if (opcode == "softshrink" || opcode == "softshrink_") {
-      const VECTOR_DATATYPE lambda = activation_kwargs.at("lambd");
-      const VECTOR_DATATYPE SOFTSHRINK_MAXES[NUM_MAXES] = {
-          -lambda, 0.0, 0.0, 0.0, 0.0, lambda};
-      const VECTOR_DATATYPE SOFTSHRINK_RANGES[NUM_RANGES][NUM_COEFFS] = {
-          {lambda, 1.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0},
-          {0.0, 0.0, 0.0},    {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0},
-          {-lambda, 1.0, 0.0}};
-      for (int i = 0; i < NUM_MAXES; i++) {
-        vector_instruction_config->approx.maxes[i] = SOFTSHRINK_MAXES[i];
-      }
-      for (int i = 0; i < NUM_RANGES; i++) {
-        for (int j = 0; j < NUM_COEFFS; j++) {
-          vector_instruction_config->approx.ranges[i][j] =
-              SOFTSHRINK_RANGES[i][j];
-        }
-      }
-      vector_instruction_config->approx.clamp_min = SOFTSHRINK_CLAMP_MIN;
-      vector_instruction_config->approx.clamp_max = SOFTSHRINK_CLAMP_MAX;
-    } else if (opcode == "threshold" || opcode == "threshold_") {
-      const VECTOR_DATATYPE threshold = activation_kwargs.at("threshold");
-      const VECTOR_DATATYPE value = activation_kwargs.at("value");
-      const VECTOR_DATATYPE THRESHOLD_MAXES[NUM_MAXES] = {0.0, 0.0, 0.0,
-                                                          0.0, 0.0, threshold};
-      const VECTOR_DATATYPE THRESHOLD_RANGES[NUM_RANGES][NUM_COEFFS] = {
-          {value, 0.0, 0.0}, {value, 0.0, 0.0}, {value, 0.0, 0.0},
-          {value, 0.0, 0.0}, {value, 0.0, 0.0}, {value, 0.0, 0.0},
-          {0.0, 1.0, 0.0}};
-      for (int i = 0; i < NUM_MAXES; i++) {
-        vector_instruction_config->approx.maxes[i] = THRESHOLD_MAXES[i];
-      }
-      for (int i = 0; i < NUM_RANGES; i++) {
-        for (int j = 0; j < NUM_COEFFS; j++) {
-          vector_instruction_config->approx.ranges[i][j] =
-              THRESHOLD_RANGES[i][j];
-        }
-      }
-      vector_instruction_config->approx.clamp_min = THRESHOLD_CLAMP_MIN;
-      vector_instruction_config->approx.clamp_max = THRESHOLD_CLAMP_MAX;
+      set_quantize_mx_params(param, vector_params, inst,
+                             vector_instruction_config);
     } else if (op.kwargs().contains("other") || opcode == "quantize") {
       std::string other_key = opcode == "quantize" ? "scale" : "other";
       const auto other = op.kwargs().at(other_key);
@@ -1175,12 +868,28 @@ void map_matrix_operation(const Operation& operation,
         auto tensor = other.tensor();
         auto tensor_to_load = tensor.has_memory() ? tensor : self;
 
+        bool has_dequant = tensor_to_load.has_dequant();
+        VECTOR_DATATYPE scale = get_tensor_scalar_scale(tensor_to_load);
+
         if (stage == 0) {
           inst.vector_op0_src1 = VectorInstructions::from_vector_fetch_1;
           set_vector_fetch_1(tensor_to_load, tiling, vector_params);
+
+          if (has_dequant) {
+            assert(inst.vector_op0 == VectorInstructions::op0_add ||
+                   inst.vector_op0 == VectorInstructions::op0_sub);
+            inst.immediate0 = scale.bits_rep();
+            inst.vector_op0 = VectorInstructions::op0_mac;
+          }
         } else if (stage == 2) {
           inst.vector_op2_src1 = VectorInstructions::from_vector_fetch_2;
           set_vector_fetch_2(tensor_to_load, tiling, vector_params);
+
+          if (has_dequant) {
+            assert(inst.vector_op2 == VectorInstructions::op2_add);
+            inst.immediate1 = scale.bits_rep();
+            inst.vector_op2 = VectorInstructions::op2_mac;
+          }
         } else {
           assert(inst.vector_op2_src1 !=
                  VectorInstructions::from_vector_fetch_2);

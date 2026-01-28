@@ -1,5 +1,5 @@
 set block "VectorAccumulator"
-set full_block_name "VectorAccumulator<$VECTOR_DATATYPE, $VECTOR_UNIT_WIDTH>"
+set full_block_name "VectorAccumulator<$VECTOR_DATATYPE, $ACCUMULATOR_WIDTH>"
 
 proc pre_architect {} {
   global full_block_name

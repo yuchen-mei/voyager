@@ -266,6 +266,7 @@ inline float get_tensor_scalar_scale(const codegen::Tensor& tensor) {
 
   const auto& dequantize_op = tensor.dequant();
   const auto scale_tensor = dequantize_op.kwargs().at("scale").tensor();
+  assert(get_size(scale_tensor) == 1);
   float* scale_val = read_constant_param(scale_tensor);
   return scale_val[0];
 }

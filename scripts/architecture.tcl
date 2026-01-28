@@ -162,9 +162,12 @@ if { $DATATYPE == "P8_1" } {
 
   set IC_PORT_WIDTH [expr {$IC_DIMENSION * 4}]
   set OC_PORT_WIDTH [expr {$OC_DIMENSION * 4}]
-  set VECTOR_UNIT_WIDTH $OC_DIMENSION
   set MV_UNIT_WIDTH [expr {$OC_DIMENSION * 2}]
   set SPMM_UNIT_WIDTH $OC_DIMENSION
+
+  set VECTOR_UNIT_WIDTH $OC_DIMENSION
+  set REDUCER_WIDTH [expr {$OC_DIMENSION / 2}]
+  set ACCUMULATOR_WIDTH [expr {$OC_DIMENSION / 2}]
 } else {
   puts "Invalid DATATYPE"
   exit 1
@@ -188,6 +191,14 @@ if {![info exists SUPPORT_DWC]} {
 
 if {![info exists VECTOR_UNIT_WIDTH]} {
   set VECTOR_UNIT_WIDTH $OC_DIMENSION
+}
+
+if {![info exists REDUCER_WIDTH]} {
+  set REDUCER_WIDTH $OC_DIMENSION
+}
+
+if {![info exists ACCUMULATOR_WIDTH]} {
+  set ACCUMULATOR_WIDTH $OC_DIMENSION
 }
 
 # ================================================================

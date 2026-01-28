@@ -30,15 +30,17 @@ void map_softmax(const codegen::Operation& param,
   const int packing_factor = OC_DIMENSION / VECTOR_UNIT_WIDTH;
 
   int input_dtype = get_index_from_type_name<VU_INPUT_TYPES>(input.dtype());
-  int input_type_width = get_type_width<VU_INPUT_TYPES>(input_dtype);
+  int input_dtype_width = get_type_width<VU_INPUT_TYPES>(input_dtype);
+  int input_fetch_width = OC_DIMENSION * input_dtype_width;
 
   int vector_dtype = get_type_index<VECTOR_DATATYPE, VU_INPUT_TYPES>();
-  int vector_type_width = get_type_width<VU_INPUT_TYPES>(vector_dtype);
+  int vector_dtype_width = get_type_width<VU_INPUT_TYPES>(vector_dtype);
+  int vector_fetch_width = OC_DIMENSION * vector_dtype_width;
 
   const int max_scratch_memory =
-      get_address(input) + input_size * input_type_width / 8;
+      get_address(input) + input_size * input_dtype_width / 8;
   const int sum_scratch_memory =
-      max_scratch_memory + reduced_size * OC_DIMENSION * vector_type_width / 8;
+      max_scratch_memory + reduced_size * OC_DIMENSION * vector_dtype_width / 8;
 
   // ----------------------------------------------------------------------------
   // Pass 1: Calculate max and subtract max from tensor
@@ -48,12 +50,9 @@ void map_softmax(const codegen::Operation& param,
   vector_params->vector_fetch_0_offset = get_address(input);
   vector_params->vector_fetch_0_mode = 2;
   vector_params->vector_fetch_0_dtype = input_dtype;
-  set_dequantize_scale(input, vector_params);
-
-  int vector_fetch_0_input_width = OC_DIMENSION * input_type_width;
-  vector_params->vector_fetch_0_burst_size = vector_fetch_0_input_width / 8;
-  vector_params->vector_fetch_0_num_beats =
-      vector_fetch_0_input_width / OC_PORT_WIDTH;
+  vector_params->vector_fetch_0_stride = OC_DIMENSION;
+  vector_params->vector_fetch_0_burst_size = input_fetch_width / 8;
+  vector_params->vector_fetch_0_num_beats = input_fetch_width / OC_PORT_WIDTH;
   vector_params->vector_fetch_0_packing_factor = packing_factor;
 
   for (int i = 0; i < 3; i++) {
@@ -77,22 +76,23 @@ void map_softmax(const codegen::Operation& param,
   vector_params->output_loops[1][2] = reduced_size;
 
   // Instruction 0 - start reduction engine to calculate max
-  VectorInstructions vinst0;
-  vinst0.op_type = VectorInstructions::reduction;
-  vinst0.inst_loop_count = reduced_size;
-  vinst0.reduce_count = reduction_dim / OC_DIMENSION * packing_factor;
-  vinst0.reduce_op = VectorInstructions::rmax;
-  vinst0.rduplicate = 1;
-  vinst0.rdest = VectorInstructions::to_memory;
-  vector_instruction_config->inst[0] = vinst0;
+  VectorInstructions inst0;
+  inst0.op_type = VectorInstructions::reduction;
+  inst0.inst_loop_count = reduced_size;
+  inst0.reduce_count = reduction_dim / REDUCER_WIDTH;
+  inst0.reduce_op = VectorInstructions::rmax;
+  inst0.rduplicate = 1;
+  inst0.rdest = VectorInstructions::to_memory;
+  vector_instruction_config->inst[0] = inst0;
 
   // Instruction 1 - send to reduction engine to calculate max
-  VectorInstructions vinst1;
-  vinst1.op_type = VectorInstructions::vector;
-  vinst1.inst_loop_count = input_size / OC_DIMENSION * packing_factor;
-  vinst1.vector_op0_src0 = VectorInstructions::from_vector_fetch_0;
-  vinst1.vdest = VectorInstructions::to_reduce;
-  vector_instruction_config->inst[1] = vinst1;
+  VectorInstructions inst1;
+  inst1.op_type = VectorInstructions::vector;
+  inst1.inst_loop_count = input_size / VECTOR_UNIT_WIDTH;
+  inst1.vector_op0_src0 = VectorInstructions::from_vector_fetch_0;
+  inst1.vdest = VectorInstructions::to_reduce;
+  set_dequantize_scale(input, inst1);
+  vector_instruction_config->inst[1] = inst1;
 
   vector_instruction_config->num_inst = 2;
   vector_instruction_config->config_loop_count = 1;
@@ -111,11 +111,9 @@ void map_softmax(const codegen::Operation& param,
   vector_params->vector_fetch_0_offset = get_address(input);
   vector_params->vector_fetch_0_mode = 2;
   vector_params->vector_fetch_0_dtype = input_dtype;
-  set_dequantize_scale(input, vector_params);
-
-  vector_params->vector_fetch_0_burst_size = vector_fetch_0_input_width / 8;
-  vector_params->vector_fetch_0_num_beats =
-      vector_fetch_0_input_width / OC_PORT_WIDTH;
+  vector_params->vector_fetch_0_stride = OC_DIMENSION;
+  vector_params->vector_fetch_0_burst_size = input_fetch_width / 8;
+  vector_params->vector_fetch_0_num_beats = input_fetch_width / OC_PORT_WIDTH;
   vector_params->vector_fetch_0_packing_factor = packing_factor;
 
   for (int i = 0; i < 3; i++) {
@@ -129,11 +127,9 @@ void map_softmax(const codegen::Operation& param,
   vector_params->vector_fetch_1_offset = max_scratch_memory;
   vector_params->vector_fetch_1_mode = 1;
   vector_params->vector_fetch_1_dtype = vector_dtype;
-
-  int vector_fetch_1_input_width = OC_DIMENSION * vector_type_width;
-  vector_params->vector_fetch_1_burst_size = vector_fetch_1_input_width / 8;
-  vector_params->vector_fetch_1_num_beats =
-      vector_fetch_1_input_width / OC_PORT_WIDTH;
+  vector_params->vector_fetch_1_stride = OC_DIMENSION;
+  vector_params->vector_fetch_1_burst_size = vector_fetch_width / 8;
+  vector_params->vector_fetch_1_num_beats = vector_fetch_width / OC_PORT_WIDTH;
   vector_params->vector_fetch_1_packing_factor = packing_factor;
 
   vector_params->vector_fetch_1_broadcast = 0b100;
@@ -158,41 +154,30 @@ void map_softmax(const codegen::Operation& param,
   vector_params->output_loops[1][2] = reduced_size;
 
   // Instruction 2 - start reduction engine to calculate sum
-  VectorInstructions vinst2;
-  vinst2.op_type = VectorInstructions::reduction;
-  vinst2.inst_loop_count = reduced_size;
-  vinst2.reduce_count = reduction_dim / OC_DIMENSION * packing_factor;
-  vinst2.reduce_op = VectorInstructions::radd;
-  vinst2.rreciprocal = 1;
-  vinst2.rduplicate = 1;
-  vinst2.rdest = VectorInstructions::to_memory;
-  vector_instruction_config->inst[0] = vinst2;
+  VectorInstructions inst2;
+  inst2.op_type = VectorInstructions::reduction;
+  inst2.inst_loop_count = reduced_size;
+  inst2.reduce_count = reduction_dim / REDUCER_WIDTH;
+  inst2.reduce_op = VectorInstructions::radd;
+  inst2.rreciprocal = 1;
+  inst2.rduplicate = 1;
+  inst2.rdest = VectorInstructions::to_memory;
+  vector_instruction_config->inst[0] = inst2;
 
   // Instruction 3 - subtract max and exp, and reduce sum
-  VectorInstructions vinst3;
-  vinst3.op_type = VectorInstructions::vector;
-  vinst3.inst_loop_count = input_size / OC_DIMENSION * packing_factor;
-  vinst3.vector_op0_src0 = VectorInstructions::from_vector_fetch_0;
-  vinst3.vector_op0_src1 = VectorInstructions::from_vector_fetch_1;
-  vinst3.vector_op0 = VectorInstructions::vsub;
-  vinst3.vector_op1 = VectorInstructions::vpoly;
-  vinst3.vdest = VectorInstructions::to_reduce;
-  vector_instruction_config->inst[1] = vinst3;
+  VectorInstructions inst3;
+  inst3.op_type = VectorInstructions::vector;
+  inst3.inst_loop_count = input_size / VECTOR_UNIT_WIDTH;
+  inst3.vector_op0_src0 = VectorInstructions::from_vector_fetch_0;
+  inst3.vector_op0_src1 = VectorInstructions::from_vector_fetch_1;
+  inst3.vector_op0 = VectorInstructions::op0_sub;
+  inst3.vector_op1 = VectorInstructions::op1_exp;
+  inst3.vdest = VectorInstructions::to_reduce;
+  set_dequantize_scale(input, inst3);
+  vector_instruction_config->inst[1] = inst3;
 
   vector_instruction_config->num_inst = 2;
   vector_instruction_config->config_loop_count = 1;
-
-  // Copy coefficients from ApproximationConstants.h
-  for (int i = 0; i < NUM_MAXES; i++) {
-    vector_instruction_config->approx.maxes[i] = EXP_MAXES[i];
-  }
-  for (int i = 0; i < NUM_RANGES; i++) {
-    for (int j = 0; j < NUM_COEFFS; j++) {
-      vector_instruction_config->approx.ranges[i][j] = EXP_RANGES[i][j];
-    }
-  }
-  vector_instruction_config->approx.clamp_min = EXP_CLAMP_MIN;
-  vector_instruction_config->approx.clamp_max = EXP_CLAMP_MAX;
 
   mapped_params.push_back(vector_params);
   mapped_params.push_back(vector_instruction_config);
@@ -208,11 +193,9 @@ void map_softmax(const codegen::Operation& param,
   vector_params->vector_fetch_0_offset = get_address(input);
   vector_params->vector_fetch_0_mode = 2;
   vector_params->vector_fetch_0_dtype = input_dtype;
-  set_dequantize_scale(input, vector_params);
-
-  vector_params->vector_fetch_0_burst_size = vector_fetch_0_input_width / 8;
-  vector_params->vector_fetch_0_num_beats =
-      vector_fetch_0_input_width / OC_PORT_WIDTH;
+  vector_params->vector_fetch_0_stride = OC_DIMENSION;
+  vector_params->vector_fetch_0_burst_size = input_fetch_width / 8;
+  vector_params->vector_fetch_0_num_beats = input_fetch_width / OC_PORT_WIDTH;
   vector_params->vector_fetch_0_packing_factor = packing_factor;
 
   for (int i = 0; i < 3; i++) {
@@ -226,9 +209,9 @@ void map_softmax(const codegen::Operation& param,
   vector_params->vector_fetch_1_offset = max_scratch_memory;
   vector_params->vector_fetch_1_mode = 1;
   vector_params->vector_fetch_1_dtype = vector_dtype;
-  vector_params->vector_fetch_1_burst_size = vector_fetch_1_input_width / 8;
-  vector_params->vector_fetch_1_num_beats =
-      vector_fetch_1_input_width / OC_PORT_WIDTH;
+  vector_params->vector_fetch_1_stride = OC_DIMENSION;
+  vector_params->vector_fetch_1_burst_size = vector_fetch_width / 8;
+  vector_params->vector_fetch_1_num_beats = vector_fetch_width / OC_PORT_WIDTH;
   vector_params->vector_fetch_1_packing_factor = packing_factor;
 
   vector_params->vector_fetch_1_broadcast = 0b100;
@@ -243,9 +226,9 @@ void map_softmax(const codegen::Operation& param,
   vector_params->vector_fetch_2_offset = sum_scratch_memory;
   vector_params->vector_fetch_2_mode = 1;
   vector_params->vector_fetch_2_dtype = vector_dtype;
-  vector_params->vector_fetch_2_burst_size = vector_fetch_1_input_width / 8;
-  vector_params->vector_fetch_2_num_beats =
-      vector_fetch_1_input_width / OC_PORT_WIDTH;
+  vector_params->vector_fetch_2_stride = OC_DIMENSION;
+  vector_params->vector_fetch_2_burst_size = vector_fetch_width / 8;
+  vector_params->vector_fetch_2_num_beats = vector_fetch_width / OC_PORT_WIDTH;
   vector_params->vector_fetch_2_packing_factor = packing_factor;
 
   vector_params->vector_fetch_2_broadcast = 0b100;
@@ -276,29 +259,16 @@ void map_softmax(const codegen::Operation& param,
   inst4.vector_op0_src0 = VectorInstructions::from_vector_fetch_0;
   inst4.vector_op0_src1 = VectorInstructions::from_vector_fetch_1;
   inst4.vector_op2_src1 = VectorInstructions::from_vector_fetch_2;
-  inst4.vector_op0 = VectorInstructions::vsub;
-  inst4.vector_op1 = VectorInstructions::vpoly;
-  inst4.vector_op2 = VectorInstructions::vmult;
+  inst4.vector_op0 = VectorInstructions::op0_sub;
+  inst4.vector_op1 = VectorInstructions::op1_exp;
+  inst4.vector_op2 = VectorInstructions::op2_mul;
   inst4.vdest = VectorInstructions::to_output;
-
+  set_dequantize_scale(input, inst4);
   set_quantize_params(param, vector_params, inst4, vector_instruction_config);
-
   vector_instruction_config->inst[0] = inst4;
 
   vector_instruction_config->num_inst = 1;
   vector_instruction_config->config_loop_count = 1;
-
-  // Copy coefficients from ApproximationConstants.h
-  for (int i = 0; i < NUM_MAXES; i++) {
-    vector_instruction_config->approx.maxes[i] = EXP_MAXES[i];
-  }
-  for (int i = 0; i < NUM_RANGES; i++) {
-    for (int j = 0; j < NUM_COEFFS; j++) {
-      vector_instruction_config->approx.ranges[i][j] = EXP_RANGES[i][j];
-    }
-  }
-  vector_instruction_config->approx.clamp_min = EXP_CLAMP_MIN;
-  vector_instruction_config->approx.clamp_max = EXP_CLAMP_MAX;
 
   mapped_params.push_back(vector_params);
   mapped_params.push_back(vector_instruction_config);

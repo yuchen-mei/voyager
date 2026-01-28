@@ -1,4 +1,5 @@
 import argparse
+import concurrent
 import datetime
 import json
 import math
@@ -406,42 +407,25 @@ def run_rtl_tests(
     tile_counts,
     num_processes,
     results_folder,
-    keep_build=False,
     scverify_test=None,
     debug=False
 ):
-    check_environment_vars(
-        ["DATATYPE", "IC_DIMENSION", "OC_DIMENSION", "TECHNOLOGY", "CLOCK_PERIOD"]
-    )
-
-    # clean old build
-    if not keep_build:
-        subprocess.run(["make", "clean-catapult"], env=os.environ)
-
-    # generate RTL
-    with open(f"{results_folder}/rtl_generation.log", "w") as stdout_file:
-        subprocess.run(
-            ["make", "-j", "rtl"],
-            env=os.environ,
-            stdout=stdout_file,
-            stderr=subprocess.STDOUT,
-        )
-
     model, (test, *_) = next(iter(layers.items()))
     if scverify_test is not None:
         test = scverify_test
-    print(f"Running {model} {test}")
+
+    print(f"Building VCS simulation binary using {model} {test}")
+
+    env_vars = os.environ.copy()
+    env_vars["NETWORK"] = model
+    env_vars["TESTS"] = test
+    env_vars["SIMS"] = "gold,accelerator"
+    env_vars["LD_PRELOAD"] = env_vars["CONDA_PREFIX"] + "/lib/libstdc++.so.6"
+    set_default_env_vars(env_vars)
+    build_folder = get_build_folder(env_vars)
 
     # build VCS simulation binary
     with open(f"{results_folder}/vcs_build.log", "w") as stdout_file:
-        env_vars = os.environ.copy()
-        env_vars["NETWORK"] = model
-        env_vars["TESTS"] = test
-        env_vars["SIMS"] = "gold,accelerator"
-        env_vars["LD_PRELOAD"] = env_vars["CONDA_PREFIX"] + "/lib/libstdc++.so.6"
-        set_default_env_vars(env_vars)
-        build_folder = get_build_folder(env_vars)
-
         subprocess.run(
             ["make", "-f", "scverify/Verify_concat_sim_rtl_v_vcs.mk", "build"],
             cwd=f"{build_folder}/Catapult/{env_vars['TECHNOLOGY']}/clock_{env_vars['CLOCK_PERIOD']}/Accelerator/Accelerator.v1",
@@ -482,6 +466,24 @@ def run_rtl_tests(
     pool.join()
 
     return print_test_results(test_results, layers, results_folder)
+
+
+def build_rtl(results_folder, keep_build, env_vars):
+    if not keep_build:
+        subprocess.run(["make", "clean-catapult"], env=env_vars)
+
+    with open(f"{results_folder}/rtl_generation.log", "w") as stdout_file:
+        result = subprocess.run(
+            ["make", "-j", "rtl"], # Uses all cores
+            env=env_vars,
+            stdout=stdout_file,
+            stderr=subprocess.STDOUT,
+        )
+
+    if result.returncode != 0:
+        raise Exception(f"RTL Generation failed. See {results_folder}/rtl_generation.log")
+
+    return True
 
 
 def run_accuracy(model, dataset, num_processes, output_folder):
@@ -593,6 +595,8 @@ def run_accuracy(model, dataset, num_processes, output_folder):
             "--weight",
             "int8,qs=microscaling,bs=" + str(block_size),
             "--bf16",
+            "--calibration_steps",
+            "10",
         ]
     elif env_vars["DATATYPE"] == "MXNF4":
         quantization_args = [
@@ -621,7 +625,7 @@ def run_accuracy(model, dataset, num_processes, output_folder):
                 model,
                 "--model_name_or_path",
                 model_path,
-                "--transpose_weight",
+                "--transform_layout",
                 "--hardware_unrolling",
                 f"{ic_unroll},{oc_unroll}",
                 *quantization_args,
@@ -921,39 +925,48 @@ def main():
         with open("ci_skip_rules.json", "r") as f:
             skip_rules = json.load(f)
 
-    # Add codegen layers
-    if args.tests is None:
-        all_models = []
-        if args.models is not None:
-            all_models.extend(args.models)
+    rtl_build_future = None
+    thread_pool = None
 
-        for network in all_models:
-            env_vars = os.environ.copy()
-            env_vars["NETWORK"] = network
-            if args.sims != "accuracy":
-                subprocess.run(["make", "network-proto"], env=env_vars)
-                datatype = os.environ["DATATYPE"]
-                block_size = max(
-                    int(os.environ["OC_DIMENSION"]), int(os.environ["IC_DIMENSION"])
-                )
-                skip_layers = get_skip_layers(
-                    skip_rules, network, datatype, args.sims, block_size
-                )
-                add_layers(
-                    network,
-                    layers,
-                    layer_counts,
-                    tile_counts,
-                    args.uniquify_layers,
-                    skip_layers,
-                )
-    else:
-        assert (
-            len(args.models) == 1
-        ), "Only one model can be specified when using --tests"
+    # Start RTL build in background
+    if args.sims == "rtl":
+        thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+
+        rtl_build_future = thread_pool.submit(
+            build_rtl,
+            results_folder,
+            args.keep_build,
+            os.environ.copy()
+        )
+
+    # Compile ML models and add layers to test list
+    if args.tests is not None:
+        assert len(args.models) == 1, (
+            "Only one model can be specified when using --tests"
+        )
         layers[args.models[0]] = args.tests.split(",")
         layer_counts[args.models[0]] = {test: 1 for test in layers[args.models[0]]}
         tile_counts[args.models[0]] = {test: 1 for test in layers[args.models[0]]}
+    elif args.sims != "accuracy":
+        for network in args.models:
+            env_vars = os.environ.copy()
+            env_vars["NETWORK"] = network
+            subprocess.run(["make", "network-proto"], env=env_vars)
+            datatype = os.environ["DATATYPE"]
+            block_size = max(
+                int(os.environ["OC_DIMENSION"]), int(os.environ["IC_DIMENSION"])
+            )
+            skip_layers = get_skip_layers(
+                skip_rules, network, datatype, args.sims, block_size
+            )
+            add_layers(
+                network,
+                layers,
+                layer_counts,
+                tile_counts,
+                args.uniquify_layers,
+                skip_layers,
+            )
 
     if args.sims == "systemc" or args.sims == "fast-systemc":
         success = run_systemc_tests(
@@ -963,13 +976,22 @@ def main():
             args.sims == "fast-systemc",
         )
     elif args.sims == "rtl":
+        if rtl_build_future:
+            print("Waiting for RTL generation to complete...")
+            try:
+                rtl_build_future.result() # Wait for Phase 1
+            except Exception as e:
+                print(e)
+                sys.exit(1)
+            finally:
+                thread_pool.shutdown()
+
         success = run_rtl_tests(
             layers,
             layer_counts,
             tile_counts,
             args.num_processes,
             results_folder,
-            args.keep_build,
             args.scverify_test,
             args.debug
         )

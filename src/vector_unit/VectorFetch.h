@@ -45,6 +45,8 @@ SC_MODULE(VectorFetchUnit) {
       vector_fetch_1_resp);
   Connections::Combinational<ac_int<MAX_RESPONSE_WIDTH, false>> CCS_INIT_S1(
       vector_fetch_1_packed_bits);
+  Connections::Combinational<Pack1D<VectorType, BUFSIZE>> CCS_INIT_S1(
+      vector_fetch_1_packed_data);
   Connections::Out<Pack1D<VectorType, width>> CCS_INIT_S1(vector_fetch_1_data);
   sc_fifo<bool> vector_fetch_1_packer_done;
   sc_fifo<bool> vector_fetch_1_data_done;
@@ -147,11 +149,10 @@ SC_MODULE(VectorFetchUnit) {
 
       ac_int<LOOP_WIDTH, false> stride_y = Y0;
       ac_int<LOOP_WIDTH, false> stride_x = X0;
-      ac_int<16, false> stride_k = width * params.vector_fetch_0_packing_factor;
+      ac_int<LOOP_WIDTH, false> stride_k = params.vector_fetch_0_stride;
 
       if (params.has_transpose) {
         X1 = X1 * BUFSIZE / mu_width;
-        stride_k = stride_k * mu_width / width;
       }
 
       ac_int<16, false> Y = Y1 * Y0;
@@ -207,19 +208,19 @@ SC_MODULE(VectorFetchUnit) {
         }
       }
 
-      // Pre-compute loop bounds
+      // Pre-compute loop strides for flattened addressing
+      ac_int<32, false> strides[6];
+      ac_int<32, false> running_size = stride_k;
+
 #pragma hls_unroll yes
-      for (int i = 0; i < 6; i++) {
+      for (int i = 5; i >= 0; i--) {
+        strides[i] = running_size;
         if (params.vector_fetch_0_broadcast[i]) {
-          loop_bounds[i] = i == 5 ? width : 1;
+          strides[i] = 0;
+        } else {
+          running_size *= loop_bounds[i];
         }
       }
-
-      ac_int<16, false> loop_bound_4 = loop_bounds[5];
-      ac_int<16, false> loop_bound_3 = loop_bounds[4] * loop_bound_4;
-      ac_int<16, false> loop_bound_2 = loop_bounds[3] * loop_bound_3;
-      ac_int<16, false> loop_bound_1 = loop_bounds[2] * loop_bound_2;
-      ac_int<16, false> loop_bound_0 = loop_bounds[1] * loop_bound_1;
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
@@ -266,13 +267,6 @@ SC_MODULE(VectorFetchUnit) {
                         loop_counters[1][1], loop_counters[1][2],
                     };
 
-#pragma hls_unroll yes
-                    for (int i = 0; i < 6; i++) {
-                      if (params.vector_fetch_0_broadcast[i]) {
-                        indices[i] = 0;
-                      }
-                    }
-
                     if (params.has_permute) {
                       ac_int<LOOP_WIDTH, false> permuted_indices[6];
 #pragma hls_unroll yes
@@ -293,10 +287,9 @@ SC_MODULE(VectorFetchUnit) {
                     }
 
                     address =
-                        (indices[0] * loop_bound_0 + indices[1] * loop_bound_1 +
-                         indices[2] * loop_bound_2 + indices[3] * loop_bound_3 +
-                         indices[4] * loop_bound_4 + indices[5]) *
-                        stride_k;
+                        indices[0] * strides[0] + indices[1] * strides[1] +
+                        indices[2] * strides[2] + indices[3] * strides[3] +
+                        indices[4] * strides[4] + indices[5] * strides[5];
                   }
 #if DOUBLE_BUFFERED_ACCUM_BUFFER
                   else if (params.vector_fetch_0_mode == 3) {
@@ -350,6 +343,7 @@ SC_MODULE(VectorFetchUnit) {
     vector_fetch_0_packer_params.ResetRead();
     vector_fetch_0_resp.Reset();
     vector_fetch_0_packed_bits.ResetWrite();
+    vector_fetch_1_packed_data.ResetWrite();
 
     wait();
 
@@ -370,7 +364,26 @@ SC_MODULE(VectorFetchUnit) {
           if (i == params.vector_fetch_0_num_beats - 1) break;
         }
 
-        vector_fetch_0_packed_bits.Push(packed_bits);
+        if (params.has_transpose) {
+          // For transpose mode, directly push packed bits
+          Pack1D<VectorType, BUFSIZE> outputs;
+          bool found =
+              (unpack_vector_data<InputTypes, VectorType, BUFSIZE,
+                                  MAX_RESPONSE_WIDTH, InputTypes...>(
+                   params.vector_fetch_0_dtype, packed_bits, outputs, 0) ||
+               ...);
+
+#ifndef __SYNTHESIS__
+          if (!found) {
+            std::cerr << "Error: vector fetch 0 input dtype '"
+                      << params.vector_fetch_0_dtype << "' is not valid.\n";
+          }
+#endif
+
+          vector_fetch_1_packed_data.Push(outputs);
+        } else {
+          vector_fetch_0_packed_bits.Push(packed_bits);
+        }
       }
     }
   }
@@ -378,6 +391,7 @@ SC_MODULE(VectorFetchUnit) {
   void feed_data_0() {
     vector_fetch_0_data_params.ResetRead();
     vector_fetch_0_packed_bits.ResetRead();
+    vector_fetch_1_packed_data.ResetRead();
     vector_fetch_0_data.Reset();
 
 #if DOUBLE_BUFFERED_ACCUM_BUFFER
@@ -393,27 +407,6 @@ SC_MODULE(VectorFetchUnit) {
     while (true) {
       VectorParams params = vector_fetch_0_data_params.Pop();
 
-      ac_int<LOOP_WIDTH, false> loop_counters[2][3];
-      ac_int<LOOP_WIDTH, false> loop_ends[2][3];
-
-#pragma hls_unroll yes
-      for (int i = 0; i < 2; i++) {
-#pragma hls_unroll yes
-        for (int j = 0; j < 3; j++) {
-          loop_ends[i][j] = params.vector_fetch_0_loops[i][j] - 1;
-        }
-      }
-
-      ac_int<LOOP_WIDTH, false> Y0 =
-          params.vector_fetch_0_loops[1][params.vector_fetch_0_y_loop_idx[1]] -
-          1;
-      ac_int<LOOP_WIDTH, false> X0 =
-          params.vector_fetch_0_loops[1][params.vector_fetch_0_x_loop_idx[1]] -
-          1;
-      ac_int<LOOP_WIDTH, false> K1 =
-          params.vector_fetch_0_loops[1][params.vector_fetch_0_k_loop_idx[1]] -
-          1;
-
       if (params.has_transpose) {
         VectorType buffer[BUFSIZE][mu_width];
 
@@ -421,47 +414,25 @@ SC_MODULE(VectorFetchUnit) {
         assert(params.vector_fetch_0_loops[1][2] == mu_width);
 #endif
 
-        ac_int<32, false> total_values = params.vector_fetch_0_loops[0][0] *
-                                         params.vector_fetch_0_loops[0][1] *
-                                         params.vector_fetch_0_loops[0][2] *
-                                         params.vector_fetch_0_loops[1][0] *
-                                         params.vector_fetch_0_loops[1][1];
-        ac_int<32, false> counter = 0;
+        ac_int<32, false> loop_bound = params.vector_fetch_0_loops[0][0] *
+                                       params.vector_fetch_0_loops[0][1] *
+                                       params.vector_fetch_0_loops[0][2] *
+                                       params.vector_fetch_0_loops[1][0] *
+                                       params.vector_fetch_0_loops[1][1];
 
-      TRANSPOSE_OUTER:
-        while (counter++ < total_values) {
+        for (ac_int<32, false> count = 0;; count++) {
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
-        TRANSPOSE_READ:
           for (int col = 0; col < mu_width; col++) {
-            auto bits = vector_fetch_0_packed_bits.Pop();
-
-            Pack1D<VectorType, BUFSIZE> outputs;
-            bool found = (unpack_vector_data<InputTypes, VectorType, BUFSIZE,
-                                             MAX_RESPONSE_WIDTH, InputTypes...>(
-                              params.vector_fetch_0_dtype, bits, outputs, 0) ||
-                          ...);
-
-#ifndef __SYNTHESIS__
-            if (!found) {
-              std::cerr << "Error: vector fetch 0 input dtype '"
-                        << params.vector_fetch_0_dtype << "' is not valid.\n";
-            }
-#endif
-
-            Pack1D<VectorType, BUFSIZE> dequantized;
-            vdequantize<VectorType, VectorType, BUFSIZE>(
-                outputs, dequantized, params.vector_fetch_0_dq_scale);
-
+            auto data = vector_fetch_1_packed_data.Pop();
 #pragma hls_unroll yes
             for (int row = 0; row < BUFSIZE; row++) {
-              buffer[row][col] = dequantized[row];
+              buffer[row][col] = data[row];
             }
           }
 
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
-        TRANSPOSE_WRITE:
           for (int row = 0; row < BUFSIZE; row++) {
             Pack1D<VectorType, mu_width> transposed;
 #pragma hls_unroll yes
@@ -478,56 +449,10 @@ SC_MODULE(VectorFetchUnit) {
               vector_fetch_0_data.Push(unpacked);
             }
           }
+
+          if (count == loop_bound - 1) break;
         }
-      }
-#if DOUBLE_BUFFERED_ACCUM_BUFFER
-      else if (params.vector_fetch_0_mode == 3) {
-#pragma hls_pipeline_init_interval 1
-#pragma hls_pipeline_stall_mode flush
-        for (loop_counters[0][0] = 0;; loop_counters[0][0]++) {
-          for (loop_counters[0][1] = 0;; loop_counters[0][1]++) {
-            for (loop_counters[0][2] = 0;; loop_counters[0][2]++) {
-              for (loop_counters[1][0] = 0;; loop_counters[1][0]++) {
-                for (loop_counters[1][1] = 0;; loop_counters[1][1]++) {
-                  for (loop_counters[1][2] = 0;; loop_counters[1][2]++) {
-                    auto read_data =
-                        accumulation_buffer_read_data[accumulation_buffer_bank]
-                            .Pop();
-                    for (int i = 0; i < mu_width / width; i++) {
-                      Pack1D<BufferType, width> output_data;
-#pragma hls_unroll yes
-                      for (int j = 0; j < width; j++) {
-                        output_data[j] = read_data[i * width + j];
-                      }
-                      accumulation_buffer_output.Push(output_data);
-                    }
-
-                    ac_int<LOOP_WIDTH, false> x0 =
-                        loop_counters[1][params.vector_fetch_0_x_loop_idx[1]];
-                    ac_int<LOOP_WIDTH, false> y0 =
-                        loop_counters[1][params.vector_fetch_0_y_loop_idx[1]];
-                    ac_int<LOOP_WIDTH, false> k1 =
-                        loop_counters[1][params.vector_fetch_0_k_loop_idx[1]];
-
-                    if (k1 == K1 && y0 == Y0 && x0 == X0) {
-                      accumulation_buffer_bank = !accumulation_buffer_bank;
-                    }
-
-                    if (loop_counters[1][2] == loop_ends[1][2]) break;
-                  }
-                  if (loop_counters[1][1] == loop_ends[1][1]) break;
-                }
-                if (loop_counters[1][0] == loop_ends[1][0]) break;
-              }
-              if (loop_counters[0][2] == loop_ends[0][2]) break;
-            }
-            if (loop_counters[0][1] == loop_ends[0][1]) break;
-          }
-          if (loop_counters[0][0] == loop_ends[0][0]) break;
-        }
-      }
-#endif
-      else {
+      } else if (params.vector_fetch_0_mode != 3) {
 #pragma hls_pipeline_init_interval 1
 #pragma hls_pipeline_stall_mode flush
         while (true) {
@@ -558,15 +483,76 @@ SC_MODULE(VectorFetchUnit) {
 #endif
             }
 
-            Pack1D<VectorType, width> dequantized;
-            vdequantize<VectorType, VectorType, width>(
-                outputs, dequantized, params.vector_fetch_0_dq_scale);
-            vector_fetch_0_data.Push(dequantized);
+            vector_fetch_0_data.Push(outputs);
 
             if (pack == params.vector_fetch_0_packing_factor - 1) break;
           }
         }
       }
+#if DOUBLE_BUFFERED_ACCUM_BUFFER
+      else {
+        ac_int<LOOP_WIDTH, false> loop_counters[2][3];
+        ac_int<LOOP_WIDTH, false> loop_ends[2][3];
+
+#pragma hls_unroll yes
+        for (int i = 0; i < 2; i++) {
+#pragma hls_unroll yes
+          for (int j = 0; j < 3; j++) {
+            loop_ends[i][j] = params.vector_fetch_0_loops[i][j] - 1;
+          }
+        }
+
+        ac_int<LOOP_WIDTH, false> y0_max =
+            loop_ends[1][params.vector_fetch_0_y_loop_idx[1]];
+        ac_int<LOOP_WIDTH, false> x0_max =
+            loop_ends[1][params.vector_fetch_0_x_loop_idx[1]];
+        ac_int<LOOP_WIDTH, false> k1_max =
+            loop_ends[1][params.vector_fetch_0_k_loop_idx[1]];
+
+#pragma hls_pipeline_init_interval 1
+#pragma hls_pipeline_stall_mode flush
+        for (loop_counters[0][0] = 0;; loop_counters[0][0]++) {
+          for (loop_counters[0][1] = 0;; loop_counters[0][1]++) {
+            for (loop_counters[0][2] = 0;; loop_counters[0][2]++) {
+              for (loop_counters[1][0] = 0;; loop_counters[1][0]++) {
+                for (loop_counters[1][1] = 0;; loop_counters[1][1]++) {
+                  for (loop_counters[1][2] = 0;; loop_counters[1][2]++) {
+                    auto read_data =
+                        accumulation_buffer_read_data[accumulation_buffer_bank]
+                            .Pop();
+                    for (int i = 0; i < mu_width / width; i++) {
+                      Pack1D<BufferType, width> output_data;
+#pragma hls_unroll yes
+                      for (int j = 0; j < width; j++) {
+                        output_data[j] = read_data[i * width + j];
+                      }
+                      accumulation_buffer_output.Push(output_data);
+                    }
+
+                    ac_int<LOOP_WIDTH, false> x0 =
+                        loop_counters[1][params.vector_fetch_0_x_loop_idx[1]];
+                    ac_int<LOOP_WIDTH, false> y0 =
+                        loop_counters[1][params.vector_fetch_0_y_loop_idx[1]];
+                    ac_int<LOOP_WIDTH, false> k1 =
+                        loop_counters[1][params.vector_fetch_0_k_loop_idx[1]];
+
+                    if (k1 == k1_max && y0 == y0_max && x0 == x0_max) {
+                      accumulation_buffer_bank = !accumulation_buffer_bank;
+                    }
+                    if (loop_counters[1][2] == loop_ends[1][2]) break;
+                  }
+                  if (loop_counters[1][1] == loop_ends[1][1]) break;
+                }
+                if (loop_counters[1][0] == loop_ends[1][0]) break;
+              }
+              if (loop_counters[0][2] == loop_ends[0][2]) break;
+            }
+            if (loop_counters[0][1] == loop_ends[0][1]) break;
+          }
+          if (loop_counters[0][0] == loop_ends[0][0]) break;
+        }
+      }
+#endif
     }
   }
 
@@ -603,20 +589,25 @@ SC_MODULE(VectorFetchUnit) {
       ac_int<LOOP_WIDTH, false> K1 =
           params.vector_fetch_1_loops[1][params.vector_fetch_1_k_loop_idx[1]];
 
-      ac_int<16, false> X = X1 * X0;
-      ac_int<16, false> k_stride = width * params.vector_fetch_1_packing_factor;
-      ac_int<16, false> K = K2 * K1 * k_stride;
+      // dimension[0] is a dummy value to make indexing easier
+      ac_int<16, false> dimensions[3] = {1, X1 * X0, K2 * K1};
+      ac_int<32, false> strides[3];
+      ac_int<32, false> running_size = params.vector_fetch_1_stride;
 
-      if (params.vector_fetch_1_broadcast[1]) {
-        X = 1;
+#pragma hls_unroll yes
+      for (int i = 2; i >= 0; i--) {
+        strides[i] = running_size;
+        if (params.vector_fetch_1_broadcast[i]) {
+          strides[i] = 0;
+        } else {
+          running_size *= dimensions[i];
+        }
       }
 
-      if (params.vector_fetch_1_broadcast[2]) {
-        K = k_stride;
-        // If k is the inner most loop, we can reuse the data
-        if (params.vector_fetch_1_k_loop_idx[1] == 2) {
-          loop_ends[1][2] = 0;
-        }
+      // If k is the inner most loop, we can reuse the data
+      if (params.vector_fetch_1_broadcast[2] &&
+          params.vector_fetch_1_k_loop_idx[1] == 2) {
+        loop_ends[1][2] = 0;
       }
 
 #pragma hls_pipeline_init_interval 1
@@ -642,21 +633,9 @@ SC_MODULE(VectorFetchUnit) {
 
                   ac_int<16, false> y = y1 * Y0 + y0;
                   ac_int<16, false> x = x1 * X0 + x0;
-                  ac_int<16, false> k = (k1 * K1 + k0) * k_stride;
-
-                  if (params.vector_fetch_1_broadcast[0]) {
-                    y = 0;
-                  }
-
-                  if (params.vector_fetch_1_broadcast[1]) {
-                    x = 0;
-                  }
-
-                  if (params.vector_fetch_1_broadcast[2]) {
-                    k = 0;
-                  }
-
-                  ac_int<32, false> address = y * X * K + x * K + k;
+                  ac_int<16, false> k = k1 * K1 + k0;
+                  ac_int<32, false> address =
+                      y * strides[0] + x * strides[1] + k * strides[2];
 
                   fetch_vector_input<InputTypes...>(
                       params.vector_fetch_1_dtype, params.vector_fetch_1_offset,
@@ -729,29 +708,24 @@ SC_MODULE(VectorFetchUnit) {
         ac_int<MAX_RESPONSE_WIDTH, false> bits =
             vector_fetch_1_packed_bits.Pop();
 
-        for (ac_int<16, false> reuse = 0;; reuse++) {
+        for (ac_int<16, false> count = 0;; count++) {
           for (ac_int<4, false> i = 0;; i++) {
             Pack1D<VectorType, width> outputs;
             bool found = (unpack_vector_data<InputTypes, VectorType, width,
                                              MAX_RESPONSE_WIDTH, InputTypes...>(
                               params.vector_fetch_1_dtype, bits, outputs, i) ||
                           ...);
-
 #ifndef __SYNTHESIS__
             if (!found) {
               std::cerr << "Error: vector fetch 1 input dtype '"
                         << params.vector_fetch_1_dtype << "' is not valid.\n";
             }
 #endif
-
-            Pack1D<VectorType, width> dequantized;
-            vdequantize<VectorType, VectorType, width>(
-                outputs, dequantized, params.vector_fetch_1_dq_scale);
-            vector_fetch_1_data.Push(dequantized);
+            vector_fetch_1_data.Push(outputs);
 
             if (i == params.vector_fetch_1_packing_factor - 1) break;
           }
-          if (reuse == innermost_loop_reuse) break;
+          if (count == innermost_loop_reuse) break;
         }
       }
     }
@@ -790,20 +764,25 @@ SC_MODULE(VectorFetchUnit) {
       ac_int<LOOP_WIDTH, false> K1 =
           params.vector_fetch_2_loops[1][params.vector_fetch_2_k_loop_idx[1]];
 
-      ac_int<16, false> X = X1 * X0;
-      ac_int<16, false> k_stride = width * params.vector_fetch_2_packing_factor;
-      ac_int<16, false> K = K2 * K1 * k_stride;
+      // dimension[0] is a dummy value to make indexing easier
+      ac_int<16, false> dimensions[3] = {1, X1 * X0, K2 * K1};
+      ac_int<32, false> strides[3];
+      ac_int<32, false> running_size = params.vector_fetch_2_stride;
 
-      if (params.vector_fetch_2_broadcast[1]) {
-        X = 1;
+#pragma hls_unroll yes
+      for (int i = 2; i >= 0; i--) {
+        strides[i] = running_size;
+        if (params.vector_fetch_2_broadcast[i]) {
+          strides[i] = 0;
+        } else {
+          running_size *= dimensions[i];
+        }
       }
 
-      if (params.vector_fetch_2_broadcast[2]) {
-        K = k_stride;
-        // If k is the inner most loop, we can reuse the data
-        if (params.vector_fetch_2_k_loop_idx[1] == 2) {
-          loop_ends[1][2] = 0;
-        }
+      // If k is the inner most loop, we can reuse the data
+      if (params.vector_fetch_2_broadcast[2] &&
+          params.vector_fetch_2_k_loop_idx[1] == 2) {
+        loop_ends[1][2] = 0;
       }
 
 #pragma hls_pipeline_init_interval 1
@@ -829,21 +808,9 @@ SC_MODULE(VectorFetchUnit) {
 
                   ac_int<16, false> y = y1 * Y0 + y0;
                   ac_int<16, false> x = x1 * X0 + x0;
-                  ac_int<16, false> k = (k1 * K1 + k0) * k_stride;
-
-                  if (params.vector_fetch_2_broadcast[0]) {
-                    y = 0;
-                  }
-
-                  if (params.vector_fetch_2_broadcast[1]) {
-                    x = 0;
-                  }
-
-                  if (params.vector_fetch_2_broadcast[2]) {
-                    k = 0;
-                  }
-
-                  ac_int<32, false> address = y * X * K + x * K + k;
+                  ac_int<16, false> k = k1 * K1 + k0;
+                  ac_int<32, false> address =
+                      y * strides[0] + x * strides[1] + k * strides[2];
 
                   fetch_vector_input<InputTypes...>(
                       params.vector_fetch_2_dtype, params.vector_fetch_2_offset,
@@ -913,29 +880,24 @@ SC_MODULE(VectorFetchUnit) {
       while (!vector_fetch_2_data_done.read()) {
         ac_int<MAX_RESPONSE_WIDTH, false> bits =
             vector_fetch_2_packed_bits.Pop();
-        for (ac_int<16, false> reuse = 0;; reuse++) {
+        for (ac_int<16, false> count = 0;; count++) {
           for (ac_int<4, false> i = 0;; i++) {
             Pack1D<VectorType, width> outputs;
             bool found = (unpack_vector_data<InputTypes, VectorType, width,
                                              MAX_RESPONSE_WIDTH, InputTypes...>(
                               params.vector_fetch_2_dtype, bits, outputs, i) ||
                           ...);
-
 #ifndef __SYNTHESIS__
             if (!found) {
               std::cerr << "Error: vector fetch 2 input dtype '"
                         << params.vector_fetch_2_dtype << "' is not valid.\n";
             }
 #endif
-
-            Pack1D<VectorType, width> dequantized;
-            vdequantize<VectorType, VectorType, width>(
-                outputs, dequantized, params.vector_fetch_2_dq_scale);
-            vector_fetch_2_data.Push(dequantized);
+            vector_fetch_2_data.Push(outputs);
 
             if (i == params.vector_fetch_2_packing_factor - 1) break;
           }
-          if (reuse == innermost_loop_reuse) break;
+          if (count == innermost_loop_reuse) break;
         }
       }
     }
