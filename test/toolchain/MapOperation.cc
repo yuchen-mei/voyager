@@ -38,7 +38,7 @@ void map_operation(const Operation& operation,
     map_microscaling(param, mapped_params);
 #if SUPPORT_SPMM
   } else if (first_op.target() == "spmm_csr") {
-    map_spmm(param, mapped_params);
+    map_spmm(operation, mapped_params, false);
 #endif
   } else {
     map_vector_operations(param, mapped_params);

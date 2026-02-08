@@ -10,8 +10,10 @@ inline Output* spmm_csr(std::any data_ptr, std::any indices_ptr,
                         std::any indptr_ptr, std::any weight_ptr,
                         std::any weight_scale_ptr,
                         const codegen::OpOverload& operation) {
-  const auto weight_tensor = operation.kwargs().at("B").tensor();
-  const auto indptr_array = operation.kwargs().at("indptr").tensor();
+  bool is_matmul = operation.target().find("matmul") != std::string::npos;
+  std::string weight_key = is_matmul ? "other" : "weight";
+  const auto weight_tensor = operation.kwargs().at(weight_key).tensor();
+  const auto indptr_array = operation.kwargs().at("A_indptr").tensor();
 
   const int K = get_shape(weight_tensor)[1];
   const int num_rows = get_size(indptr_array) - 1;
@@ -34,10 +36,12 @@ inline Output* spmm_csr(std::any data_ptr, std::any indices_ptr,
     outputs[i] = 0.0;
   }
 
+  Meta row_offset = indptr[0];
+
   // iterate through the sparse input tensor
   for (int r = 0; r < num_rows; r++) {
-    int row_start = indptr[r];
-    int row_end = indptr[r + 1];
+    int row_start = indptr[r] - row_offset;
+    int row_end = indptr[r + 1] - row_offset;
 
     // iterate through the non-zero elements in the row
     for (int j = row_start; j < row_end; j++) {
@@ -64,5 +68,6 @@ inline Output* spmm_csr(std::any data_ptr, std::any indices_ptr,
     delete[] scale;
   }
 
+  spdlog::debug("SpMM done\n");
   return outputs;
 }

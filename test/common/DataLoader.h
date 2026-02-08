@@ -39,6 +39,13 @@ class DataLoader {
                  uint64_t src_address, bool src_contiguous, int dst_partition,
                  uint64_t dst_address, bool dst_contiguous,
                  bool replication = false);
+  void read_csr_tiled_bounds(const std::vector<ExtractedTensor>& tensors,
+                             const int tile_index, const int k_tile,
+                             int& csr_tile_start, int& csr_tile_end);
+  void copy_tile_csr(const std::string& dtype, const int& csr_tile_start,
+                     const int& csr_tile_end, int src_partition,
+                     uint64_t src_address, int dst_partition,
+                     uint64_t dst_address);
   void load_scratchpad(const codegen::Operation& param, const int tile_index,
                        const int offset = 0);
   void store_scratchpad(const codegen::Operation& param, const int tile_index,
