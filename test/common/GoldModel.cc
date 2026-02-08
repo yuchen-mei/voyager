@@ -213,25 +213,49 @@ std::vector<std::any> run_operation(const Operation& operation,
       output_ptr = gemm<SaInput, SaWeight, Psum, AccumBuffer, Scale>(
           input_ptr, input_scale_ptr, weight_ptr, weight_scale_ptr, bias_ptr,
           operation);
+      if (has_fused_spmm(first_op)) {
+#if !SUPPORT_SPMM
+        throw std::runtime_error(
+            "Sparse matrix operations not supported in this build.");
+#endif
+        const auto input_data = first_op.kwargs().at("A_data").tensor();
+        std::any input_data_ptr = kwargs[input_data.node()];
+        const auto input_indices = first_op.kwargs().at("A_indices").tensor();
+        std::any input_indices_ptr = kwargs[input_indices.node()];
+        const auto input_indptr = first_op.kwargs().at("A_indptr").tensor();
+        std::any input_indptr_ptr = kwargs[input_indptr.node()];
+
+        std::any spmm_output_ptr =
+            spmm_csr<SPMM_META_DATATYPE, Vector, SaWeight, Vector, Scale>(
+                input_data_ptr, input_indices_ptr, input_indptr_ptr, weight_ptr,
+                weight_scale_ptr, first_op);
+
+        // Combine GEMM output with SpMM output
+        int output_size = get_size(get_shape(output_tensors[0]));
+        for (int i = 0; i < output_size; i++) {
+          std::any_cast<Vector*>(output_ptr)[i] +=
+              std::any_cast<Vector*>(spmm_output_ptr)[i];
+        }
+      }
     }
   } else if (first_op.target() == "spmm_csr") {
 #if !SUPPORT_SPMM
     throw std::runtime_error("SpMM not supported in this build.");
 #endif
-    const auto weight = first_op.kwargs().at("B").tensor();
+    const auto weight = first_op.kwargs().at("weight").tensor();
     std::any weight_ptr = kwargs[weight.node()];
-    const auto weight_scale = first_op.kwargs().at("B_scale").tensor();
+    const auto weight_scale = first_op.kwargs().at("weight_scale").tensor();
     std::any weight_scale_ptr = kwargs[weight_scale.node()];
-    const auto input_data = first_op.kwargs().at("data").tensor();
+    const auto input_data = first_op.kwargs().at("A_data").tensor();
     std::any input_data_ptr = kwargs[input_data.node()];
-    const auto input_indices = first_op.kwargs().at("indices").tensor();
+    const auto input_indices = first_op.kwargs().at("A_indices").tensor();
     std::any input_indices_ptr = kwargs[input_indices.node()];
-    const auto input_indptr = first_op.kwargs().at("indptr").tensor();
+    const auto input_indptr = first_op.kwargs().at("A_indptr").tensor();
     std::any input_indptr_ptr = kwargs[input_indptr.node()];
 
     float* weight_code = nullptr;
-    if (first_op.kwargs().contains("B_code")) {
-      const auto code = first_op.kwargs().at("B_code").tensor();
+    if (first_op.kwargs().contains("weight_code")) {
+      const auto code = first_op.kwargs().at("weight_code").tensor();
       weight_code = read_constant_param(code);
     }
 

@@ -356,20 +356,26 @@ void Harness::send_params(const std::deque<BaseParams*>& params) {
       if (matrix_params->is_fc) {
         send_serialized_params<MatrixParams, 64>(*matrix_params,
                                                  &matrix_vector_unit_params_in);
+        idx++;
       } else
 #endif
 #if SUPPORT_SPMM
           if (matrix_params->is_spmm) {
         send_serialized_params<MatrixParams, 64>(*matrix_params,
                                                  &spmm_unit_params_in);
+        idx++;
+        if (matrix_params = dynamic_cast<MatrixParams*>(params[idx])) {
+          send_serialized_params<MatrixParams, 64>(*matrix_params,
+                                                   &matrix_unit_params_in);
+          idx++;
+        }
       } else
 #endif
       {
         send_serialized_params<MatrixParams, 64>(*matrix_params,
                                                  &matrix_unit_params_in);
+        idx++;
       }
-
-      idx++;
     }
 
 #if SUPPORT_DWC
@@ -378,11 +384,9 @@ void Harness::send_params(const std::deque<BaseParams*>& params) {
       idx++;
     }
 #endif
-
     if (auto* vector_params = dynamic_cast<VectorParams*>(params[idx])) {
       VectorInstructionConfig* vector_config =
           dynamic_cast<VectorInstructionConfig*>(params[++idx]);
-
       send_serialized_params<VectorParams, 64>(*vector_params,
                                                &vector_unit_params_in);
       send_serialized_params<VectorInstructionConfig, 64>(
@@ -400,6 +404,14 @@ void Harness::record_start(const std::deque<BaseParams*>& params,
                            const Operation& operation, bool is_first) {
   for (size_t idx = 0; idx < params.size(); idx++) {
     BaseParams* base_param = params[idx];
+#if SUPPORT_SPMM
+    MatrixParams* spmm_params = dynamic_cast<MatrixParams*>(base_param);
+    bool has_spmm_params = spmm_params != nullptr && spmm_params->is_spmm;
+
+    if (has_spmm_params) {
+      base_param = params[++idx];
+    }
+#endif
     MatrixParams* matrix_params = dynamic_cast<MatrixParams*>(base_param);
     bool has_matrix_params = matrix_params != nullptr;
 
@@ -426,15 +438,15 @@ void Harness::record_start(const std::deque<BaseParams*>& params,
     }
 
     // Wait for start signals
+#if SUPPORT_SPMM
+    if (has_spmm_params) {
+      spmm_unit_start.SyncPop();
+    }
+#endif
     if (has_matrix_params) {
 #if SUPPORT_MVM
       if (matrix_params->is_fc) {
         matrix_vector_unit_start.SyncPop();
-      } else
-#endif
-#if SUPPORT_SPMM
-          if (matrix_params->is_spmm) {
-        spmm_unit_start.SyncPop();
       } else
 #endif
       {
@@ -497,6 +509,14 @@ void Harness::record_done(const std::deque<BaseParams*>& params,
                           const Operation& operation, bool is_last) {
   for (size_t idx = 0; idx < params.size(); idx++) {
     BaseParams* base_param = params[idx];
+#if SUPPORT_SPMM
+    MatrixParams* spmm_params = dynamic_cast<MatrixParams*>(base_param);
+    bool has_spmm_params = spmm_params != nullptr && spmm_params->is_spmm;
+
+    if (has_spmm_params) {
+      base_param = params[++idx];
+    }
+#endif
     MatrixParams* matrix_params = dynamic_cast<MatrixParams*>(base_param);
     bool has_matrix_params = matrix_params != nullptr;
 
@@ -529,11 +549,6 @@ void Harness::record_done(const std::deque<BaseParams*>& params,
         matrix_vector_unit_done.SyncPop();
       } else
 #endif
-#if SUPPORT_SPMM
-          if (matrix_params->is_spmm) {
-        spmm_unit_done.SyncPop();
-      } else
-#endif
       {
         matrix_unit_done.SyncPop();
       }
@@ -541,6 +556,12 @@ void Harness::record_done(const std::deque<BaseParams*>& params,
 #if SUPPORT_DWC
     else if (has_dwc_params) {
       dwc_unit_done.SyncPop();
+    }
+#endif
+
+#if SUPPORT_SPMM
+    if (has_spmm_params) {
+      spmm_unit_done.SyncPop();
     }
 #endif
 
@@ -643,7 +664,7 @@ void Harness::param_sender() {
           offset_param_addresses(accelerator_params, bank_size);
 
       for (int j = 0; j < num_tiles; j++) {
-        if (accelerator_params.size() < 4 && j > 1) {
+        if ((contain_matrix_param(accelerator_params) || accelerator_params.size() < 4) && j > 1) {
           tile_done.SyncPop();
         }
 
@@ -652,7 +673,7 @@ void Harness::param_sender() {
       }
 
       // drain out remaining done signals
-      if (accelerator_params.size() < 4) {
+      if ((contain_matrix_param(accelerator_params) || accelerator_params.size() < 4)) {
         tile_done.SyncPop();
 
         if (num_tiles > 1) {
@@ -747,7 +768,7 @@ void Harness::done_monitor() {
           dataloader->load_scratchpad(param, j + 2, offset);
         }
 
-        if (accelerator_params.size() < 4) {
+        if (contain_matrix_param(accelerator_params) || accelerator_params.size() < 4) {
           tile_done.SyncPush();
         }
       }

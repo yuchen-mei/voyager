@@ -15,6 +15,7 @@
 
 #include "spdlog/spdlog.h"
 #include "src/ArchitectureParams.h"
+#include "src/Params.h"
 #include "test/compiler/proto/param.pb.h"
 // IWYU pragma: end_exports
 
@@ -29,6 +30,24 @@ inline bool is_gemm_op(const std::string& op_target) {
       "conv2d", "linear", "matmul", "conv2d_mx", "linear_mx", "matmul_mx",
   };
   return GEMM_OPS.find(op_target) != GEMM_OPS.end();
+}
+
+inline bool has_fused_spmm(const codegen::OpOverload& op) {
+  return op.kwargs().contains("A_indptr") &&
+         op.kwargs().contains("A_indices") && op.kwargs().contains("A_data");
+}
+
+inline bool contain_matrix_param(
+    const std::deque<BaseParams*> accelerator_params) {
+  bool has_matrix_param = false;
+  for (int i = 0; i < accelerator_params.size(); i++) {
+    if (auto* matrix_params =
+            dynamic_cast<MatrixParams*>(accelerator_params[i])) {
+      has_matrix_param = true;
+      break;
+    }
+  }
+  return has_matrix_param;
 }
 
 inline bool is_fc_layer(const codegen::OpOverload& op) {
@@ -283,6 +302,8 @@ inline void build_valid_mask(const std::vector<int>& full_shape,
   // Compute number of tiles along each dimension
   std::vector<int> tiles_per_dim(rank);
   for (int d = 0; d < rank; ++d) {
+    spdlog::debug("Full shape[{}]: {}, Tile shape[{}]: {}\n", d, full_shape[d],
+                  d, tile_shape[d]);
     tiles_per_dim[d] = (full_shape[d] + tile_shape[d] - 1) / tile_shape[d];
   }
 

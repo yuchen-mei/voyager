@@ -65,7 +65,7 @@ $(CODEGEN_DIR)/networks/llama_prefill_mp/%/model.txt: voyager-compiler/test/test
 
 $(CODEGEN_DIR)/networks/llama_prefill_spmm/%/model.txt: voyager-compiler/test/test_codegen.py
 	mkdir -p $(dir $@)
-	python voyager-compiler/test/test_codegen.py llm_prefill $($(notdir $(patsubst %/,%,$(dir $@)))_FLAGS) $(EXTRA_COMPILER_FLAGS) --model_output_dir $(dir $@) $(COMMON_FLAGS) $(LLM_FLAGS) --enable_mixed_precision --outlier_pct 0.01 --split_spmm &> $(dir $@)codegen.log
+	python voyager-compiler/test/test_codegen.py llm_prefill $($(notdir $(patsubst %/,%,$(dir $@)))_FLAGS) $(EXTRA_COMPILER_FLAGS) --model_output_dir $(dir $@) $(COMMON_FLAGS) $(LLM_FLAGS) --enable_mixed_precision --outlier_pct 0.01 &> $(dir $@)codegen.log
 
 $(CODEGEN_DIR)/networks/llama_decode_mp/%/model.txt: voyager-compiler/test/test_codegen.py
 	mkdir -p $(dir $@)

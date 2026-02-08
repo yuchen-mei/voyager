@@ -11,6 +11,9 @@
 #include "test/compiler/proto/param.pb.h"
 #include "test/toolchain/ApproximationConstants.h"
 #include "test/toolchain/Common.h"
+#if SUPPORT_SPMM
+#include "test/toolchain/SpMM.h"
+#endif
 
 void set_vector_fetch_1(const codegen::Tensor& tensor, const Tiling& tiling,
                         VectorParams* vector_params) {
@@ -652,6 +655,16 @@ void map_matrix_operation(const Operation& operation,
     }
   }
 
+  // fused spmm operation
+  if (has_fused_spmm(matrix_op)) {
+#if !SUPPORT_SPMM
+    throw std::runtime_error(
+        "Sparse matrix operations not supported in this build.");
+#else
+    map_spmm(operation, mapped_params, true);
+#endif
+  }
+
   // vector instructions
   VectorParams* vector_params = new VectorParams;
 
@@ -762,6 +775,10 @@ void map_matrix_operation(const Operation& operation,
 #if DOUBLE_BUFFERED_ACCUM_BUFFER
     inst.vector_op0_src0 = VectorInstructions::from_accum_buffer;
     matrix_params->write_output_to_accum_buffer = true;
+    if (has_fused_spmm(matrix_op)) {
+      inst.vector_op0_src1 = VectorInstructions::from_spmm_unit;
+      inst.vector_op0 = VectorInstructions::op0_add;
+    }
 #else
     inst.vector_op0_src0 = VectorInstructions::from_matrix_unit;
 #endif
@@ -818,6 +835,11 @@ void map_matrix_operation(const Operation& operation,
         if (stage != 3 && size > 1) {
           continue;
         }
+      }
+      if ((opcode == "add" || opcode == "add_") && stage == 0 &&
+          has_fused_spmm(matrix_op)) {
+        // stage 0 add is used for summing dense and sparse results
+        continue;
       }
 
       if (vector_unit_ops[stage].count(opcode)) {

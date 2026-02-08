@@ -567,6 +567,8 @@ void map_vector_operations(const codegen::Operation& param,
         auto other_shape = get_shape(tensor);
 
         if (opcode == "quantize") {
+          if (input_shape.size() < 3) pad_shape_to_ndim(input_shape, 3);
+          if (other_shape.size() < 3) pad_shape_to_ndim(other_shape, 3);
           auto result =
               factor_out_non_broadcastable_dim(input_shape, other_shape);
           input_shape = result.first;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "test/common/Tiling.h"
+#include "test/common/Utils.h"
 #include "test/common/operations/Common.h"
 
 #ifdef CHECK_PE
@@ -18,7 +19,8 @@ template <typename Input, typename Weight, typename Psum, typename Buffer,
           typename Scale>
 inline Buffer* gemm(std::any input_ptr, std::any input_scale_ptr,
                     std::any weight_ptr, std::any weight_scale_ptr,
-                    std::any bias_ptr, Tiling tiling, const int block_size) {
+                    std::any bias_ptr, Tiling tiling, const int block_size,
+                    bool has_fused_spmm) {
   spdlog::debug("Performing GEMM\n");
 
   Input* inputs = std::any_cast<Input*>(input_ptr);
@@ -288,13 +290,15 @@ inline Buffer* gemm(std::any input_ptr, std::any input_scale_ptr,
   spdlog::debug("GEMM done\n");
 
   delete[] inputs;
-  delete[] weights;
+  if (!has_fused_spmm) {
+    delete[] weights;
+  }
 
   if (input_scales != nullptr) {
     delete[] input_scales;
   }
 
-  if (weight_scales != nullptr) {
+  if (weight_scales != nullptr && !has_fused_spmm) {
     delete[] weight_scales;
   }
 
@@ -321,10 +325,11 @@ inline Buffer* gemm(std::any input_ptr, std::any input_scale_ptr,
 
   bool is_mx = matrix_op.target().find("mx") != std::string::npos;
   int block_size = is_mx ? matrix_op.kwargs().at("block_size").int_value() : 0;
+  bool fused_spmm = has_fused_spmm(matrix_op);
 
-  return gemm<Input, Weight, Psum, Buffer, Scale>(input_ptr, input_scale_ptr,
-                                                  weight_ptr, weight_scale_ptr,
-                                                  bias_ptr, tiling, block_size);
+  return gemm<Input, Weight, Psum, Buffer, Scale>(
+      input_ptr, input_scale_ptr, weight_ptr, weight_scale_ptr, bias_ptr,
+      tiling, block_size, fused_spmm);
 }
 
 template <typename Input, typename Weight, typename Psum, typename Output,

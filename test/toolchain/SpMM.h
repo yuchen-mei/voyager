@@ -11,17 +11,21 @@
 #include "test/compiler/proto/param.pb.h"
 #include "test/toolchain/Common.h"
 
-void map_spmm(const codegen::Operation& operation,
-              std::deque<BaseParams*>& mapped_params) {
+void map_spmm(const Operation& operation,
+              std::deque<BaseParams*>& mapped_params, bool is_fused) {
   MatrixParams* spmm_param = new MatrixParams;
 
-  const auto op_list = get_op_list(operation);
+  const auto param = operation.param;
+
+  const auto op_list = get_op_list(param);
   const auto spmm_op = op_list[0];
 
-  const auto weight_tensor = spmm_op.kwargs().at("B").tensor();
-  const auto indptr_tensor = spmm_op.kwargs().at("indptr").tensor();
-  const auto indices_tensor = spmm_op.kwargs().at("indices").tensor();
-  const auto data_tensor = spmm_op.kwargs().at("data").tensor();
+  bool is_matmul = spmm_op.target().find("matmul") != std::string::npos;
+  std::string weight_key = is_matmul ? "other" : "weight";
+  const auto weight_tensor = spmm_op.kwargs().at(weight_key).tensor();
+  const auto indptr_tensor = spmm_op.kwargs().at("A_indptr").tensor();
+  const auto indices_tensor = spmm_op.kwargs().at("A_indices").tensor();
+  const auto data_tensor = spmm_op.kwargs().at("A_data").tensor();
 
   spmm_param->is_spmm = true;
 
@@ -30,18 +34,23 @@ void map_spmm(const codegen::Operation& operation,
   // indptr is in y_loop_idx[0]
   // indices is in x_loop_idx[0]
   // K is in weight_loop_idx[0]
-  const int indptr_len = get_size(indptr_tensor);
-  const int indices_len = indptr_array[indptr_len - 1];
+  const int indptr_len = get_size(indptr_tensor) - 1;
   const int K = get_shape(weight_tensor)[1];
   const int k0 = K / OC_DIMENSION;
+  Tiling tiling;
 
-  Tiling tiling = {
-      .loops = {{indices_len, indptr_len, k0, 1, 1, 1}, {1, 1, 1, 1, 1, 1}},
-      .x_loop_idx = {0, 5},
-      .y_loop_idx = {1, 4},
-      .reduction_loop_idx = {1, 2},
-      .weight_loop_idx = {2, 3},
-  };
+  // for fused SPMM, the sparse unit needs to match the tiling of the matrix op
+  if (is_fused) {
+    tiling = get_tiling(operation);
+  } else {
+    tiling = {
+        .loops = {{1, 2, 1, 1, 1, 1}, {k0, indptr_len / 2, 1, 1, 1, 1}},
+        .x_loop_idx = {1, 1},
+        .y_loop_idx = {2, 2},
+        .reduction_loop_idx = {3, 3},
+        .weight_loop_idx = {0, 0},
+    };
+  }
 
   std::ostringstream oss;
   oss << tiling;
@@ -54,9 +63,9 @@ void map_spmm(const codegen::Operation& operation,
 
   spmm_param->weight_dtype =
       get_index_from_type_name<WEIGHT_DATATYPE>(weight_tensor.dtype());
-  spmm_param->use_weight_codebook = spmm_op.kwargs().contains("B_code");
+  spmm_param->use_weight_codebook = spmm_op.kwargs().contains("weight_code");
   if (spmm_param->use_weight_codebook) {
-    const auto code = spmm_op.kwargs().at("B_code").tensor();
+    const auto code = spmm_op.kwargs().at("weight_code").tensor();
     const auto size = get_size(code);
 
     float* weight_code = read_constant_param(code);
@@ -68,29 +77,54 @@ void map_spmm(const codegen::Operation& operation,
     delete[] weight_code;
   }
 
-  spmm_param->is_mx_op = spmm_op.kwargs().contains("B_scale");
+  spmm_param->is_mx_op = spmm_op.kwargs().contains("weight_scale");
   if (spmm_param->is_mx_op) {
     const int block_size = spmm_op.kwargs().at("block_size").int_value();
     assert(block_size == std::max(IC_DIMENSION, OC_DIMENSION));
 
-    const auto scale_tensor = spmm_op.kwargs().at("B_scale").tensor();
+    const auto scale_tensor = spmm_op.kwargs().at("weight_scale").tensor();
     spmm_param->weight_scale_offset = get_address(scale_tensor);
   }
 
   for (int i = 0; i < 2; i++) {
+    int loop_index = 0;
     for (int j = 0; j < 6; j++) {
-      spmm_param->loops[i][j] = tiling.loops[i][j];
+      // ignore anything but the x and weight loops
+      if (j == tiling.x_loop_idx[i]) {
+        spmm_param->loops[i][loop_index] = tiling.loops[i][j];
+        spmm_param->x_loop_idx[i] = loop_index;
+        loop_index++;
+      }
+      if (j == tiling.weight_loop_idx[i]) {
+        spmm_param->loops[i][loop_index] = tiling.loops[i][j];
+        spmm_param->weight_loop_idx[i] = loop_index;
+        loop_index++;
+      }
     }
-    spmm_param->x_loop_idx[i] = tiling.x_loop_idx[i];
     spmm_param->y_loop_idx[i] = tiling.y_loop_idx[i];
     spmm_param->reduction_loop_idx[i] = tiling.reduction_loop_idx[i];
-    spmm_param->weight_loop_idx[i] = tiling.weight_loop_idx[i];
   }
 
-  // vector insturctions, just passing through the output for now
+  // compute the reduction dimension for weight scale addressing
+  int C = 1;
+  for (int i = 0; i < 2; i++) {
+    C *= tiling.loops[i][tiling.reduction_loop_idx[i]];
+  }
+
+  spmm_param->weight_addr_loops[0][0] = C;
+  spmm_param->weight_addr_reduction_loop_idx[0] = 0;
+
+  mapped_params.push_back(spmm_param);
+
+  // for fused spmm, the vector instructions will be handled in matrix mapping
+  if (is_fused) {
+    return;
+  }
+
+  // vector instructions, just passing through the output for now
   VectorParams* vector_params = new VectorParams;
 
-  const auto output = get_op_outputs(operation).back();
+  const auto output = get_op_outputs(param).back();
   vector_params->vector_output_offset = get_address(output);
 
   // set output mode
@@ -105,22 +139,26 @@ void map_spmm(const codegen::Operation& operation,
   vector_params->output_x_loop_idx[0] = 1;
   vector_params->output_k_loop_idx[0] = 2;
 
-  // outermost loop, K
-  vector_params->output_loops[1][0] = k0;
-  // second loop, indptr (a.k.a the number of rows) -1 to rid of the extra zero
-  vector_params->output_loops[1][1] = indptr_len - 1;
-  // only support matrices for now, no third loop
-  vector_params->output_loops[1][2] = 1;
   vector_params->output_y_loop_idx[1] = 2;
   vector_params->output_x_loop_idx[1] = 1;
   vector_params->output_k_loop_idx[1] = 0;
+
+  // outermost loop, K
+  vector_params->output_loops[0][0] = 1;
+  vector_params->output_loops[0][1] = 2;
+  vector_params->output_loops[0][2] = 1;
+
+  vector_params->output_loops[1][0] = k0;
+  vector_params->output_loops[1][1] = indptr_len / 2;
+  // only support matrices for now, no third loop
+  vector_params->output_loops[1][2] = 1;
 
   vector_params->output_dtype =
       get_index_from_type_name<OUTPUT_DATATYPES>(output.dtype());
 
   VectorInstructions inst;
   inst.op_type = VectorInstructions::vector;
-  inst.inst_loop_count = k0 * (indptr_len - 1);
+  inst.inst_loop_count = k0 * indptr_len;
 
   inst.vector_op0_src0 = VectorInstructions::from_spmm_unit;
   inst.vdest = VectorInstructions::to_output;
@@ -131,7 +169,6 @@ void map_spmm(const codegen::Operation& operation,
   vector_instruction_config->num_inst = 1;
   vector_instruction_config->config_loop_count = 1;
 
-  mapped_params.push_back(spmm_param);
   mapped_params.push_back(vector_params);
   mapped_params.push_back(vector_instruction_config);
 }
