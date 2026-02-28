@@ -14,7 +14,6 @@ solution options set Input/TargetPlatform x86_64
 solution options set Input/CppStandard c++17
 solution options set Input/CompilerFlags "-D$DATATYPE -DIC_DIMENSION=$IC_DIMENSION -DOC_DIMENSION=$OC_DIMENSION -DINPUT_BUFFER_SIZE=$INPUT_BUFFER_SIZE -DWEIGHT_BUFFER_SIZE=$WEIGHT_BUFFER_SIZE -DACCUM_BUFFER_SIZE=$ACCUM_BUFFER_SIZE -DDOUBLE_BUFFERED_ACCUM_BUFFER=$DOUBLE_BUFFERED_ACCUM_BUFFER -DSUPPORT_MVM=$SUPPORT_MVM -DSUPPORT_SPMM=$SUPPORT_SPMM -DSUPPORT_DWC=$SUPPORT_DWC -DCLOCK_PERIOD=$CLOCK_PERIOD"
 solution options set Input/SearchPath "$ROOT/lib"
-solution options set Output/OutputVHDL false
 solution options set Architectural/DefaultMemMapThreshold 1024
 solution options set Architectural/DefaultRegisterThreshold 4096
 solution options set Flows/Enable-SCVerify yes
@@ -27,6 +26,13 @@ solution options set Flows/VCS/COMP_FLAGS "-O3 -Wall -Wno-unknown-pragmas -I$ROO
 solution options set Flows/VCS/VCSELAB_OPTS "-timescale=1ns/1ps -sysc=blocksync -lstdc++fs -L$::env(CONDA_PREFIX)/lib -LDFLAGS \"-Wl,--enable-new-dtags -Wl,-R,$::env(CONDA_PREFIX)/lib\" -labsl_hash -labsl_log_internal_check_op -labsl_log_internal_message -labsl_log_internal_nullguard -lprotobuf -lpthread"
 solution options set Cache/UserCacheHome "$ROOT/$CATAPULT_BUILD_DIR/cache"
 solution options set Cache/DefaultCacheHomeEnabled false
+
+solution options set Output/OutputVHDL false
+solution options set Output/MaxNameLength 256
+solution options set Output/MaxNameLengthModule 256
+solution options set Output/MaxNameLengthInstance 256
+solution options set Output/MaxNameLengthPort 256
+solution options set Output/MaxNameLengthRegWire 256
 
 flow package require /SCVerify
 flow package option set /SCVerify/USE_VCS true
