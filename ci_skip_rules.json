@@ -21,8 +21,7 @@
             "slice(_[0-9]+)?",
             "slice_csr_tensor(_[0-9]+)?",
             "slice_tensor(_[0-9]+)?",
-            "quantize_mx_outlier(_[0-9]+)?",
-            "quantize_mx_outlier_default(_[0-9]+)?"
+            "quantize_default_1"
         ]
     },
     {
@@ -96,6 +95,8 @@
         "layers": [
             "permute_default",
             "permute_default_1",
+            "quantize_default",
+            "quantize_default_1",
             "slice(_[0-9]+)?",
             "slice_tensor(_[0-9]+)?"
         ]
@@ -118,6 +119,8 @@
             "index_copy__1",
             "permute_default",
             "permute_default_1",
+            "quantize_default",
+            "quantize_default_1",
             "slice(_[0-9]+)?",
             "slice_tensor(_[0-9]+)?",
             "transpose_int(_[0-9]+)?"
@@ -136,21 +139,24 @@
         ],
         "block_size": 64,
         "layers": [
-            "add_scalar(_[0-9]+)?",
-            "cat(_[0-9]+)?",
-            "cos",
+            "quantize_default",
             "embedding",
-            "expand(_[0-9]+)?",
-            "index_copy_(_[0-9]+)?",
+            "quantize_default_1",
+            "to_1",
+            "pad_default",
+            "pad_default_1",
             "matmul",
-            "mul_15",
-            "mul_16",
-            "pad_default(_[0-9]+)?",
+            "slice_tensor",
+            "transpose",
+            "add_scalar",
             "permute_default",
+            "cos",
+            "mul",
             "sin",
+            "mul_1",
+            "add_scalar(_[0-9]+)?",
+            "index_copy_(_[0-9]+)?",
             "slice(_[0-9]+)?",
-            "slice_tensor(_[0-9]+)?",
-            "to(_[0-9]+)?",
             "transpose(_[0-9]+)?",
             "transpose_int(_[0-9]+)?"
         ]

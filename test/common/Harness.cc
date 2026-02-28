@@ -33,6 +33,8 @@ Harness::Harness(sc_module_name name, std::vector<Operation> operations,
   accelerator.matrix_unit_weight_scale_req(matrix_unit_weight_scale_req);
   accelerator.matrix_unit_weight_scale_resp(matrix_unit_weight_scale_resp);
 #endif
+  accelerator.matrix_unit_output_data(matrix_unit_output_data);
+  accelerator.matrix_unit_output_addr(matrix_unit_output_addr);
   accelerator.matrix_unit_start(matrix_unit_start);
   accelerator.matrix_unit_done(matrix_unit_done);
 #if SUPPORT_MVM
@@ -169,6 +171,7 @@ Harness::Harness(sc_module_name name, std::vector<Operation> operations,
   REGISTER_IO_FN(vector_fetch_1)
   REGISTER_IO_FN(vector_fetch_2)
 
+  REGISTER_FN(store_matrix_unit_output)
   REGISTER_FN(store_vector_output)
   REGISTER_FN(store_mx_scale_output)
   REGISTER_FN(store_sparse_tensor_output)
@@ -314,6 +317,10 @@ DEFINE_IO_FN(vector_fetch_0)
 DEFINE_IO_FN(vector_fetch_1)
 DEFINE_IO_FN(vector_fetch_2)
 
+void Harness::store_matrix_unit_output() {
+  process_write_request(&matrix_unit_output_data, &matrix_unit_output_addr);
+}
+
 void Harness::store_vector_output() {
   process_write_request(&vector_output_data, &vector_output_addr);
 }
@@ -349,52 +356,61 @@ void send_serialized_params(
   }
 }
 
+template <typename T>
+T* get_param(const std::deque<BaseParams*>& params, int& index) {
+  if (index < params.size()) {
+    if (auto* casted = dynamic_cast<T*>(params[index])) {
+      index++;  // Advance index only if the cast succeeds
+      return casted;
+    }
+  }
+  return nullptr;
+}
+
 void Harness::send_params(const std::deque<BaseParams*>& params) {
-  for (size_t idx = 0; idx < params.size(); idx++) {
-    if (auto* matrix_params = dynamic_cast<MatrixParams*>(params[idx])) {
+  int idx = 0;
+  while (idx < params.size()) {
+    if (auto* matrix_params = get_param<MatrixParams>(params, idx)) {
 #if SUPPORT_MVM
       if (matrix_params->is_fc) {
         send_serialized_params<MatrixParams, 64>(*matrix_params,
                                                  &matrix_vector_unit_params_in);
-        idx++;
       } else
 #endif
 #if SUPPORT_SPMM
           if (matrix_params->is_spmm) {
+        // SpMM operation could have a fused dense matrix op
+        if (auto* dense_params = get_param<MatrixParams>(params, idx)) {
+          send_serialized_params<MatrixParams, 64>(*dense_params,
+                                                   &matrix_unit_params_in);
+        }
         send_serialized_params<MatrixParams, 64>(*matrix_params,
                                                  &spmm_unit_params_in);
-        idx++;
-        if (matrix_params = dynamic_cast<MatrixParams*>(params[idx])) {
-          send_serialized_params<MatrixParams, 64>(*matrix_params,
-                                                   &matrix_unit_params_in);
-          idx++;
-        }
       } else
 #endif
       {
         send_serialized_params<MatrixParams, 64>(*matrix_params,
                                                  &matrix_unit_params_in);
-        idx++;
       }
+    } else if (auto* dwc_params = get_param<DwCParams>(params, idx)) {
+#if SUPPORT_DWC
+      send_serialized_params<DwCParams, 64>(*dwc_params, &dwc_unit_params_in);
+#else
+      throw std::runtime_error("DWC support is not enabled.");
+#endif
     }
 
-#if SUPPORT_DWC
-    if (auto* dwc_params = dynamic_cast<DwCParams*>(params[idx])) {
-      send_serialized_params<DwCParams, 64>(*dwc_params, &dwc_unit_params_in);
-      idx++;
-    }
-#endif
-    if (auto* vector_params = dynamic_cast<VectorParams*>(params[idx])) {
-      VectorInstructionConfig* vector_config =
-          dynamic_cast<VectorInstructionConfig*>(params[++idx]);
+    if (auto* vector_params = get_param<VectorParams>(params, idx)) {
       send_serialized_params<VectorParams, 64>(*vector_params,
                                                &vector_unit_params_in);
+
+      auto* vector_config = get_param<VectorInstructionConfig>(params, idx);
       send_serialized_params<VectorInstructionConfig, 64>(
           *vector_config, &vector_unit_params_in);
     }
 
     // Wait for last operation to finish
-    if (idx != params.size() - 1) {
+    if (idx < params.size() - 1) {
       operation_done.SyncPop();
     }
   }
@@ -402,51 +418,20 @@ void Harness::send_params(const std::deque<BaseParams*>& params) {
 
 void Harness::record_start(const std::deque<BaseParams*>& params,
                            const Operation& operation, bool is_first) {
-  for (size_t idx = 0; idx < params.size(); idx++) {
-    BaseParams* base_param = params[idx];
-#if SUPPORT_SPMM
-    MatrixParams* spmm_params = dynamic_cast<MatrixParams*>(base_param);
-    bool has_spmm_params = spmm_params != nullptr && spmm_params->is_spmm;
-
-    if (has_spmm_params) {
-      base_param = params[++idx];
-    }
-#endif
-    MatrixParams* matrix_params = dynamic_cast<MatrixParams*>(base_param);
-    bool has_matrix_params = matrix_params != nullptr;
-
-    if (has_matrix_params) {
-      base_param = params[++idx];
-    }
-
-#if SUPPORT_DWC
-    DwCParams* dwc_params = dynamic_cast<DwCParams*>(base_param);
-    bool has_dwc_params = dwc_params != nullptr;
-
-    if (has_dwc_params) {
-      base_param = params[++idx];
-    }
-#endif
-
-    VectorParams* vector_params = dynamic_cast<VectorParams*>(base_param);
-    VectorInstructionConfig* vector_config = nullptr;
-    bool has_vector_params = vector_params != nullptr;
-
-    if (has_vector_params) {
-      base_param = params[++idx];
-      vector_config = dynamic_cast<VectorInstructionConfig*>(base_param);
-    }
-
-    // Wait for start signals
-#if SUPPORT_SPMM
-    if (has_spmm_params) {
-      spmm_unit_start.SyncPop();
-    }
-#endif
-    if (has_matrix_params) {
+  int idx = 0;
+  while (idx < params.size()) {
+    if (auto* matrix_params = get_param<MatrixParams>(params, idx)) {
 #if SUPPORT_MVM
       if (matrix_params->is_fc) {
         matrix_vector_unit_start.SyncPop();
+      } else
+#endif
+#if SUPPORT_SPMM
+          if (matrix_params->is_spmm) {
+        if (auto* dense_params = get_param<MatrixParams>(params, idx)) {
+          matrix_unit_start.SyncPop();
+        }
+        spmm_unit_start.SyncPop();
       } else
 #endif
       {
@@ -464,13 +449,10 @@ void Harness::record_start(const std::deque<BaseParams*>& params,
       CCS_LOG("----- Accelerator Layer '" << operation.name
                                           << "' Started. -----");
 
-      if (has_vector_params) {
-        vector_unit_start.SyncPop();
-      }
-    }
+    } else if (auto* dwc_params = get_param<DwCParams>(params, idx)) {
 #if SUPPORT_DWC
-    else if (has_dwc_params) {
       dwc_unit_start.SyncPop();
+#endif
 
       auto start = sc_time_stamp();
       start_times.push_back(start);
@@ -482,91 +464,61 @@ void Harness::record_start(const std::deque<BaseParams*>& params,
 
       CCS_LOG("----- Accelerator Layer '" << operation.name
                                           << "' Started. -----");
-
-      if (has_vector_params) {
-        vector_unit_start.SyncPop();
-      }
     }
-#endif
-    else if (has_vector_params) {
+
+    if (auto* vector_params = get_param<VectorParams>(params, idx)) {
       vector_unit_start.SyncPop();
 
-      auto start = sc_time_stamp();
-      start_times.push_back(start);
+      // Skip VectorInstructionConfig which always follows VectorParams
+      idx++;
 
-      if (is_first) {
-        operation_start_times.push_back(start);
-        is_first = false;
+      // Vector op is the first op
+      if (idx == 2) {
+        auto start = sc_time_stamp();
+        start_times.push_back(start);
+
+        if (is_first) {
+          operation_start_times.push_back(start);
+          is_first = false;
+        }
+
+        CCS_LOG("----- Accelerator Layer '" << operation.name
+                                            << "' Started. -----");
       }
-
-      CCS_LOG("----- Accelerator Layer '" << operation.name
-                                          << "' Started. -----");
     }
   }
 }
 
 void Harness::record_done(const std::deque<BaseParams*>& params,
                           const Operation& operation, bool is_last) {
-  for (size_t idx = 0; idx < params.size(); idx++) {
-    BaseParams* base_param = params[idx];
-#if SUPPORT_SPMM
-    MatrixParams* spmm_params = dynamic_cast<MatrixParams*>(base_param);
-    bool has_spmm_params = spmm_params != nullptr && spmm_params->is_spmm;
-
-    if (has_spmm_params) {
-      base_param = params[++idx];
-    }
-#endif
-    MatrixParams* matrix_params = dynamic_cast<MatrixParams*>(base_param);
-    bool has_matrix_params = matrix_params != nullptr;
-
-    if (has_matrix_params) {
-      base_param = params[++idx];
-    }
-
-#if SUPPORT_DWC
-    DwCParams* dwc_params = dynamic_cast<DwCParams*>(base_param);
-    bool has_dwc_params = dwc_params != nullptr;
-
-    if (has_dwc_params) {
-      base_param = params[++idx];
-    }
-#endif
-
-    VectorParams* vector_params = dynamic_cast<VectorParams*>(base_param);
-    VectorInstructionConfig* vector_config = nullptr;
-    bool has_vector_params = vector_params != nullptr;
-
-    if (has_vector_params) {
-      base_param = params[++idx];
-      vector_config = dynamic_cast<VectorInstructionConfig*>(base_param);
-    }
-
-    // Wait for done signals
-    if (has_matrix_params) {
+  int idx = 0;
+  while (idx < params.size()) {
+    if (auto* matrix_params = get_param<MatrixParams>(params, idx)) {
 #if SUPPORT_MVM
       if (matrix_params->is_fc) {
         matrix_vector_unit_done.SyncPop();
       } else
 #endif
+#if SUPPORT_SPMM
+          if (matrix_params->is_spmm) {
+        if (auto* dense_params = get_param<MatrixParams>(params, idx)) {
+          matrix_unit_done.SyncPop();
+        }
+        spmm_unit_done.SyncPop();
+      } else
+#endif
       {
         matrix_unit_done.SyncPop();
       }
-    }
+    } else if (auto* dwc_params = get_param<DwCParams>(params, idx)) {
 #if SUPPORT_DWC
-    else if (has_dwc_params) {
       dwc_unit_done.SyncPop();
-    }
 #endif
-
-#if SUPPORT_SPMM
-    if (has_spmm_params) {
-      spmm_unit_done.SyncPop();
     }
-#endif
 
-    if (has_vector_params) {
+    if (auto* vector_params = get_param<VectorParams>(params, idx)) {
       vector_unit_done.SyncPop();
+      idx++;
     }
 
     sc_time end = sc_time_stamp();
@@ -580,11 +532,11 @@ void Harness::record_done(const std::deque<BaseParams*>& params,
     std::cout << "Runtime: " << runtime << " ns" << std::endl;
     access_counter->print_summary(operation.tiling, operation.has_valid_tiling);
 
-    if (idx != params.size() - 1) {
+    if (idx < params.size() - 1) {
       operation_done.SyncPush();
     }
 
-    if (is_last && idx == params.size() - 1) {
+    if (is_last && idx == params.size()) {
       auto start = operation_start_times.front();
       operation_start_times.pop_front();
 
@@ -606,6 +558,7 @@ std::deque<BaseParams*> offset_param_addresses(std::deque<BaseParams*> params,
       param->bias_offset += offset;
       param->input_scale_offset += offset;
       param->weight_scale_offset += offset;
+      param->output_offset += offset;
       param->dq_scale_offset += offset;
       param->dq_zero_point_offset += offset;
 #if SUPPORT_SPMM
@@ -656,6 +609,18 @@ void Harness::param_sender() {
     std::deque<BaseParams*> accelerator_params;
     map_operation(operation, accelerator_params);
 
+    const auto op_list = get_op_list(param);
+    bool has_csr_outputs = op_list.back().target() == "quantize_mx_outlier";
+
+    const auto outputs = get_op_outputs(param);
+
+    const bool single_pass = contain_matrix_param(accelerator_params) ||
+                             accelerator_params.size() < 4;
+
+    // Max tile index allowed to be in-flight before a synchronization wait is
+    // required.
+    const int sync_threshold = has_csr_outputs ? 0 : 1;
+
     if (is_soc_sim()) {
       const int num_tiles = get_tile_count(param);
       const int bank_size = getenv_int("CACHE_SIZE", 8 * 1024 * 1024);
@@ -664,19 +629,33 @@ void Harness::param_sender() {
           offset_param_addresses(accelerator_params, bank_size);
 
       for (int j = 0; j < num_tiles; j++) {
-        if ((contain_matrix_param(accelerator_params) || accelerator_params.size() < 4) && j > 1) {
+        if (single_pass && j > sync_threshold) {
           tile_done.SyncPop();
         }
 
+        auto params = j % 2 == 0 ? accelerator_params : params_offseted;
+
+        if (has_csr_outputs) {
+          int csr_tile_start;
+          int csr_tile_end;
+          dataloader->read_csr_tiled_bounds(outputs[2], j - 1, 1,
+                                            csr_tile_start, csr_tile_end);
+
+          for (auto& param : params) {
+            if (auto* cfg = dynamic_cast<VectorInstructionConfig*>(param)) {
+              cfg->outlier_filter.indptr_offset = j > 0 ? csr_tile_end : 0;
+              break;
+            }
+          }
+        }
+
         spdlog::debug("Sending tile {} params\n", j);
-        send_params(j % 2 == 0 ? accelerator_params : params_offseted);
+        send_params(params);
       }
 
       // drain out remaining done signals
-      if ((contain_matrix_param(accelerator_params) || accelerator_params.size() < 4)) {
-        tile_done.SyncPop();
-
-        if (num_tiles > 1) {
+      if (single_pass) {
+        for (int j = 0; j < std::min(num_tiles, sync_threshold + 1); j++) {
           tile_done.SyncPop();
         }
       }
@@ -750,6 +729,9 @@ void Harness::done_monitor() {
       const int num_tiles = get_tile_count(param);
       const int bank_size = getenv_int("CACHE_SIZE", 8 * 1024 * 1024);
 
+      const bool single_pass = contain_matrix_param(accelerator_params) ||
+                               accelerator_params.size() < 4;
+
       dataloader->load_scratchpad(param, 0, 0);
 
       if (num_tiles > 1) {
@@ -768,7 +750,7 @@ void Harness::done_monitor() {
           dataloader->load_scratchpad(param, j + 2, offset);
         }
 
-        if (contain_matrix_param(accelerator_params) || accelerator_params.size() < 4) {
+        if (single_pass) {
           tile_done.SyncPush();
         }
       }
