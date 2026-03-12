@@ -48,7 +48,7 @@ SC_MODULE(OutlierFilter) {
 
       indptr[0] = config.indptr_offset;
 
-      if (clock_period < 1) {
+      if (clock_period < 0.8) {
 #pragma hls_pipeline_init_interval 2
       } else {
 #pragma hls_pipeline_init_interval 1

@@ -23,7 +23,7 @@ SC_MODULE(VectorReducer) {
   static constexpr double clock_period = 5.0;  // Default to 5 ns if not defined
 #endif
 
-  static constexpr int FEEDBACK_DELAY = (clock_period < 1) ? 3 : 2;
+  static constexpr int FEEDBACK_DELAY = (clock_period < 0.8) ? 3 : 2;
   static constexpr int LAST = FEEDBACK_DELAY - 1;
   static constexpr int ratio = VECTOR_UNIT_WIDTH / REDUCER_WIDTH;
 
