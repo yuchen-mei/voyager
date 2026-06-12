@@ -1,90 +1,183 @@
 
 # Voyager DNN Accelerator Generator
 
-This repository contains the Voyager DNN accelerator generator.
+This repository contains the Voyager DNN accelerator generator, a tool for generating and evaluating deep neural network accelerators.
 
-It is written in SystemC/C++ and can be used for simulation (which allows for fast verification) and for generating Verilog (RTL code). The RTL code is then used for RTL-level (cycle-accurate) simulations and further synthesis of real HW.
-
-## CI
-[![Tests](https://code.stanford.edu/tsmc40r/brainpower/accelerator/badges/master/pipeline.svg?key_text=Tests)](https://code.stanford.edu/tsmc40r/brainpower/accelerator/-/commits/master)
-
-We are using the built-in [GitLab CI](https://docs.gitlab.com/ee/ci/). It triggers whenever someone pushes to a branch.
-
-### Runners
-- We are using a single GitLab runner on `r8cad-tsmc40r`.
-- They can be configured using `/etc/gitlab-runner/config.toml`.
-- The working directory of the runners is `/sim/gitlab-runner/`.
+For more details about the methodology and architecture, please refer to the paper: https://arxiv.org/abs/2509.15205
 
 ## Setup
 
-### 0. Preliminary Step
-Install conda with [miniforge](https://github.com/conda-forge/miniforge/#download).
-
-### 1. Clone the repository
+### 1. Clone the repository and submodules
 ```bash
-git clone git@code.stanford.edu:voyager/accelerator.git
-```
-
-### 2. Environment Requirements
-Install [direnv](https://direnv.net/), and then create your own `.envrc` file in the project root directory that sets up the conda environment and sources the `env.sh` file. A sample configuration might look like this:
-
-```bash
-layout anaconda ./.conda-env
-export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
-source env.sh
-```
-
-After creating the `.envrc` file, ensure the conda environment is activated.
-
-- **Additional Requirements**:
-  - You need to have [`git lfs`](https://git-lfs.github.com/) installed.
-  - You need `g++` with at least C++17 support.
-  - You need a python3 environment with required packages installed (try running the tests and you will be notified of the missing packages).
-
-### 3. Initialize the submodules
-```bash
+git clone https://github.com/StanfordAccelerate/voyager.git
+cd voyager
 git submodule update --init --recursive
 ```
-- After initialization, install required packages:
-  - In the submodule `voyager-compiler` directory, run `pip install -e .`
 
-### Running Examples
-Once the setup is complete, you can test the environment with the following command to compile and run ResNet18 through the compiler:
+### 2. Tool Setup
+
+Voyager does not require commercial tools for accuracy testing, SystemC simulations, or design space exploration.
+
+However, Voyager requires the following EDA tools for RTL generation and simulation:
+- **Catapult HLS** (tested with version 2024.2_1) - Used for high-level synthesis
+- **VCS** (tested with T-2022.06-SP2) - Verilog simulator for RTL verification
+- **Verdi** (tested with T-2022.06-SP2) - Debug tool for waveform analysis
+- **VCS_GNU_PACKAGE** (tested with S-2021.09) - Required compiler toolchain for VCS
+
+**Note**: You must load these tools every time you want to use this project.
+The method for activating these tools depends on your EDA environment setup (e.g., module system, environment scripts, etc.).
+
+### 3. Environment Setup
+
+#### Conda Setup
+Using Conda to perform the setup is preferred due to its portability. Install Conda using [miniforge](https://github.com/conda-forge/miniforge/#download).
+
+Miniforge is recommended as it uses conda-forge as the default channel, which provides better compatibility with the required packages.
+
+Create a Conda environment from the environment.yml file:
 ```bash
-make test/compiler/networks/resnet18/CFLOAT/params.pb
+conda env create -f environment.yml
 ```
-This will generate the folder `test/compiler/networks/resnet18` with files such as a parameter list, a log file, and a `tensor_files` breakdown folder, among others.
 
-*Note:* You may ignore command-line output messages like:
+Activate the environment:
 ```bash
-make: lsb_release: Command not found
+conda activate accelerator-env
 ```
+**Note:** You must activate this environment every time you want to use this project.
 
-To run a regression test for ResNet18, you can execute:
+After activating the environment, install the required submodule packages:
 ```bash
-DATATYPE=CFLOAT IC_DIMENSION=16 OC_DIMENSION=16 python run_regression.py --models resnet18 --sims gold_model --num_processes 32
+pip install ./interstellar
+pip install ./voyager-compiler
 ```
-Upon completion, check the `regression_results` folder for the `latest` subfolder, where a list of log files for each submodule will be generated. All layers should ideally pass the gold model check. Feel free to adjust parameters and run different simulations as needed.
 
-## Test 
-1. The easiest way to run tests is to check the CI files, `.gitlab/ci/sysc.yml` and `.gitlab/ci/rtl.yml`, for SystemC and RTL simulation, respectively. The command to run regression can be found in the `script` field. The result will be written to the `regression_results` directory.
-2. You can also manually build and run individual configuration and layer. The instruction will be added later.
+Additionally, add the project root path to the conda environment's stored variables, and reactivate the environment:
+```bash
+conda env config vars set PROJECT_ROOT=$(pwd)
+conda deactivate
+conda reactivate accelerator-env
+```
 
-## Structure
+In the future, when initializing ```accelerator-env```, you may see a warning about overwriting ```PROJECT_ROOT``` and ```CODEGEN_DIR```. This is expected.
 
-- `/data`: Test data for simulation.
-- `/lib`: External libraries.
-- `/models`: DNN models used for verification.
-- `/scripts`: Various `.tcl` scripts for RTL generation.
-- `/src`: SystemC accelerator implementation.
-- `/test`: Testing infrastructure, primarily SystemC/C++ files that invoke the accelerator.
-- `Makefile`: Builds the source code.
-- `run_regression.py`: Main script to invoke regression tests.
+#### Non-Conda Setup
 
-## Adding New Models
-To try a new model, you’ll need to modify this script:
-- [run_compiler.py](https://code.stanford.edu/tsmc40r/brainpower/accelerator/-/blob/compiler/test/compiler/run_compiler.py?ref_type=heads): Reference existing models to understand the required compilation steps.
+If conda is not being used, then please install the packages listed in the ```environment.yml``` file manually.
 
-Add the network in the following file:
-- [codegen.mk](https://code.stanford.edu/tsmc40r/brainpower/accelerator/-/blob/compiler/codegen.mk?ref_type=heads): Specify the model and set up any required quantization.
+This includes installing ```interstellar``` and ```voyager-compiler``` from their corresponding subdirectories.
 
+Please also source ```env.sh``` in the top directory every time you want to use the project.
+
+### 4. HuggingFace Setup
+
+To test on established AI workloads, users first need to set up an account on [HuggingFace](https://huggingface.co/).
+
+To run the tests used in the example, the following assets also require users to request and acquire access on HuggingFace:
+- [ImageNet dataset](https://huggingface.co/datasets/timm/imagenet-1k-wds)
+- [LLaMa transformer model](https://huggingface.co/meta-llama/Llama-3.1-8B)
+
+Finally, to use these assets in the code, create a [HuggingFace access token](https://huggingface.co/settings/tokens) with read permissions.
+
+Use the access token to authenticate using the HuggingFace CLI (installed as part of the environment):
+```bash
+hf auth login
+```
+
+## Repository Structure
+
+- `/data`: Test datasets and input data used for simulation and accuracy evaluation
+- `/lib`: External libraries and dependencies required by the project
+- `/models`: Pre-trained DNN model definitions and weights used for verification and evaluation
+- `/scripts`: Technology-specific `.tcl` scripts for RTL generation and synthesis configuration
+- `/src`: SystemC implementation of the accelerator architecture
+- `/test`: Testing infrastructure, including SystemC/C++ testbenches that invoke the accelerator
+- `Makefile`: Build configuration for compiling the SystemC source code
+- `run_regression.py`: Main regression testing script that orchestrates accuracy evaluation, functional simulations, and RTL generation
+
+
+## Usage
+
+### Configuration
+
+Accelerator configurations are specified through environment variables. The following variables control the accelerator architecture:
+
+- **`DATATYPE`**: The datatype/quantization scheme used for computations. Some of the supported values include: `BF16`, `E4M3`, `INT8`, `MXINT8`
+- **`IC_DIMENSION`**: The systolic array dimension size for the input channel (reduction) dimension
+- **`OC_DIMENSION`**: The systolic array dimension size for the output channel dimension
+- **`INPUT_BUFFER_SIZE`**: The depth (number of entries) of the input activation buffer
+- **`WEIGHT_BUFFER_SIZE`**: The depth (number of entries) of the weight buffer
+- **`ACCUM_BUFFER_SIZE`**: The depth (number of entries) of the accumulation buffer
+
+Additional variables for RTL generation:
+- **`CLOCK_PERIOD`**: Target clock period in nanoseconds for RTL synthesis
+- **`TECHNOLOGY`**: Technology name (must match a `.tcl` file in `scripts/tech/`)
+
+The `run_regression.py` script is the main entry point for running various types of evaluations and simulations, including:
+- Accuracy evaluation on full models and datasets
+- Functional SystemC simulations for verification
+- Cycle-accurate RTL simulations after HLS synthesis
+
+For detailed information about available options and underlying steps, refer to the script's help message: `python run_regression.py --help`. Upon completion, results and log files are generated in the `regression_results/latest/` directory.
+
+### Running Accuracy Evaluation
+
+Accuracy evaluation runs inference on full models and datasets to measure the impact of quantization and accelerator configuration on model accuracy. This is useful for validating that the accelerator maintains acceptable accuracy compared to floating-point baselines.
+
+**Supported models and datasets:**
+- BERT on SST-2 (sentiment classification)
+- MobileBERT on SST-2 (sentiment classification)
+- MobileBERT on SQuAD (question answering)
+- ResNet18 on ImageNet (image classification)
+- ResNet50 on ImageNet (image classification)
+- ViT (Vision Transformer) on ImageNet (image classification)
+- MobileNetV2 on ImageNet (image classification)
+
+**Example:** To evaluate the accuracy of an INT8 16×16 systolic array accelerator on the ResNet-18 model using the ImageNet dataset with 32 parallel processes:
+```bash
+DATATYPE=INT8 IC_DIMENSION=16 OC_DIMENSION=16 python run_regression.py --models resnet18 --dataset imagenet --sims accuracy --num_processes 32
+```
+
+### Running Functional SystemC Simulations
+
+Functional SystemC simulations verify the correctness of the SystemC accelerator implementation by comparing its outputs against a reference (golden) model. These simulations are **not cycle-accurate** but validate that the accelerator produces functionally correct results. The simulations run the SystemC model on every layer of the specified model(s) and compare outputs with the functional gold model.
+
+This is typically the first verification step before proceeding to RTL generation, as it's faster than RTL simulation and catches functional bugs early.
+
+**Example:** To verify an E4M3 32×32 accelerator on ResNet-18 and MobileBERT layers:
+```bash
+DATATYPE=E4M3 IC_DIMENSION=32 OC_DIMENSION=32 python run_regression.py --models resnet18,mobilebert_encoder --sims systemc --num_processes 32
+```
+
+### Running HLS and Cycle-Accurate RTL Simulations
+
+This workflow generates synthesizable RTL from the SystemC model using Catapult HLS and then runs cycle-accurate RTL simulations. This is the most detailed verification step and produces actual hardware RTL that can be pushed through downstream EDA tools.
+
+**Prerequisites:** Before running RTL generation, you must create a technology-specific configuration file. In the `scripts/tech/` directory, create a `.tcl` file named after your technology (e.g., `tsmc40.tcl`). This file configures Catapult HLS with your target technology library.
+
+**Technology file template:**
+```tcl
+# Point to your Catapult-generated characterized library.
+# Refer to the Catapult library builder documentation for more details.
+solution options set ComponentLibs/SearchPath {/path/to/catapult_library} -append
+solution library add catapult_library_name
+
+# Implement the following function that returns the name of the memory instance
+# for a given depth and width. Refer to the Catapult memory library generation
+# documentation for more details.
+proc get_memory_name {is_sp depth width} {
+  # Return the appropriate memory name based on parameters
+  # is_sp: whether it's a single-port memory
+  # depth: memory depth
+  # width: memory width in bits
+  ...
+}
+```
+
+**Example:** To run RTL generation on an INT8 32x32 accelerator with a 5.0ns clock period using the `generic` technology and evaluate runtime on MobileBERT:
+```bash
+DATATYPE=INT8 IC_DIMENSION=32 OC_DIMENSION=32 CLOCK_PERIOD=5.0 TECHNOLOGY=generic python run_regression.py --models mobilebert_encoder --sims rtl --num_processes 32 --uniquify_layers
+```
+
+The `--uniquify_layers` flag can be used to reduce the evaluation runtime by only running the layers with unique shapes.
+
+**Output:** The generated RTL files can be found in the `build/` directory, organized by configuration (datatype, dimensions, etc.) in separate subdirectories. Each configuration directory contains the synthesized Verilog RTL and other Catapult-generated collateral.

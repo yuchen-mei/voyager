@@ -6,10 +6,16 @@
 	url = https://github.com/xtensor-stack/xtl.git
 [submodule "interstellar"]
 	path = interstellar
-	url = git@code.stanford.edu:voyager/interstellar.git
+	url = https://code.stanford.edu/voyager/interstellar.git
 [submodule "lib/spdlog"]
 	path = lib/spdlog
 	url = https://github.com/gabime/spdlog.git
 [submodule "voyager-compiler"]
 	path = voyager-compiler
 	url = https://github.com/jeffreyyu0602/voyager-compiler.git
+[submodule "physical-design"]
+	path = physical-design
+	url = git@code.stanford.edu:voyager/physical-design.git
+[submodule "scripts/tech/internal-tech"]
+	path = scripts/tech/internal-tech
+	url = git@code.stanford.edu:voyager/internal-tech.git
