@@ -7,6 +7,14 @@
 #include "ArchitectureParams.h"
 #include "Utils.h"
 
+// Decoupling FIFO depth between the II=1 fetcher and the packer/transposer.
+// Standalone Voyager builds keep the SystemC default of 16; the Agate flow
+// overrides this (-DVOYAGER_INPUT_FETCHER_FIFO_DEPTH) to the MU->GLB read
+// window so the fetcher can run far enough ahead to cover the read round-trip.
+#ifndef VOYAGER_INPUT_FETCHER_FIFO_DEPTH
+#define VOYAGER_INPUT_FETCHER_FIFO_DEPTH 16
+#endif
+
 template <typename InputTypeTuple, int rows, int port_width, int buffer_width>
 struct InputController;
 
@@ -40,8 +48,8 @@ struct InputController<std::tuple<InputTypes...>, rows, port_width,
 
   Connections::Out<MemoryRequest> CCS_INIT_S1(input_req);
   Connections::In<ac_int<port_width, false>> CCS_INIT_S1(input_resp);
-  sc_fifo<bool> fetcher_done;
-  sc_fifo<bool> fetcher_done_2;
+  sc_fifo<bool> fetcher_done{"fetcher_done", VOYAGER_INPUT_FETCHER_FIFO_DEPTH};
+  sc_fifo<bool> fetcher_done_2{"fetcher_done_2", VOYAGER_INPUT_FETCHER_FIFO_DEPTH};
 
   Connections::Out<BufferWriteRequest<ac_int<buffer_width, false>>>
       write_request[2];
