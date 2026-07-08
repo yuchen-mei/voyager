@@ -6,6 +6,14 @@
 #include "AccelTypes.h"
 #include "ArchitectureParams.h"
 
+// Decoupling FIFO depth between the II=1 fetcher and the packer/transposer.
+// Standalone Voyager builds keep the SystemC default of 16; the Agate flow
+// overrides this (-DVOYAGER_WEIGHT_FETCHER_FIFO_DEPTH) to the MU->GLB read
+// window so the fetcher can run far enough ahead to cover the read round-trip.
+#ifndef VOYAGER_WEIGHT_FETCHER_FIFO_DEPTH
+#define VOYAGER_WEIGHT_FETCHER_FIFO_DEPTH 16
+#endif
+
 template <typename WeightTypeTuple, typename Bias, int rows, int cols,
           int port_width, int buffer_width>
 struct WeightController;
@@ -42,8 +50,8 @@ struct WeightController<std::tuple<WeightTypes...>, Bias, rows, cols,
   Connections::Combinational<MatrixParams> CCS_INIT_S1(bias_fetcher_params);
   Connections::Combinational<MatrixParams> CCS_INIT_S1(bias_feeder_params);
 
-  sc_fifo<bool> fetcher_done;
-  sc_fifo<bool> fetcher_done_2;
+  sc_fifo<bool> fetcher_done{"fetcher_done", VOYAGER_WEIGHT_FETCHER_FIFO_DEPTH};
+  sc_fifo<bool> fetcher_done_2{"fetcher_done_2", VOYAGER_WEIGHT_FETCHER_FIFO_DEPTH};
 
   Connections::Combinational<ac_int<MAX_FETCH_WIDTH, false>> packed_bits;
   Connections::Combinational<ac_int<buffer_width, false>> transpose_out;
