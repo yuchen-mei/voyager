@@ -22,3 +22,5 @@ test_outputs_e2e/
 logs/
 regression_results/
 .conda-env/
+# Staged SRAM macro models + built MemGen wrapper libs (proprietary PDK, regenerated per run)
+/memories/
