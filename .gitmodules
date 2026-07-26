@@ -16,7 +16,9 @@
 	branch = heterogeneous_cgra
 [submodule "physical-design"]
 	path = physical-design
-	url = git@code.stanford.edu:voyager/physical-design.git
+	url = https://github.com/StanfordAccelerate/agate-voyager-physical-design.git
+	branch = main
 [submodule "scripts/tech/internal-tech"]
 	path = scripts/tech/internal-tech
-	url = git@code.stanford.edu:voyager/internal-tech.git
+	url = https://github.com/StanfordAccelerate/agate-voyager-internal-tech.git
+	branch = main
