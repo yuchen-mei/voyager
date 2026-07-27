@@ -107,7 +107,10 @@ using F9 = StdFloat<3, 5>;
 
 #define INPUT_DATATYPE DataTypes::int8
 #define WEIGHT_DATATYPE DataTypes::int8
-#define ACCUM_DATATYPE DataTypes::int32
+// PSUM accumulator type; overridable via -DACCUM_DATATYPE, default int24.
+#ifndef ACCUM_DATATYPE
+#define ACCUM_DATATYPE DataTypes::int24
+#endif
 #define ACCUM_BUFFER_DATATYPE DataTypes::bfloat16
 #define VECTOR_DATATYPE DataTypes::bfloat16
 #define SCALE_DATATYPE DataTypes::fp8_e8m0

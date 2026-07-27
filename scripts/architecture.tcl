@@ -124,7 +124,7 @@ if { $DATATYPE == "P8_1" } {
 } elseif {$DATATYPE == "MXINT8"} {
   set INPUT_DATATYPE "DataTypes::int8"
   set WEIGHT_DATATYPE "DataTypes::int8"
-  set ACCUM_DATATYPE "DataTypes::int32"
+  set ACCUM_DATATYPE "DataTypes::$ACCUM_DATATYPE_NAME"
   set ACCUM_BUFFER_DATATYPE "DataTypes::bfloat16"
   set VECTOR_DATATYPE "DataTypes::bfloat16"
   set SCALE_DATATYPE "DataTypes::fp8_e8m0"

@@ -29,6 +29,9 @@ INC := \
 	-I$(CONDA_PREFIX)/include \
 	-I.
 
+# Accumulator (PSUM) datatype name; qualified below as DataTypes::<name>.
+ACCUM_DATATYPE ?= int24
+
 # TODO(fpedd): Fix code and remove Wno-* flags step by step
 override BASE_FLAGS += \
 	$(INC) \
@@ -45,6 +48,7 @@ override BASE_FLAGS += \
 	-DSPDLOG_COMPILED_LIB \
 	-DSPDLOG_EOL=\"\" \
 	-D$(DATATYPE) \
+	-DACCUM_DATATYPE=DataTypes::$(ACCUM_DATATYPE) \
 	-DIC_DIMENSION=$(IC_DIMENSION) \
 	-DOC_DIMENSION=$(OC_DIMENSION)
 

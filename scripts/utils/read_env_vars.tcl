@@ -5,6 +5,15 @@ foreach var $ENV_VARS {
   set $var [exec echo $::env($var)]
 }
 
+# Accumulator (PSUM) datatype name forwarded from the build flow (bare type such
+# as "int24"). architecture.tcl and setup_project.tcl qualify it as
+# DataTypes::<name>. Defaults to int24 when unset (standalone builds).
+if {[info exists ::env(ACCUM_DATATYPE)]} {
+  set ACCUM_DATATYPE_NAME [exec echo $::env(ACCUM_DATATYPE)]
+} else {
+  set ACCUM_DATATYPE_NAME int24
+}
+
 # Optional fetcher FIFO depths, forwarded to the Catapult HLS compile in
 # setup_project.tcl. Default to 16 when unset.
 set ENV_VARS_OPTIONAL {VOYAGER_WEIGHT_FETCHER_FIFO_DEPTH VOYAGER_INPUT_FETCHER_FIFO_DEPTH}
