@@ -103,6 +103,16 @@ using F9 = StdFloat<3, 5>;
 #define ACCUM_DATATYPE DataTypes::int32
 #define VECTOR_DATATYPE DataTypes::bfloat16
 
+#elif defined(INT16)
+
+#define INPUT_DATATYPE DataTypes::int16
+#define WEIGHT_DATATYPE DataTypes::int16
+#ifndef ACCUM_DATATYPE
+#define ACCUM_DATATYPE DataTypes::int32
+#endif
+#define ACCUM_BUFFER_DATATYPE DataTypes::bfloat16
+#define VECTOR_DATATYPE DataTypes::bfloat16
+
 #elif defined(MXINT8)
 
 #define INPUT_DATATYPE DataTypes::int8

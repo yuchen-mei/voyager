@@ -101,7 +101,7 @@ hf auth login
 
 Accelerator configurations are specified through environment variables. The following variables control the accelerator architecture:
 
-- **`DATATYPE`**: The datatype/quantization scheme used for computations. Some of the supported values include: `BF16`, `E4M3`, `INT8`, `MXINT8`
+- **`DATATYPE`**: The datatype/quantization scheme used for computations. Some of the supported values include: `BF16`, `E4M3`, `INT8`, `INT16`, `MXINT8`
 - **`IC_DIMENSION`**: The systolic array dimension size for the input channel (reduction) dimension
 - **`OC_DIMENSION`**: The systolic array dimension size for the output channel dimension
 - **`INPUT_BUFFER_SIZE`**: The depth (number of entries) of the input activation buffer

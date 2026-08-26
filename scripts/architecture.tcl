@@ -121,6 +121,18 @@ if { $DATATYPE == "P8_1" } {
   set INPUT_DTYPE_WIDTH 8
   set WEIGHT_DTYPE_WIDTH 8
   set ACCUM_DATATYPE_WIDTH 32
+} elseif { $DATATYPE == "INT16" } {
+  set INPUT_DATATYPE "DataTypes::int16"
+  set WEIGHT_DATATYPE "DataTypes::int16"
+  set ACCUM_DATATYPE "DataTypes::$ACCUM_DATATYPE_NAME"
+  set ACCUM_BUFFER_DATATYPE "DataTypes::bfloat16"
+  set VECTOR_DATATYPE "DataTypes::bfloat16"
+
+  set ACC_BUF_C_DATA_REP_NAME "float_val.d"
+
+  set INPUT_DTYPE_WIDTH 16
+  set WEIGHT_DTYPE_WIDTH 16
+  set ACCUM_DATATYPE_WIDTH 16
 } elseif {$DATATYPE == "MXINT8"} {
   set INPUT_DATATYPE "DataTypes::int8"
   set WEIGHT_DATATYPE "DataTypes::int8"
