@@ -44,6 +44,12 @@ SC_MODULE(WeightScaleController) {
     async_reset_signal_is(rstn, false);
   }
 
+  // Fetches one logical E8M0 weight-scale vector per MatrixUnit reduction
+  // block. MatrixUnit dispatch invokes this thread through SC_THREAD and
+  // supplies MatrixParams on fetcher_params. Normal weights issue the native
+  // vector request; transposed attention weights issue their stored
+  // [output, reduction_block] rectangle so writer can gather the requested
+  // column. The thread returns no value and emits requests on weight_scale_req.
   void fetcher() {
     weight_scale_req.Reset();
     fetcher_params.ResetRead();
@@ -125,9 +131,24 @@ SC_MODULE(WeightScaleController) {
                                                       fx * fx_stride +
                                                       c * c_stride + k;
 
-                          send_input_request<Scale, cols>(
-                              params.weight_scale_offset, address,
-                              weight_scale_req);
+                          if (params.weight_transpose) {
+                            // The untransposed MX scale tensor is laid out as
+                            // [output, reduction_block]. Fetch the complete
+                            // row-major rectangle for this output vector; the
+                            // writer below selects one reduction-block column
+                            // and packs it into the controller's normal
+                            // [reduction_block, output] buffer layout.
+                            ac_int<24, false> scale_blocks = C2 * C;
+                            MemoryRequest request = {
+                                params.weight_scale_offset +
+                                    k * scale_blocks * Scale::width / 8,
+                                cols * scale_blocks * Scale::width / 8};
+                            weight_scale_req.Push(request);
+                          } else {
+                            send_input_request<Scale, cols>(
+                                params.weight_scale_offset, address,
+                                weight_scale_req);
+                          }
 
                           if (loop_counters[1][4] == loop_bounds[1][4]) break;
                         }
@@ -152,6 +173,12 @@ SC_MODULE(WeightScaleController) {
     }
   }
 
+  // Converts GLB responses into the double-buffered weight-scale layout read
+  // by MatrixUnit. MatrixUnit dispatch invokes this thread through SC_THREAD
+  // and supplies the same layer MatrixParams on writer_params. For transposed
+  // weights it consumes the fetched row-major rectangle and gathers one
+  // reduction-block column; otherwise it preserves the native packed-vector
+  // path. The thread returns no value and writes through write_request.
   void writer() {
     writer_params.ResetRead();
     weight_scale_resp.Reset();
@@ -178,6 +205,8 @@ SC_MODULE(WeightScaleController) {
 
       ac_int<LOOP_WIDTH, false> K2 =
           params.weight_addr_loops[0][params.weight_addr_weight_loop_idx[0]];
+      ac_int<LOOP_WIDTH, false> C2 =
+          params.weight_addr_loops[0][params.weight_addr_reduction_loop_idx[0]];
       ac_int<LOOP_WIDTH, false> C1 =
           params.weight_addr_loops[1][params.weight_addr_reduction_loop_idx[1]];
       ac_int<LOOP_WIDTH, false> C0 =
@@ -226,9 +255,51 @@ SC_MODULE(WeightScaleController) {
                               fy0 * fy_stride + fx * fx_stride + c0 * K1 + k1;
 
                           ac_int<Scale::width * cols, false> data;
-                          process_matrix_input<Scale, cols, port_width,
-                                               Scale::width * cols>(
-                              weight_scale_resp, data);
+                          if (params.weight_transpose) {
+                            // The fetcher returns cols rows containing every
+                            // reduction-block scale for each output. Consume
+                            // the contiguous rectangle once for this logical
+                            // vector and gather column (c2 * C + c0). Repeating
+                            // the small rectangle for the next column avoids a
+                            // large persistent transpose buffer while keeping
+                            // all memory requests contiguous.
+                            constexpr int scales_per_response =
+                                port_width / Scale::width;
+                            ac_int<24, false> scale_blocks = C2 * C;
+                            ac_int<24, false> selected_block =
+                                loop_counters[0]
+                                             [params
+                                                  .weight_addr_reduction_loop_idx
+                                                      [0]] *
+                                    C +
+                                c0;
+                            ac_int<port_width, false> response_bits = 0;
+                            ac_int<8, false> response_lane =
+                                scales_per_response;
+
+                            data = 0;
+                            for (int output_idx = 0; output_idx < cols;
+                                 output_idx++) {
+                              for (ac_int<24, false> block_idx = 0;
+                                   block_idx < scale_blocks; block_idx++) {
+                                if (response_lane == scales_per_response) {
+                                  response_bits = weight_scale_resp.Pop();
+                                  response_lane = 0;
+                                }
+                                if (block_idx == selected_block) {
+                                  data.set_slc(
+                                      output_idx * Scale::width,
+                                      response_bits.template slc<Scale::width>(
+                                          response_lane * Scale::width));
+                                }
+                                response_lane++;
+                              }
+                            }
+                          } else {
+                            process_matrix_input<Scale, cols, port_width,
+                                                 Scale::width * cols>(
+                                weight_scale_resp, data);
+                          }
 
                           BufferWriteRequest<ac_int<Scale::width * cols, false>>
                               req;

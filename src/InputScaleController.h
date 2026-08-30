@@ -23,6 +23,7 @@ SC_MODULE(InputScaleController) {
   Connections::Combinational<MatrixParams> CCS_INIT_S1(reader_params);
 
   static constexpr int LOOP_WIDTH = 10;
+  static constexpr int SCALE_BLOCK_SIZE_LG2 = ac::nbits<rows - 1>::val;
 
   // num x values packed in a word
   static constexpr int packing_factor = (rows == 4)    ? 1
@@ -59,6 +60,12 @@ SC_MODULE(InputScaleController) {
     async_reset_signal_is(rstn, false);
   }
 
+  // Fetches E8M0 input scales from GLB into the double-buffered scale store.
+  // The MatrixUnit dispatch thread supplies one MatrixParams record per layer;
+  // this thread walks the same spatial and reduction loops as InputController,
+  // converts logical scale coordinates to GLB addresses, and emits one memory
+  // request for each in-bounds scale. It has no return value and communicates
+  // exclusively through fetcher_params and scale_req.
   void fetcher() {
     fetcher_params.ResetRead();
     scale_req.Reset();
@@ -151,11 +158,14 @@ SC_MODULE(InputScaleController) {
                               ac_int<32, false> address = y * X * C + x * C + c;
 
                               if (params.merge_heads) {
+                                ac_int<8, false> scale_head_size_lg2 =
+                                    params.head_size_lg2 -
+                                    SCALE_BLOCK_SIZE_LG2;
                                 ac_int<16, false> mask =
-                                    (1 << params.head_size_lg2) - 1;
-                                address = (c >> params.head_size_lg2) *
-                                              (X << params.head_size_lg2) +
-                                          (x << params.head_size_lg2) +
+                                    (1 << scale_head_size_lg2) - 1;
+                                address = (c >> scale_head_size_lg2) *
+                                              (X << scale_head_size_lg2) +
+                                          (x << scale_head_size_lg2) +
                                           (c & mask);
                               } else if (params.input_transpose) {
                                 address =
